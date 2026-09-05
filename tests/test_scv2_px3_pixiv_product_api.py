@@ -99,10 +99,17 @@ def test_status_and_synthetic_dry_run_do_not_write(api_client) -> None:
 
 def test_apply_query_rollback_and_reapply_are_auditable(api_client) -> None:
     client, session = api_client
+    plan = client.post('/api/admin/pixiv-product-integration/synthetic/run', json={'mode': 'dry_run'}).json()
+    acceptance = {
+        'accepted_selection_fingerprint': plan['selection_fingerprint'],
+        'accepted_product_fingerprint': plan['product_result_fingerprint'],
+        'accepted_binding_fingerprint': plan['media_binding']['local_binding_fingerprint'],
+    }
     apply_response = client.post(
         "/api/admin/pixiv-product-integration/synthetic/run",
         json={
             "mode": "apply",
+            **acceptance,
             "confirm": True,
             "confirm_phrase": "APPLY_SYNTHETIC_PIXIV_PRODUCT",
         },
@@ -119,6 +126,7 @@ def test_apply_query_rollback_and_reapply_are_auditable(api_client) -> None:
         "/api/admin/pixiv-product-integration/synthetic/run",
         json={
             "mode": "apply",
+            **acceptance,
             "confirm": True,
             "confirm_phrase": "APPLY_SYNTHETIC_PIXIV_PRODUCT",
         },
@@ -159,6 +167,7 @@ def test_apply_query_rollback_and_reapply_are_auditable(api_client) -> None:
         "/api/admin/pixiv-product-integration/synthetic/run",
         json={
             "mode": "apply",
+            **acceptance,
             "confirm": True,
             "confirm_phrase": "APPLY_SYNTHETIC_PIXIV_PRODUCT",
         },

@@ -8,11 +8,26 @@ synthetic metadata and task-owned temporary SQLite databases.
 
 The following remain false: real Pixiv/gallery-dl network execution, provider
 credentials, real source or iCloud access, existing database/app-storage
-mutation, user-data import, production, full-library import, and PX3 merge.
+access or mutation, user-data import, production, and full-library import.
+The owner authorized one conditional expected-head merge commit for PR #149;
+that Git control-plane authority does not authorize any canary execution.
 `scripts/plan_scv2_px3_controlled_canary.py` emits a canonical plan and returns
 exit code 3 if `--execute` is supplied; it never converts a plan into authority.
 
 ## Gate sequence
+
+**STOP before the first normal startup against an existing database.**
+`backend/app/main.py` calls `init_db()` during normal startup;
+`backend/app/database.py::init_db()` runs `Base.metadata.create_all()` followed
+by `check_and_migrate_schema()`. Merging the code therefore does not permit
+starting it against the existing DB before a successful backup/restore test.
+The additive PX3 migration creates only the product evidence/media association
+table, its foreign keys and indexes. It does not backfill or rewrite existing
+rows. Validate creation twice on a task-owned DB; recovery of a real database
+uses the separately approved backup/restore procedure. No task-owned PostgreSQL
+was configured for this correction, so no PostgreSQL connection or migration
+was attempted and no infrastructure was installed. PostgreSQL migration smoke
+remains part of the backup/restore stop, not a code-merge blocker.
 
 1. `PX3_BACKUP_RESTORE_GATE`: bind an exact database identity, create and hash a
    nonzero `pg_dump` artifact, restore it only into an isolated non-production
@@ -35,6 +50,23 @@ exit code 3 if `--execute` is supplied; it never converts a plan into authority.
    `APPLY_PIXIV_SOURCE_CONCEPTS`. Replay must add zero rows. Stop and use the
    exact run-key rollback endpoint on any identity, accounting, provenance, or
    non-SourceConcept write discrepancy.
+
+The first apply canary is **1%**. Apply must send
+`accepted_selection_fingerprint`, `accepted_product_fingerprint`, and
+`accepted_binding_fingerprint` from the dry-run. The server recomputes all
+three before writing and returns 409 for drift. The last fingerprint covers
+current local row bindings only and never changes PX1/PX2/product identity.
+Gallery search and media detail must accept the resulting evidence support,
+then replay must add zero bindings and rollback must revoke them immediately.
+Rollback is allowed only for the active run with proven creation ownership and
+unchanged core/reference rows; product audit rows remain available.
+
+`SCV2_PX3_MULTIWORKER_APPLY_GATE` remains deferred until before multiple Uvicorn
+workers, multiple owners, or concurrent canary applies. `run.py` omits a worker
+override (the Uvicorn default is one); UI duplicate clicks are blocked and
+database uniqueness conflicts return a stable 409. No distributed lock, queue,
+or new concurrency framework is introduced. Workspace confinement debt retains
+its existing exact use-before gate.
 
 Example plan-only commands:
 

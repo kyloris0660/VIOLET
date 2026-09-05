@@ -6978,6 +6978,10 @@ class AdminPanel {
         section.dataset.initialized = 'true';
 
         document.getElementById('pixiv-product-refresh-btn')?.addEventListener('click', () => this.loadPixivProductStatus());
+        document.getElementById('pixiv-product-canary-percent')?.addEventListener('change', () => {
+            this.pixivProductPlan = null;
+            this.updatePixivProductApplyButtons();
+        });
         document.getElementById('pixiv-product-synthetic-dry-run-btn')?.addEventListener('click', () => this.runPixivProduct('synthetic', 'dry_run'));
         document.getElementById('pixiv-product-synthetic-apply-btn')?.addEventListener('click', () => this.runPixivProduct('synthetic', 'apply'));
         document.getElementById('pixiv-product-source-dry-run-btn')?.addEventListener('click', () => this.runPixivProduct('source', 'dry_run'));
@@ -7006,10 +7010,10 @@ class AdminPanel {
     async loadPixivProductStatus() {
         const boundary = document.getElementById('pixiv-product-boundary');
         try {
-            const [status, runPayload] = await Promise.all([
-                app.apiCall('/api/admin/pixiv-product-integration/status'),
-                app.apiCall('/api/admin/pixiv-product-integration/runs'),
-            ]);
+            const status = await app.apiCall('/api/admin/pixiv-product-integration/status');
+            this.pixivProductFeatureState = status;
+            const runPayload = status.enabled
+                ? await app.apiCall('/api/admin/pixiv-product-integration/runs') : { runs: [] };
             this.pixivProductRuns = Array.isArray(runPayload.runs) ? runPayload.runs : [];
             if (boundary) {
                 boundary.textContent = `Read/dry-run: ${status.enabled ? 'enabled' : 'disabled'} · apply/rollback: ${status.apply_enabled ? 'enabled' : 'disabled'} · synthetic UI: ${status.synthetic_ui_enabled ? 'enabled' : 'disabled'} · real provider: disabled`;
@@ -7019,15 +7023,11 @@ class AdminPanel {
             const sourceDry = document.getElementById('pixiv-product-source-dry-run-btn');
             const sourceApply = document.getElementById('pixiv-product-source-apply-btn');
             if (syntheticDry) syntheticDry.disabled = !(status.enabled && status.synthetic_ui_enabled);
-            if (syntheticApply) syntheticApply.disabled = !(status.enabled && status.synthetic_ui_enabled && status.apply_enabled);
+            if (syntheticApply) syntheticApply.disabled = true;
             if (sourceDry) sourceDry.disabled = !status.enabled;
-            if (sourceApply) sourceApply.disabled = !(status.enabled && status.apply_enabled);
+            if (sourceApply) sourceApply.disabled = true;
             this.renderPixivProductRunOptions();
-            if (this.pixivProductRuns.length) {
-                await this.loadPixivProductRun(this.pixivProductRuns[0].run_key);
-            } else {
-                this.renderPixivProduct(null);
-            }
+            this.updatePixivProductApplyButtons();
         } catch (error) {
             if (boundary) boundary.textContent = `Unavailable: ${error.message || error}`;
             this.showPixivProductMessage(`加载 Pixiv 产品链路失败：${error.message || error}`, 'error');
@@ -7041,13 +7041,14 @@ class AdminPanel {
             select.innerHTML = '<option value="">尚无 run</option>';
             return;
         }
-        select.innerHTML = this.pixivProductRuns.map((run) => {
+        select.innerHTML = '<option value="">Select run to load detail</option>' + this.pixivProductRuns.map((run) => {
             const label = `${run.status} · ${run.source_mode} · ${run.run_key}`;
             return `<option value="${this.escapeHtml(run.run_key)}">${this.escapeHtml(label)}</option>`;
         }).join('');
     }
 
     async loadPixivProductRun(runKey) {
+        if (!runKey) return;
         try {
             const detail = await app.apiCall(`/api/admin/pixiv-product-integration/runs/${encodeURIComponent(runKey)}`);
             this.pixivProductCurrent = detail;
@@ -7060,8 +7061,11 @@ class AdminPanel {
     }
 
     async runPixivProduct(source, mode) {
+        if (this.pixivProductBusy) return;
         const applying = mode === 'apply';
         const synthetic = source === 'synthetic';
+        const accepted = this.pixivProductPlan;
+        if (applying && (!accepted || this.pixivProductPlanSource !== source || accepted.status !== 'planned')) return;
         if (applying) {
             const label = synthetic ? 'repository-owned synthetic data' : 'current persisted Pixiv metadata';
             if (!window.confirm(`Apply SourceConcept product integration for ${label}?`)) return;
@@ -7076,6 +7080,9 @@ class AdminPanel {
         const canaryPercent = synthetic
             ? null
             : Number(document.getElementById('pixiv-product-canary-percent')?.value || 1);
+        if (applying && !synthetic && accepted.input_selection?.percentage !== canaryPercent) return;
+        this.pixivProductBusy = true;
+        this.updatePixivProductApplyButtons();
         try {
             const result = await app.apiCall(endpoint, {
                 method: 'POST',
@@ -7085,24 +7092,55 @@ class AdminPanel {
                     confirm: applying,
                     confirm_phrase: confirmPhrase,
                     ...(synthetic ? {} : { canary_percent: canaryPercent }),
+                    ...(applying ? {
+                        accepted_selection_fingerprint: accepted.selection_fingerprint,
+                        accepted_product_fingerprint: accepted.product_result_fingerprint,
+                        accepted_binding_fingerprint: accepted.media_binding.local_binding_fingerprint,
+                    } : {}),
                 }),
             });
-            this.pixivProductPlan = result;
+            this.pixivProductPlan = applying ? null : result;
+            this.pixivProductPlanSource = source;
             this.renderPixivProduct(result);
             this.showPixivProductMessage(
                 applying ? '应用完成；可查询产品投影与 provenance。' : 'Dry-run 完成；数据库未写入。',
                 'success',
             );
-            if (applying) await this.loadPixivProductStatus();
+            if (applying) {
+                await this.loadPixivProductStatus();
+                await this.loadPixivProductRun(result.run_key);
+            }
         } catch (error) {
+            this.pixivProductPlan = null;
             this.showPixivProductMessage(`操作失败：${error.message || error}`, 'error');
+        } finally {
+            this.pixivProductBusy = false;
+            this.updatePixivProductApplyButtons();
+        }
+    }
+
+    updatePixivProductApplyButtons() {
+        const flags = this.pixivProductFeatureState || {};
+        const plan = this.pixivProductPlan;
+        const percent = Number(document.getElementById('pixiv-product-canary-percent')?.value || 1);
+        for (const source of ['synthetic', 'source']) {
+            const button = document.getElementById(`pixiv-product-${source}-apply-btn`);
+            if (button) button.disabled = !(
+                !this.pixivProductBusy && flags.enabled && flags.apply_enabled &&
+                plan?.status === 'planned' && this.pixivProductPlanSource === source &&
+                (source === 'synthetic' ? flags.synthetic_ui_enabled : plan.input_selection?.percentage === percent)
+            );
         }
     }
 
     async rollbackPixivProduct() {
+        if (this.pixivProductBusy) return;
         const run = this.pixivProductCurrent;
         if (!run?.run_key || !run.rollback_available) return;
         if (!window.confirm(`Rollback ${run.run_key}? Product audit rows will be retained.`)) return;
+        this.pixivProductBusy = true;
+        this.pixivProductPlan = null;
+        this.updatePixivProductApplyButtons();
         try {
             await app.apiCall(`/api/admin/pixiv-product-integration/runs/${encodeURIComponent(run.run_key)}/rollback`, {
                 method: 'POST',
@@ -7114,8 +7152,12 @@ class AdminPanel {
             });
             this.showPixivProductMessage('回滚完成；审计投影保留。', 'success');
             await this.loadPixivProductStatus();
+            await this.loadPixivProductRun(run.run_key);
         } catch (error) {
             this.showPixivProductMessage(`回滚失败：${error.message || error}`, 'error');
+        } finally {
+            this.pixivProductBusy = false;
+            this.updatePixivProductApplyButtons();
         }
     }
 
@@ -7131,6 +7173,15 @@ class AdminPanel {
         setText('pixiv-product-candidate-count', candidates.length || data?.counts?.candidate_disposition_count || 0);
         setText('pixiv-product-ambiguity-count', ambiguities.length || data?.counts?.ambiguity_record_count || 0);
         setText('pixiv-product-run-status', data?.status || 'none');
+        const planSummary = document.getElementById('pixiv-product-plan-summary');
+        if (planSummary && data?.status === 'planned') {
+            planSummary.textContent = JSON.stringify({
+                selected_work_ids: data.input_selection?.selected_work_ids,
+                selection_fingerprint: data.selection_fingerprint,
+                product_result_fingerprint: data.product_result_fingerprint,
+                media_binding: data.media_binding,
+            }, null, 2);
+        }
         const rollback = document.getElementById('pixiv-product-rollback-btn');
         if (rollback) rollback.disabled = !(data?.status === 'active' && data?.rollback_available);
         this.pixivProductCurrent = data;

@@ -1246,6 +1246,21 @@ class SourceConceptProductRun(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
+class SourceConceptProductMediaBinding(Base):
+    """PX3-local support edges; never part of database-neutral identity."""
+
+    __tablename__ = 'blombooru_source_concept_product_media_bindings'
+    __table_args__ = (
+        UniqueConstraint('product_run_id', 'evidence_id', 'source_metadata_record_id', 'media_id', name='uq_px3_media_binding'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    product_run_id = Column(Integer, ForeignKey('blombooru_source_concept_product_runs.id', ondelete='CASCADE'), nullable=False, index=True)
+    evidence_id = Column(Integer, ForeignKey('blombooru_source_concept_evidence.id', ondelete='CASCADE'), nullable=False, index=True)
+    media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), nullable=False, index=True)
+    source_metadata_record_id = Column(Integer, ForeignKey('blombooru_source_metadata_records.id', ondelete='CASCADE'), nullable=False, index=True)
+
+
 class SourceConceptProductCluster(Base):
     __tablename__ = 'blombooru_source_concept_product_clusters'
     __table_args__ = (

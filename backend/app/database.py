@@ -215,6 +215,7 @@ def check_and_migrate_schema(engine):
         migrate_add_source_name_candidate_extraction,
         migrate_add_source_concept_resolver_core,
         migrate_add_source_concept_product_integration,
+        migrate_add_source_concept_product_media_bindings,
         migrate_add_source_concept_fallback_search_index,
         migrate_add_dynamic_library_sync_tables,
     ]
@@ -1234,6 +1235,13 @@ def migrate_add_source_concept_resolver_core(engine, inspector):
         for statement in index_statements:
             conn.execute(text(statement))
         conn.commit()
+
+
+def migrate_add_source_concept_product_media_bindings(engine, inspector):
+    """Add only the PX3 evidence/media association, on old and fresh schemas."""
+    from .models import SourceConceptProductMediaBinding
+
+    SourceConceptProductMediaBinding.__table__.create(bind=engine, checkfirst=True)
 
 
 def migrate_add_source_concept_product_integration(engine, inspector):

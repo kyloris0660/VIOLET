@@ -222,7 +222,7 @@ def test_replay_detects_persisted_candidate_drift(
         row.reason_code = "mutated_reason"
         db.commit()
         with pytest.raises(
-            PixivProductIntegrationError, match="persisted_projection_drift"
+            PixivProductIntegrationError, match="persisted_child_fingerprint_drift"
         ):
             apply_pixiv_product_plan(
                 db,
@@ -527,6 +527,10 @@ def test_existing_source_canary_filter_consumes_only_selected_canonical_work(
             "pixiv:existing-source-metadata:"
             f"canary:1:{selection['canonical_fingerprint'][:16]}"
         )
+        plan = apply_pixiv_product_plan(
+            session, clustering, scope_key=scope_key,
+            source_mode="existing_source_metadata", apply=False, input_selection=selection,
+        )
         applied = apply_pixiv_product_plan(
             session,
             clustering,
@@ -534,6 +538,9 @@ def test_existing_source_canary_filter_consumes_only_selected_canonical_work(
             source_mode="existing_source_metadata",
             apply=True,
             input_selection=selection,
+            accepted_selection_fingerprint=plan["selection_fingerprint"],
+            accepted_product_fingerprint=plan["product_result_fingerprint"],
+            accepted_binding_fingerprint=plan["media_binding"]["local_binding_fingerprint"],
         )
         detail = get_pixiv_product_run(session, applied["run_key"])
         assert applied["input_selection"] == selection

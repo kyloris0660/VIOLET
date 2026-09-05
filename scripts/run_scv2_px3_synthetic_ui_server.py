@@ -57,16 +57,21 @@ def create_app(workspace: Path):
     )
 
     from fastapi import FastAPI
-    from fastapi.responses import HTMLResponse
+    from fastapi.responses import HTMLResponse, FileResponse
     from fastapi.staticfiles import StaticFiles
     from fastapi.templating import Jinja2Templates
     from sqlalchemy import create_engine, event
     from sqlalchemy.orm import sessionmaker
 
-    from app.auth import require_admin_mode
+    from app.auth import require_admin_mode, get_current_admin_user
     from app.config import APP_VERSION, settings
     from app.database import Base, get_db
-    from app.routes import admin
+    from app.routes import admin, search, source_concepts, source_assertions, media, system
+    from app.models import Media
+    from app.enums import FileTypeEnum
+    from app.services.pixiv_metadata_vertical_slice_service import (
+        repository_synthetic_pixiv_fixture, _queue_case, _apply_fixture_case,
+    )
     from app.translations import language_registry, translation_helper
 
     engine = create_engine(
@@ -82,6 +87,28 @@ def create_app(workspace: Path):
 
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
+    # Materialize the same fictional PX1 inputs with actual local Media rows.
+    # This server never imports normal main/lifespan or opens an existing DB.
+    with Session() as db:
+        cases = repository_synthetic_pixiv_fixture()['cases']
+        import struct
+        import zlib
+        def chunk(kind, payload):
+            return struct.pack('!I', len(payload)) + kind + payload + struct.pack('!I', zlib.crc32(kind + payload))
+        png = (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', 32, 32, 8, 2, 0, 0, 0))
+               + chunk(b'IDAT', zlib.compress((b'\x00' + bytes([130, 80, 220]) * 32) * 32)) + chunk(b'IEND', b''))
+        for case in cases:
+            filename = f"synthetic-{case['media_id']}.png"
+            path = runtime_storage / filename
+            path.write_bytes(png)
+            db.add(Media(id=case['media_id'], filename=filename, path=str(path),
+                         thumbnail_path=str(path), hash=f"px3-browser-{case['media_id']}",
+                         file_type=FileTypeEnum.image, mime_type='image/png', width=32, height=32, file_size=len(png)))
+        db.flush()
+        records = {case['case_id']: _queue_case(db, case) for case in cases}
+        for case in cases:
+            _apply_fixture_case(db, case, record=records[case['case_id']], rejected_cases=[])
+        db.commit()
     app = FastAPI(title="VIOLET PX3 synthetic browser acceptance")
     app.mount(
         "/static",
@@ -117,7 +144,38 @@ def create_app(workspace: Path):
 
     app.dependency_overrides[get_db] = _session
     app.dependency_overrides[require_admin_mode] = lambda: object()
+    app.dependency_overrides[get_current_admin_user] = lambda: object()
     app.include_router(admin.router)
+    app.include_router(search.router)
+    app.include_router(source_concepts.router)
+    app.include_router(source_assertions.router)
+    app.include_router(media.router)
+    app.include_router(system.router)
+
+    @app.get('/', response_class=HTMLResponse)
+    async def gallery_page(request: Request):
+        return templates.TemplateResponse('index.html', {
+            'request': request, 'app_name': 'VIOLET PX3 Synthetic',
+            'default_sort': 'uploaded_at', 'default_order': 'desc',
+            'sidebar_filter_mode': settings.SIDEBAR_FILTER_MODE,
+            'sidebar_custom_buttons': settings.SIDEBAR_CUSTOM_BUTTONS,
+        })
+
+    @app.get('/media/{media_id}', response_class=HTMLResponse)
+    async def media_page(request: Request, media_id: int):
+        with Session() as db:
+            return templates.TemplateResponse('media.html', {
+                'request': request, 'app_name': 'VIOLET PX3 Synthetic',
+                'media_id': media_id, 'media': db.get(Media, media_id), 'external_share_url': '',
+            })
+
+    @app.get('/api/albums')
+    async def empty_albums():
+        return {'items': [], 'total': 0, 'page': 1, 'pages': 0}
+
+    @app.get('/sw.js')
+    async def service_worker():
+        return FileResponse(ROOT / 'frontend/static/sw.js', media_type='application/javascript')
 
     @app.get("/admin", response_class=HTMLResponse)
     async def admin_page(request: Request):

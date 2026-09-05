@@ -27,6 +27,7 @@ from ..models import (
     SourceConceptFallbackSearchIndex,
     SourceConceptProductCluster,
     SourceConceptProductRun,
+    SourceConceptProductMediaBinding,
     SourceConceptResolutionRun,
     SourceConceptSearchIndex,
     SourceConceptSignal,
@@ -34,6 +35,9 @@ from ..models import (
     SourceMetadataRecord,
 )
 from ..utils.cache import invalidate_source_concept_search_cache
+from .pixiv_product_media_binding import (
+    plan_media_bindings, binding_plan_summary, persist_media_bindings,
+)
 from .pixiv_identity_policy import canonical_pixiv_work_id
 from .pixiv_metadata_clustering_service import (
     PX2_CANDIDATE_POLICY_VERSION,
@@ -712,6 +716,19 @@ def _stored_product_projection(
     input_selection = (row.summary_json or {}).get("input_selection")
     if input_selection is not None:
         projection["input_selection"] = input_selection
+    for model, order, payloads in (
+        (SourceConceptProductCluster, SourceConceptProductCluster.cluster_key, clusters),
+        (SourceConceptCandidateDisposition, SourceConceptCandidateDisposition.pair_key, candidates),
+        (SourceConceptAmbiguityRecord, SourceConceptAmbiguityRecord.record_key, ambiguities),
+    ):
+        fingerprints = session.query(model.canonical_fingerprint).filter_by(
+            product_run_id=row.id
+        ).order_by(order).all()
+        if any(stored[0] != canonical_fingerprint(payload)
+               for stored, payload in zip(fingerprints, payloads)):
+            raise PixivProductIntegrationError('px3_persisted_child_fingerprint_drift')
+    if canonical_fingerprint(projection) != row.result_fingerprint:
+        raise PixivProductIntegrationError('px3_persisted_projection_drift')
     return projection
 
 
@@ -794,6 +811,9 @@ def apply_pixiv_product_plan(
     source_mode: str,
     apply: bool,
     input_selection: Mapping[str, Any] | None = None,
+    accepted_selection_fingerprint: str | None = None,
+    accepted_product_fingerprint: str | None = None,
+    accepted_binding_fingerprint: str | None = None,
 ) -> dict[str, Any]:
     plan = build_pixiv_product_plan(
         run,
@@ -801,8 +821,24 @@ def apply_pixiv_product_plan(
         source_mode=source_mode,
         input_selection=input_selection,
     )
+    with session.no_autoflush:
+        edges = plan_media_bindings(session, run)
+    plan['media_binding'] = binding_plan_summary(edges)
+    selection_fingerprint = (
+        input_selection['canonical_fingerprint'] if input_selection else
+        canonical_fingerprint({'scope_key': scope_key, 'input': run.consumer.input_fingerprint})
+    )
+    plan['selection_fingerprint'] = selection_fingerprint
+    plan['canonical_fingerprint'] = canonical_fingerprint(
+        {k: v for k, v in plan.items() if k != 'canonical_fingerprint'}
+    )
     if not apply:
         return plan
+    if source_mode == 'existing_source_metadata' or accepted_product_fingerprint is not None:
+        if (accepted_selection_fingerprint != selection_fingerprint
+            or accepted_product_fingerprint != plan['product_result_fingerprint']
+            or accepted_binding_fingerprint != plan['media_binding']['local_binding_fingerprint']):
+            raise PixivProductIntegrationError('px3_accepted_plan_mismatch')
     business = _product_business_projection(
         run,
         scope_key=scope_key,
@@ -827,6 +863,10 @@ def apply_pixiv_product_plan(
             "core_business_fingerprint"
         ):
             raise PixivProductIntegrationError("px3_persisted_core_drift")
+        if existing.summary_json.get('media_binding', {}).get('local_binding_fingerprint') != plan['media_binding']['local_binding_fingerprint']:
+            raise PixivProductIntegrationError('px3_persisted_binding_drift')
+        if existing.rollback_guard_json.get('ownership_fingerprint') != _rollback_ownership_fingerprint(session, existing):
+            raise PixivProductIntegrationError('px3_persisted_core_or_binding_drift')
         replay = dict(plan)
         replay.update(
             {
@@ -851,6 +891,11 @@ def apply_pixiv_product_plan(
         assert_public_safe_projection(replay)
         return replay
 
+    if existing is not None and existing.status not in {'active', 'rolled_back'}:
+        raise PixivProductIntegrationError('px3_product_run_not_active')
+    preexisting_resolution_run = session.query(SourceConceptResolutionRun).filter_by(
+        run_id=run.resolution.run_id
+    ).count() != 0
     preexisting_core = _core_business_snapshot(session, run)
     preexisting_count = sum(preexisting_core["counts"].values())
     enriched = replace(
@@ -876,7 +921,7 @@ def apply_pixiv_product_plan(
         if persistence.get("forbidden_truth_table_write_count") != 0:
             raise PixivProductIntegrationError("px3_forbidden_truth_write_detected")
         core = _core_business_snapshot(session, run)
-        rollback_available = preexisting_count == 0
+        rollback_available = preexisting_count == 0 and not preexisting_resolution_run
         counts = {
             "product_run_count": 1,
             "cluster_count": len(business["clusters"]),
@@ -918,14 +963,18 @@ def apply_pixiv_product_plan(
             "counts": plan["counts"],
             "execution_boundary": plan["execution_boundary"],
             "input_selection": plan.get("input_selection"),
+            "media_binding": plan['media_binding'],
         }
         existing.rollback_guard_json = {
             "rollback_available": rollback_available,
             "preexisting_core_business_row_count": preexisting_count,
             "core_business_fingerprint": core["canonical_fingerprint"],
+            "resolution_run_created": not preexisting_resolution_run,
         }
         session.flush()
         _upsert_product_projection(session, product_run=existing, business=business)
+        binding_count = persist_media_bindings(session, existing, edges)
+        plan['media_binding']['binding_write_count'] = binding_count
         for stale in (
             session.query(SourceConceptProductRun)
             .filter(
@@ -937,6 +986,10 @@ def apply_pixiv_product_plan(
         ):
             stale.status = "superseded"
         session.flush()
+        existing.rollback_guard_json = {
+            **existing.rollback_guard_json,
+            'ownership_fingerprint': _rollback_ownership_fingerprint(session, existing),
+        }
         stored = _stored_product_projection(session, existing)
         if canonical_fingerprint(stored) != plan["product_result_fingerprint"]:
             raise PixivProductIntegrationError(
@@ -972,6 +1025,39 @@ def apply_pixiv_product_plan(
     return applied
 
 
+def _rollback_ownership_fingerprint(session, product_run):
+    """Bind all owned core rows and references, including later consumers."""
+    run_id = product_run.resolver_run_id
+    signals = session.query(SourceConceptSignal.id).filter_by(created_by_run_id=run_id)
+    concepts = session.query(SourceConcept.id).filter_by(created_by_run_id=run_id)
+    queries = [
+        session.query(SourceConceptResolutionRun).filter_by(run_id=run_id),
+        session.query(SourceConceptSignal).filter(SourceConceptSignal.id.in_(signals)),
+        session.query(SourceConcept).filter(SourceConcept.id.in_(concepts)),
+        session.query(SourceConceptAlias).filter(
+            SourceConceptAlias.concept_id.in_(concepts) | SourceConceptAlias.source_signal_id.in_(signals)),
+        session.query(SourceConcept).filter(SourceConcept.superseded_by_concept_id.in_(concepts)),
+        session.query(SourceConceptSignal).filter(SourceConceptSignal.resolution_run_id.in_(
+            session.query(SourceConceptResolutionRun.id).filter_by(run_id=run_id))),
+        session.query(SourceConceptEvidence).filter(
+            SourceConceptEvidence.concept_id.in_(concepts) | SourceConceptEvidence.signal_id.in_(signals)),
+        session.query(SourceConceptSignalLink).filter(
+            SourceConceptSignalLink.concept_id.in_(concepts) | SourceConceptSignalLink.signal_id.in_(signals)),
+        session.query(SourceConceptSearchIndex).filter(SourceConceptSearchIndex.concept_id.in_(concepts)),
+        session.query(SourceConceptProductMediaBinding).filter(
+            SourceConceptProductMediaBinding.evidence_id.in_(session.query(SourceConceptEvidence.id).filter(
+                SourceConceptEvidence.concept_id.in_(concepts) | SourceConceptEvidence.signal_id.in_(signals)))),
+    ]
+    payload = []
+    for query in queries:
+        rows = []
+        for item in query.all():
+            rows.append({column.name: getattr(item, column.name) for column in item.__table__.columns
+                         if column.name not in {'created_at', 'updated_at', 'started_at', 'finished_at'}})
+        payload.append(sorted(rows, key=lambda item: item['id']))
+    return canonical_fingerprint(payload)
+
+
 def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]:
     row = session.query(SourceConceptProductRun).filter_by(run_key=run_key).one_or_none()
     if row is None:
@@ -983,11 +1069,21 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
             "rolled_back": True,
             "idempotent_replay": True,
         }
+    if row.status != 'active':
+        raise PixivProductIntegrationError('px3_rollback_requires_active_run')
     guard = row.rollback_guard_json or {}
     if guard.get("rollback_available") is not True or guard.get(
         "preexisting_core_business_row_count"
-    ) != 0:
+    ) != 0 or guard.get('resolution_run_created') is not True:
         raise PixivProductIntegrationError("px3_rollback_guard_not_satisfied")
+    if guard.get('ownership_fingerprint') != _rollback_ownership_fingerprint(session, row):
+        raise PixivProductIntegrationError('px3_rollback_core_or_binding_drift')
+    if session.query(SourceConceptProductRun).filter(
+        SourceConceptProductRun.id != row.id,
+        SourceConceptProductRun.resolver_run_id == row.resolver_run_id,
+        SourceConceptProductRun.status != 'rolled_back',
+    ).count():
+        raise PixivProductIntegrationError('px3_rollback_shared_resolution_run')
     run_id = row.resolver_run_id
     signal_ids = [
         item.id
@@ -1013,6 +1109,8 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
     ):
         raise PixivProductIntegrationError("px3_rollback_external_reference_detected")
     deleted = {
+        'media_bindings': session.query(SourceConceptProductMediaBinding)
+        .filter_by(product_run_id=row.id).delete(synchronize_session=False),
         "search_index": session.query(SourceConceptSearchIndex)
         .filter_by(run_id=run_id)
         .delete(synchronize_session=False),
@@ -1049,6 +1147,7 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
         "forbidden_truth_table_write_count": 0,
     }
     session.commit()
+    invalidate_source_concept_search_cache()
     result = {
         "run_key": row.run_key,
         "status": "rolled_back",
@@ -1062,10 +1161,11 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
     return result
 
 
-def list_pixiv_product_runs(session: Session) -> list[dict[str, Any]]:
+def list_pixiv_product_runs(session: Session, *, limit: int = 50) -> list[dict[str, Any]]:
     rows = (
         session.query(SourceConceptProductRun)
         .order_by(SourceConceptProductRun.id.desc())
+        .limit(limit)
         .all()
     )
     return [_serialize_product_run(row) for row in rows]
@@ -1085,7 +1185,7 @@ def _serialize_product_run(row: SourceConceptProductRun) -> dict[str, Any]:
         "counts": row.counts_json,
         "invariants": row.invariants_json,
         "rollback_available": bool(
-            (row.rollback_guard_json or {}).get("rollback_available")
+            row.status == 'active' and (row.rollback_guard_json or {}).get("rollback_available")
         ),
         "input_selection": (row.summary_json or {}).get("input_selection"),
     }
@@ -1246,7 +1346,8 @@ def build_public_px3_result(
         scope_key="pixiv:repository-synthetic",
         source_mode="repository_synthetic",
     )
-    target_met = persistence_proof.get("temporary_persistence_idempotent") is True
+    target_met = (persistence_proof.get("temporary_persistence_idempotent") is True
+                  and persistence_proof.get('media_binding_proof', {}).get('passed') is True)
     result = {
         **plan,
         "status": "implementation_ready_for_owner_acceptance_and_controlled_canary",
@@ -1258,7 +1359,7 @@ def build_public_px3_result(
             "receipt_scope": "repository_owned_cli_invocation",
             "px1_input_generation_temporary_database_count": 2,
             "px2_proof_temporary_database_count": 2,
-            "px3_product_temporary_database_count": 1,
+            "px3_product_temporary_database_count": 3,
             "synthetic_local_server_browser_e2e_activity": 0,
             "existing_database_or_app_storage_activity": 0,
             "provider_network_activity": 0,
@@ -1310,6 +1411,11 @@ def run_repository_synthetic_pixiv_product_integration(
         ):
             raise PixivProductIntegrationError("px3_px2_reconstruction_mismatch")
         proof = prove_task_owned_product_persistence(run, workspace=root)
+        from .pixiv_product_binding_proof import prove_media_binding_search
+        proof['media_binding_proof'] = prove_media_binding_search(root)
+        proof['canonical_fingerprint'] = canonical_fingerprint(
+            {k: v for k, v in proof.items() if k != 'canonical_fingerprint'}
+        )
         result = build_public_px3_result(run, persistence_proof=proof)
     if guard.provider_network_attempt_count or guard.subprocess_attempt_count:
         raise PixivProductIntegrationError("px3_offline_guard_failed")

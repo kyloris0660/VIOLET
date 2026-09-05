@@ -10,16 +10,16 @@
   "accepted_mainline_tree": "507a223a9156ff2f9944524303419e85891812fa",
   "implementation_evidence_head": "389ab3994bb81ca772ce491dac88eb1d8b292d3d",
   "implementation_evidence_tree": "2bed89386dc89b1231ee30198d447c5d6af23643",
-  "implementation_evidence_status": "same_head_receipt_and_executable_contract_passed_ready_for_owner_acceptance_and_controlled_canary",
-  "current_status": "SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY",
-  "target_met": true,
+  "implementation_evidence_status": "historical_px3_projection_retained_final_media_binding_correction_in_progress",
+  "current_status": "scv2_px3_product_integration_in_progress",
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
-  "route_scope": "SCV2-PX3 final product integration using repository-owned synthetic Pixiv data, task-owned temporary databases, and a synthetic local server/browser only; real provider network, credentials, source, existing database, user import, production, and PX3 merge remain forbidden",
+  "route_scope": "Final SCV2-PX3 bounded product correction, synthetic task-owned databases and browser only; conditional expected-head merge commit after all owner-specified gates pass.",
   "planning_authorized": true,
   "planning_completed": true,
   "planning_approved": true,
-  "manual_acceptance_status": "pending_scv2_px3_owner_acceptance_and_controlled_canary",
+  "manual_acceptance_status": "px3_product_integration_in_progress",
   "next_phase_started": false,
   "previous_phase": "SCV2-PX2",
   "previous_phase_status": "owner_accepted_pr148_merged_with_exact_tree_preserved",
@@ -43,13 +43,13 @@
     "contract_id": "scv2_px3_pixiv_product_integration_contract_v1",
     "public_schema": "violet.scv2-px3-pixiv-product-integration-result.v1",
     "repository_gap_map_completed": true,
-    "px1_px2_reused": true,
-    "product_persistence_verified": true,
-    "dry_run_apply_rollback_verified": true,
-    "api_ui_verified": true,
-    "provider_adapter_wired_without_execution": true,
-    "synthetic_browser_e2e_verified": true,
-    "controlled_canary_entrypoints_verified": true,
+    "px1_px2_reused": false,
+    "product_persistence_verified": false,
+    "dry_run_apply_rollback_verified": false,
+    "api_ui_verified": false,
+    "provider_adapter_wired_without_execution": false,
+    "synthetic_browser_e2e_verified": false,
+    "controlled_canary_entrypoints_verified": false,
     "machine_verifiable_ci": false,
     "owner_authority_machine_verifiable": false
   },
@@ -177,9 +177,9 @@
     }
   ],
   "active_blocker": {
-    "code": "pending_scv2_px3_owner_acceptance_and_controlled_canary",
-    "scope": "PX3 implementation is complete in normal PR #149; owner acceptance, controlled real-provider and existing-database canaries, production, and merge remain outside local evidence authority",
-    "resolution": "Owner audits the exact Ready PR head, then separately authorizes any bounded provider smoke, backup-gated existing-database canary, 1%-5% import canary, or merge."
+    "code": "scv2_px3_implementation_in_progress",
+    "scope": "Final bounded PX3 media binding, actual search, accepted-plan apply and rollback correction on PR149",
+    "resolution": "Complete owner-specified regressions and exact-head local evidence, then use the once-authorized expected-head merge commit and stop before controlled canary."
   },
   "owner_decisions": [
     {
@@ -201,6 +201,10 @@
     {
       "id": "owner_authorized_scv2_px2_final_correction_merge_and_px3_20260902",
       "decision": "Close exactly the PX1 evidence binding and operation receipt, source-state ledger, and alias approval root causes on PR #148; retain the strict clean isolated-worktree receipt boundary; after all substantive gates pass consume one exact-head merge-commit authority for PR #148, then implement the final SCV2-PX3 product integration in a new isolated branch without real provider, credential, source, existing-database, user-import, production, or PX3 merge authority."
+    },
+    {
+      "id": "owner_authorized_px3_final_product_closure_20260905",
+      "decision": "Approve minimal additive evidence-media association migration and final bounded implementation, seven review dispositions, synthetic DB/browser validation, one full non-E2E run, final branch push and one conditional expected-head merge commit. All real data-plane execution remains forbidden."
     }
   ],
   "authorized_operations": [
@@ -263,8 +267,8 @@
     "px2_safe_to_merge": true,
     "px2_merge_authorized": true,
     "px3_started": true,
-    "px3_implementation_completed": true,
-    "product_integration_verified": true,
+    "px3_implementation_completed": false,
+    "product_integration_verified": false,
     "px3_owner_accepted": false,
     "px3_safe_to_merge": false,
     "px3_merge_authorized": false,
@@ -345,16 +349,76 @@
     "pr146_final_review_resolved_count": 0,
     "pr146_final_review_outdated_count": 0,
     "pr146_final_review_deferred_findings": [
-      {"thread_id": "PRRT_kwDOSTBMB86cezeV", "comment_id": 3863329654, "title": "Validate every listed member before suffix filtering", "due_gate": "FL1_I2_LISTED_MEMBER_VALIDATION_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86cezeZ", "comment_id": 3863329665, "title": "Reject event timestamps before run start", "due_gate": "FL1_I2_EVENT_TIME_LOWER_BOUND_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86cezef", "comment_id": 3863329670, "title": "Require bounded JPEG codec authority before content verification", "due_gate": "FL1_I2_JPEG_CONTENT_AUTHORITY_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86cezel", "comment_id": 3863329678, "title": "Require bounded VP8 payload authority before content verification", "due_gate": "FL1_I2_VP8_CONTENT_AUTHORITY_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86cezeq", "comment_id": 3863329683, "title": "Apply enumeration limits to the initial listing", "due_gate": "FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86cezet", "comment_id": 3863329688, "title": "Enforce operation caps at admission", "due_gate": "FL1_I2_OPERATION_ADMISSION_CAP_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86cezey", "comment_id": 3863329695, "title": "Bound evidence bytes before JSON parsing", "due_gate": "FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86ceze1", "comment_id": 3863329699, "title": "Re-derive maximum depth from evidence", "due_gate": "FL1_I2_MAX_DEPTH_REDERIVATION_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86ceze9", "comment_id": 3863329711, "title": "Reject negative byte accounting", "due_gate": "FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE", "status": "deferred_exact_gate_not_closed_in_px1"},
-      {"thread_id": "PRRT_kwDOSTBMB86cezfD", "comment_id": 3863329720, "title": "Prevent failed receipts from claiming completion", "due_gate": "FL1_I2_FAILED_RECEIPT_COMPLETION_GATE", "status": "deferred_exact_gate_not_closed_in_px1"}
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezeV",
+        "comment_id": 3863329654,
+        "title": "Validate every listed member before suffix filtering",
+        "due_gate": "FL1_I2_LISTED_MEMBER_VALIDATION_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezeZ",
+        "comment_id": 3863329665,
+        "title": "Reject event timestamps before run start",
+        "due_gate": "FL1_I2_EVENT_TIME_LOWER_BOUND_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezef",
+        "comment_id": 3863329670,
+        "title": "Require bounded JPEG codec authority before content verification",
+        "due_gate": "FL1_I2_JPEG_CONTENT_AUTHORITY_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezel",
+        "comment_id": 3863329678,
+        "title": "Require bounded VP8 payload authority before content verification",
+        "due_gate": "FL1_I2_VP8_CONTENT_AUTHORITY_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezeq",
+        "comment_id": 3863329683,
+        "title": "Apply enumeration limits to the initial listing",
+        "due_gate": "FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezet",
+        "comment_id": 3863329688,
+        "title": "Enforce operation caps at admission",
+        "due_gate": "FL1_I2_OPERATION_ADMISSION_CAP_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezey",
+        "comment_id": 3863329695,
+        "title": "Bound evidence bytes before JSON parsing",
+        "due_gate": "FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86ceze1",
+        "comment_id": 3863329699,
+        "title": "Re-derive maximum depth from evidence",
+        "due_gate": "FL1_I2_MAX_DEPTH_REDERIVATION_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86ceze9",
+        "comment_id": 3863329711,
+        "title": "Reject negative byte accounting",
+        "due_gate": "FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      },
+      {
+        "thread_id": "PRRT_kwDOSTBMB86cezfD",
+        "comment_id": 3863329720,
+        "title": "Prevent failed receipts from claiming completion",
+        "due_gate": "FL1_I2_FAILED_RECEIPT_COMPLETION_GATE",
+        "status": "deferred_exact_gate_not_closed_in_px1"
+      }
     ],
     "pr147_initial_codex_reviewed_head": "2fbc1ed395b8bd653437d46cd960977094c44cfe",
     "pr147_initial_review_finding_count": 11,
@@ -454,39 +518,249 @@
   "public_state_boundary": "public_safe_product_integration_no_real_data_private_paths_credentials_or_raw_payloads",
   "next_required_checkpoint": "owner audit of exact normal Ready PR #149 followed only by separately authorized controlled provider, existing-database, and 1%-5% import canary gates",
   "durable_links": [
-    {"label": "Current mainline roadmap", "path": "docs/roadmap/current-mainline-roadmap.md"},
-    {"label": "Project roadmap entrypoint", "path": "docs/project-roadmap.md"},
-    {"label": "Pixiv metadata ingestion and promotion policy", "path": "docs/pixiv-metadata-ingestion-and-promotion-policy.md"},
-    {"label": "SourceConcept tag and search semantics", "path": "docs/source-concept-tag-search-semantics.md"},
-    {"label": "Phase contracts", "path": "docs/phase-contracts.md"},
-    {"label": "Detailed agent runbook", "path": "docs/development/agent-runbook.md"},
-    {"label": "Test workflow", "path": "docs/test-workflow.md"}
+    {
+      "label": "Current mainline roadmap",
+      "path": "docs/roadmap/current-mainline-roadmap.md"
+    },
+    {
+      "label": "Project roadmap entrypoint",
+      "path": "docs/project-roadmap.md"
+    },
+    {
+      "label": "Pixiv metadata ingestion and promotion policy",
+      "path": "docs/pixiv-metadata-ingestion-and-promotion-policy.md"
+    },
+    {
+      "label": "SourceConcept tag and search semantics",
+      "path": "docs/source-concept-tag-search-semantics.md"
+    },
+    {
+      "label": "Phase contracts",
+      "path": "docs/phase-contracts.md"
+    },
+    {
+      "label": "Detailed agent runbook",
+      "path": "docs/development/agent-runbook.md"
+    },
+    {
+      "label": "Test workflow",
+      "path": "docs/test-workflow.md"
+    }
   ],
   "deferred_debt": [
-    {"id": "FL1_I2_LISTED_MEMBER_VALIDATION_GATE", "owner": "future real-source inventory owner", "reason": "PR #146 final review requires every listed member to be validated before suffix filtering; PX1 never enumerates a real source.", "due_before": "real source or iCloud enumeration or any I2 positive inventory authority", "requirements": ["validate and account for every listed member before eligibility filtering", "preserve unsupported and rejected member dispositions"]},
-    {"id": "FL1_I2_EVENT_TIME_LOWER_BOUND_GATE", "owner": "future I2 receipt-reuse owner", "reason": "PR #146 final review found that evidence timestamps need a lower bound tied to run start; PX1 uses no I2 real-operation receipt.", "due_before": "I2 target, safe, route, machine-verifiable, or validation-receipt reuse", "requirements": ["bind all event timestamps to a validated run interval", "reject pre-run events before positive projection"]},
-    {"id": "FL1_I2_JPEG_CONTENT_AUTHORITY_GATE", "owner": "future real-source content-validation owner", "reason": "Boundary-marker parsing does not by itself grant JPEG codec/content authority.", "due_before": "any real-source JPEG content_verified claim", "requirements": ["add bounded codec-level JPEG validation", "otherwise retain an explicit unsupported or uncertain disposition"]},
-    {"id": "FL1_I2_VP8_CONTENT_AUTHORITY_GATE", "owner": "future real-source content-validation owner", "reason": "Container checks do not by themselves grant VP8 payload/content authority.", "due_before": "any real-source VP8 content_verified claim", "requirements": ["add bounded VP8 payload validation", "otherwise retain an explicit unsupported or uncertain disposition"]},
-    {"id": "FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE", "owner": "future real-source inventory owner", "reason": "Initial enumeration must obey the same finite budgets as later pages.", "due_before": "first real source directory listing", "requirements": ["apply entry, page, byte, depth, and deadline budgets from the first listing call", "fail closed before an unbounded initial result"]},
-    {"id": "FL1_I2_OPERATION_ADMISSION_CAP_GATE", "owner": "future real-source operation-gateway owner", "reason": "Open, hash, validation, and retry caps must be enforced at admission rather than only after execution.", "due_before": "first real open, read, hash, structure validation, or retry", "requirements": ["reserve every finite operation budget before dispatch", "reject equality and overflow without recording a started operation"]},
-    {"id": "FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE", "owner": "future untrusted-evidence or CI owner", "reason": "Evidence files must be size-bounded before JSON parsing to avoid a deterministic contract false positive or resource exhaustion.", "due_before": "untrusted or real evidence ingestion, remote CI authority, or I2 positive authority reuse", "requirements": ["perform no-follow regular-file and byte-budget checks before decode", "bind the exact bounded bytes to the reconstructed projection"]},
-    {"id": "FL1_I2_MAX_DEPTH_REDERIVATION_GATE", "owner": "future real-source inventory contract owner", "reason": "Maximum traversal depth must be re-derived from member evidence rather than trusted as a caller total.", "due_before": "real enumeration or any I2 positive inventory authority", "requirements": ["recompute maximum depth from bound member chains", "reject caller-reported depth mismatches"]},
-    {"id": "FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE", "owner": "future I2 budget-closure owner", "reason": "Negative byte totals must be rejected before they can reduce or satisfy a budget.", "due_before": "I2 budget closure, positive authority, or validation-receipt reuse", "requirements": ["enforce exact nonnegative integer byte counters", "recompute aggregate byte use from evidence"]},
-    {"id": "FL1_I2_FAILED_RECEIPT_COMPLETION_GATE", "owner": "future I2 receipt/finalizer owner", "reason": "A failed local receipt must never allow evidence_complete or phase-completion claims.", "due_before": "I2 evidence_complete, target, safe, route, or finalizer reuse", "requirements": ["derive completion only from a positive same-head receipt", "make every failed or missing receipt force the public completion projection false"]},
-    {"id": "FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY", "owner": "future POSIX, remote-CI, or hostile-local-environment execution owner", "reason": "Owner-adjudicated PR #146 debt keeps dynamic-loader environment scrubbing outside the Windows local-operator threat model.", "due_before": "first POSIX real-source execution, remote-CI positive authority, or hostile-local-environment resistance claim", "requirements": ["define and test the target-platform dynamic-loader allowlist", "retain local-operator-only receipt claims until then"]},
-    {"id": "FL1_I2_VENV_FULL_PYTHON_SUPPLY_CHAIN_BINDING", "owner": "future CI or tamper-resistant environment-evidence owner", "reason": "Owner-adjudicated PR #146 debt defers whole-venv Python hashing outside the trusted owner-machine model.", "due_before": "machine-verifiable CI, reproducible-environment, tamper-resistant, or untrusted-venv claim", "requirements": ["bind full Python package and source provenance", "do not upgrade the current local receipt to supply-chain attestation"]},
-    {"id": "FL1_I3_REAL_SOURCE_SCOPE_GATE", "owner": "future separately authorized real-source canary owner", "reason": "No private real-source scope, protected-root registry, budgets, no-hydration policy, or canary authority exists.", "due_before": "any real source or iCloud listing, stat, observation, open, read, hash, or validation", "requirements": ["bind exact private source identity and finite scope", "approve protected roots, budgets, no-hydration policy, and stop conditions"]},
-    {"id": "PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY", "owner": "future hostile-local threat-model owner", "reason": "Parent-observed child identity remains local provenance, not kernel, TPM, remote, CI, or tamper-resistant attestation.", "due_before": "any adversarial tamper-resistance claim", "requirements": ["keep claims limited to local operator provenance", "design separate attestation only if the product requires it"]},
-    {"id": "VALIDATION_RECEIPT_GATE", "owner": "PX1 and future phase owner", "reason": "Local same-head receipts do not grant CI, owner, or merge authority.", "due_before": "any machine-verifiable CI, owner acceptance, or merge claim", "requirements": ["bind the exact current HEAD/tree and approved Python", "keep machine-verifiable CI and owner authority false"]},
-    {"id": "OWNER_AUTHORITY_GATE", "owner": "project owner", "reason": "Automated tests and contracts cannot synthesize owner acceptance, safe-to-merge, or merge authority.", "due_before": "merge or any owner-accepted projection", "requirements": ["audit the exact normal PR head", "issue any merge decision explicitly and separately"]},
-    {"id": "POSIX_LEDGER_DURABILITY_GATE", "owner": "future POSIX durability owner", "reason": "No unsupported host power-loss or POSIX durability claim is made by PX1.", "due_before": "any cross-platform power-loss durability claim", "requirements": ["define the supported filesystem and flush boundary", "test crash recovery on the claimed platform"]},
-    {"id": "STABLE_REPLAY_GATE", "owner": "future real-data replay owner", "reason": "PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.", "due_before": "any real-data Stable Replay consumption or authority", "requirements": ["bind exact real-data scope and immutable inputs", "obtain separate execution authority"]},
-    {"id": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE", "owner": "SCV2-PX3 real-path and evidence owner", "reason": "Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.", "due_before": "caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production", "requirements": ["close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives", "handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity", "prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority"]}
+    {
+      "id": "FL1_I2_LISTED_MEMBER_VALIDATION_GATE",
+      "owner": "future real-source inventory owner",
+      "reason": "PR #146 final review requires every listed member to be validated before suffix filtering; PX1 never enumerates a real source.",
+      "due_before": "real source or iCloud enumeration or any I2 positive inventory authority",
+      "requirements": [
+        "validate and account for every listed member before eligibility filtering",
+        "preserve unsupported and rejected member dispositions"
+      ]
+    },
+    {
+      "id": "FL1_I2_EVENT_TIME_LOWER_BOUND_GATE",
+      "owner": "future I2 receipt-reuse owner",
+      "reason": "PR #146 final review found that evidence timestamps need a lower bound tied to run start; PX1 uses no I2 real-operation receipt.",
+      "due_before": "I2 target, safe, route, machine-verifiable, or validation-receipt reuse",
+      "requirements": [
+        "bind all event timestamps to a validated run interval",
+        "reject pre-run events before positive projection"
+      ]
+    },
+    {
+      "id": "FL1_I2_JPEG_CONTENT_AUTHORITY_GATE",
+      "owner": "future real-source content-validation owner",
+      "reason": "Boundary-marker parsing does not by itself grant JPEG codec/content authority.",
+      "due_before": "any real-source JPEG content_verified claim",
+      "requirements": [
+        "add bounded codec-level JPEG validation",
+        "otherwise retain an explicit unsupported or uncertain disposition"
+      ]
+    },
+    {
+      "id": "FL1_I2_VP8_CONTENT_AUTHORITY_GATE",
+      "owner": "future real-source content-validation owner",
+      "reason": "Container checks do not by themselves grant VP8 payload/content authority.",
+      "due_before": "any real-source VP8 content_verified claim",
+      "requirements": [
+        "add bounded VP8 payload validation",
+        "otherwise retain an explicit unsupported or uncertain disposition"
+      ]
+    },
+    {
+      "id": "FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE",
+      "owner": "future real-source inventory owner",
+      "reason": "Initial enumeration must obey the same finite budgets as later pages.",
+      "due_before": "first real source directory listing",
+      "requirements": [
+        "apply entry, page, byte, depth, and deadline budgets from the first listing call",
+        "fail closed before an unbounded initial result"
+      ]
+    },
+    {
+      "id": "FL1_I2_OPERATION_ADMISSION_CAP_GATE",
+      "owner": "future real-source operation-gateway owner",
+      "reason": "Open, hash, validation, and retry caps must be enforced at admission rather than only after execution.",
+      "due_before": "first real open, read, hash, structure validation, or retry",
+      "requirements": [
+        "reserve every finite operation budget before dispatch",
+        "reject equality and overflow without recording a started operation"
+      ]
+    },
+    {
+      "id": "FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE",
+      "owner": "future untrusted-evidence or CI owner",
+      "reason": "Evidence files must be size-bounded before JSON parsing to avoid a deterministic contract false positive or resource exhaustion.",
+      "due_before": "untrusted or real evidence ingestion, remote CI authority, or I2 positive authority reuse",
+      "requirements": [
+        "perform no-follow regular-file and byte-budget checks before decode",
+        "bind the exact bounded bytes to the reconstructed projection"
+      ]
+    },
+    {
+      "id": "FL1_I2_MAX_DEPTH_REDERIVATION_GATE",
+      "owner": "future real-source inventory contract owner",
+      "reason": "Maximum traversal depth must be re-derived from member evidence rather than trusted as a caller total.",
+      "due_before": "real enumeration or any I2 positive inventory authority",
+      "requirements": [
+        "recompute maximum depth from bound member chains",
+        "reject caller-reported depth mismatches"
+      ]
+    },
+    {
+      "id": "FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE",
+      "owner": "future I2 budget-closure owner",
+      "reason": "Negative byte totals must be rejected before they can reduce or satisfy a budget.",
+      "due_before": "I2 budget closure, positive authority, or validation-receipt reuse",
+      "requirements": [
+        "enforce exact nonnegative integer byte counters",
+        "recompute aggregate byte use from evidence"
+      ]
+    },
+    {
+      "id": "FL1_I2_FAILED_RECEIPT_COMPLETION_GATE",
+      "owner": "future I2 receipt/finalizer owner",
+      "reason": "A failed local receipt must never allow evidence_complete or phase-completion claims.",
+      "due_before": "I2 evidence_complete, target, safe, route, or finalizer reuse",
+      "requirements": [
+        "derive completion only from a positive same-head receipt",
+        "make every failed or missing receipt force the public completion projection false"
+      ]
+    },
+    {
+      "id": "FL1_I2_DYNAMIC_LOADER_ENVIRONMENT_POLICY",
+      "owner": "future POSIX, remote-CI, or hostile-local-environment execution owner",
+      "reason": "Owner-adjudicated PR #146 debt keeps dynamic-loader environment scrubbing outside the Windows local-operator threat model.",
+      "due_before": "first POSIX real-source execution, remote-CI positive authority, or hostile-local-environment resistance claim",
+      "requirements": [
+        "define and test the target-platform dynamic-loader allowlist",
+        "retain local-operator-only receipt claims until then"
+      ]
+    },
+    {
+      "id": "FL1_I2_VENV_FULL_PYTHON_SUPPLY_CHAIN_BINDING",
+      "owner": "future CI or tamper-resistant environment-evidence owner",
+      "reason": "Owner-adjudicated PR #146 debt defers whole-venv Python hashing outside the trusted owner-machine model.",
+      "due_before": "machine-verifiable CI, reproducible-environment, tamper-resistant, or untrusted-venv claim",
+      "requirements": [
+        "bind full Python package and source provenance",
+        "do not upgrade the current local receipt to supply-chain attestation"
+      ]
+    },
+    {
+      "id": "FL1_I3_REAL_SOURCE_SCOPE_GATE",
+      "owner": "future separately authorized real-source canary owner",
+      "reason": "No private real-source scope, protected-root registry, budgets, no-hydration policy, or canary authority exists.",
+      "due_before": "any real source or iCloud listing, stat, observation, open, read, hash, or validation",
+      "requirements": [
+        "bind exact private source identity and finite scope",
+        "approve protected roots, budgets, no-hydration policy, and stop conditions"
+      ]
+    },
+    {
+      "id": "PARENT_OBSERVED_CHILD_IDENTITY_CLAIM_BOUNDARY",
+      "owner": "future hostile-local threat-model owner",
+      "reason": "Parent-observed child identity remains local provenance, not kernel, TPM, remote, CI, or tamper-resistant attestation.",
+      "due_before": "any adversarial tamper-resistance claim",
+      "requirements": [
+        "keep claims limited to local operator provenance",
+        "design separate attestation only if the product requires it"
+      ]
+    },
+    {
+      "id": "VALIDATION_RECEIPT_GATE",
+      "owner": "PX1 and future phase owner",
+      "reason": "Local same-head receipts do not grant CI, owner, or merge authority.",
+      "due_before": "any machine-verifiable CI, owner acceptance, or merge claim",
+      "requirements": [
+        "bind the exact current HEAD/tree and approved Python",
+        "keep machine-verifiable CI and owner authority false"
+      ]
+    },
+    {
+      "id": "OWNER_AUTHORITY_GATE",
+      "owner": "project owner",
+      "reason": "Automated tests and contracts cannot synthesize owner acceptance, safe-to-merge, or merge authority.",
+      "due_before": "merge or any owner-accepted projection",
+      "requirements": [
+        "audit the exact normal PR head",
+        "issue any merge decision explicitly and separately"
+      ]
+    },
+    {
+      "id": "POSIX_LEDGER_DURABILITY_GATE",
+      "owner": "future POSIX durability owner",
+      "reason": "No unsupported host power-loss or POSIX durability claim is made by PX1.",
+      "due_before": "any cross-platform power-loss durability claim",
+      "requirements": [
+        "define the supported filesystem and flush boundary",
+        "test crash recovery on the claimed platform"
+      ]
+    },
+    {
+      "id": "STABLE_REPLAY_GATE",
+      "owner": "future real-data replay owner",
+      "reason": "PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.",
+      "due_before": "any real-data Stable Replay consumption or authority",
+      "requirements": [
+        "bind exact real-data scope and immutable inputs",
+        "obtain separate execution authority"
+      ]
+    },
+    {
+      "id": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE",
+      "owner": "SCV2-PX3 real-path and evidence owner",
+      "reason": "Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.",
+      "due_before": "caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production",
+      "requirements": [
+        "close dangling-symlink, workspace-component-swap, and fixed-name evidence symlink races with bounded cross-platform primitives",
+        "handle SQLite URL-sensitive path characters including question mark and hash without authority ambiguity",
+        "prove confinement for hostile caller-controlled workspace and evidence paths before any real-path or remote-CI authority"
+      ]
+    }
   ],
   "upcoming_route": [
-    {"phase_id": "SCV2-PX1", "scope": "Pixiv metadata consolidation and offline synthetic vertical slice", "started": true, "completed": true, "merged": true},
-    {"phase_id": "SCV2-PX2", "scope": "deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result", "started": true, "completed": true, "merged": true},
-    {"phase_id": "SCV2-PX3", "scope": "final Pixiv product persistence, API/UI, controlled execution boundaries, canary entrypoints, and owner acceptance checkpoint", "started": true, "completed": true}
+    {
+      "phase_id": "SCV2-PX1",
+      "scope": "Pixiv metadata consolidation and offline synthetic vertical slice",
+      "started": true,
+      "completed": true,
+      "merged": true
+    },
+    {
+      "phase_id": "SCV2-PX2",
+      "scope": "deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result",
+      "started": true,
+      "completed": true,
+      "merged": true
+    },
+    {
+      "phase_id": "SCV2-PX3",
+      "scope": "final Pixiv product persistence, API/UI, controlled execution boundaries, canary entrypoints, and owner acceptance checkpoint",
+      "started": true,
+      "completed": false
+    }
   ],
   "artifact_lifecycle": [
     "frozen_px1_aggregate_and_signal_consumer",
@@ -496,5 +770,7 @@
     "read_only_product_api_and_operable_admin_ui",
     "controlled_canary_and_rollback_boundary"
   ],
-  "updated_at": "2026-09-03"
+  "updated_at": "2026-09-05",
+  "px3_target_met": false,
+  "conditional_expected_head_merge_authorized": true
 }

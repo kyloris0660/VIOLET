@@ -13,6 +13,8 @@ from scripts.check_documentation_state import (
     SCV2_PX1_REQUIRED_DEFERRED_GATES,
     SCV2_PX3_IN_PROGRESS_STATUS,
     SCV2_PX3_READY_STATUS,
+    SCV2_PX3_CLOSURE_READY_STATUS,
+    SCV2_PX3_MERGED_STATUS,
     load_state,
     render_handoff,
     validate_roadmaps,
@@ -37,8 +39,8 @@ def test_current_handoff_is_exact_px3_projection() -> None:
     assert "SCV2-PX3" in handoff
     assert state["active_blocker"]["code"] in handoff
     assert "Historical phase-4.5-PX1 is historical compatibility evidence" in handoff
-    assert "px3_owner_accepted=false" in handoff
-    assert "px3_merge_authorized=false" in handoff
+    assert f"px3_owner_accepted={str(state['protected_evidence']['px3_owner_accepted']).lower()}" in handoff
+    assert f"px3_merge_authorized={str(state['authorities']['px3_merge_authorized']).lower()}" in handoff
 
 
 def test_px3_state_and_active_docs_validate() -> None:
@@ -53,10 +55,12 @@ def test_px3_state_and_active_docs_validate() -> None:
     assert state["current_status"] in {
         SCV2_PX3_IN_PROGRESS_STATUS,
         SCV2_PX3_READY_STATUS,
+        SCV2_PX3_CLOSURE_READY_STATUS,
+        SCV2_PX3_MERGED_STATUS,
     }
-    ready = state["current_status"] == SCV2_PX3_READY_STATUS
+    ready = state["current_status"] != SCV2_PX3_IN_PROGRESS_STATUS
     assert state["target_met"] is ready
-    assert state["safe_to_merge"] is False
+    assert state["safe_to_merge"] is (state['current_status'] == SCV2_PX3_CLOSURE_READY_STATUS)
     assert state["route_approved"] is False
     assert state["next_phase_started"] is False
 
@@ -97,7 +101,7 @@ def test_pr148_merge_identity_is_exact() -> None:
 )
 def test_protected_evidence_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
-    state["protected_evidence"][field] = value
+    state["protected_evidence"][field] = (not state['protected_evidence'][field]) if isinstance(value, bool) else value
     with pytest.raises(DocumentationStateError, match="protected_evidence"):
         validate_state(state)
 
@@ -117,7 +121,7 @@ def test_protected_evidence_mutation_fails_closed(field: str, value: object) -> 
 )
 def test_forbidden_authority_mutation_fails_closed(field: str) -> None:
     state = copy.deepcopy(_state())
-    state["authorities"][field] = True
+    state["authorities"][field] = not state['authorities'][field]
     with pytest.raises(DocumentationStateError, match="authority_map"):
         validate_state(state)
 
@@ -125,10 +129,37 @@ def test_forbidden_authority_mutation_fails_closed(field: str) -> None:
 def test_due_gate_set_cannot_be_omitted() -> None:
     state = copy.deepcopy(_state())
     assert {item["id"] for item in state["deferred_debt"]} == (
-        SCV2_PX1_REQUIRED_DEFERRED_GATES
+        SCV2_PX1_REQUIRED_DEFERRED_GATES | ({'SCV2_PX3_MULTIWORKER_APPLY_GATE'} if state['current_status'] in {SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS} else set())
     )
     state["deferred_debt"].pop()
     with pytest.raises(DocumentationStateError, match="deferred_due_gate_set"):
+        validate_state(state)
+
+
+@pytest.mark.parametrize('field', [
+    'media_binding_contract_passed', 'accepted_plan_exact_match_passed',
+    'actual_search_and_detail_passed', 'rollback_ownership_and_cache_passed',
+    'synthetic_edge_browser_passed', 'backup_restore_before_normal_startup_stop_recorded',
+])
+def test_final_product_closure_cannot_omit_independent_gate(field):
+    state = copy.deepcopy(_state())
+    state.update(current_status=SCV2_PX3_CLOSURE_READY_STATUS, target_met=True, safe_to_merge=True,
+                 manual_acceptance_status='owner_accepted_final_bounded_product_closure',
+                 px3_target_met=True, px3_owner_accepted=True, px3_merged=False,
+                 three_phase_implementation_route_completed=False,
+                 conditional_expected_head_merge_authorized=True)
+    state['authorities']['px3_merge_authorized'] = True
+    for key in ('controlled_canary_authorized', 'real_pixiv_network_execution_authorized',
+                'provider_credentials_authorized', 'existing_database_or_app_storage_access_authorized',
+                'real_source_or_icloud_access_authorized', 'user_data_import_authorized',
+                'production_authorized', 'full_library_import_authorized'):
+        state[key] = False
+    state['closure_verification'] = {key: True for key in (
+        'media_binding_contract_passed', 'accepted_plan_exact_match_passed',
+        'actual_search_and_detail_passed', 'rollback_ownership_and_cache_passed',
+        'synthetic_edge_browser_passed', 'backup_restore_before_normal_startup_stop_recorded')}
+    state['closure_verification'][field] = False
+    with pytest.raises(DocumentationStateError, match='closure_evidence_missing'):
         validate_state(state)
 
 

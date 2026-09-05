@@ -40,6 +40,8 @@ DATABASE_NAMES = (
     "px2-source-concepts-1.sqlite3",
     "px2-source-concepts-2.sqlite3",
     "px3-product-integration.sqlite3",
+    "px3-media-binding-0.sqlite3",
+    "px3-media-binding-5000.sqlite3",
 )
 WINDOWS_REPARSE_POINT = 0x400
 HEX64_RE = re.compile(r"[0-9a-f]{64}\Z")
@@ -306,6 +308,7 @@ def _validate_public_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
         or proof.get("rollback_succeeded") is not True
         or proof.get("rollback_idempotent") is not True
         or proof.get("forbidden_truth_table_write_count") != 0
+        or proof.get('media_binding_proof', {}).get('passed') is not True
     ):
         raise Scv2Px3ContractError("px3_persistence_proof_invalid")
     operation = _mapping(summary.get("operation_receipt"), "operation_receipt")
@@ -314,7 +317,7 @@ def _validate_public_summary(summary: Mapping[str, Any]) -> dict[str, Any]:
         or operation.get("receipt_scope") != "repository_owned_cli_invocation"
         or operation.get("px1_input_generation_temporary_database_count") != 2
         or operation.get("px2_proof_temporary_database_count") != 2
-        or operation.get("px3_product_temporary_database_count") != 1
+        or operation.get("px3_product_temporary_database_count") != 3
         or any(value != 0 for key, value in operation.items() if key.endswith("_activity"))
     ):
         raise Scv2Px3ContractError("px3_operation_receipt_invalid")

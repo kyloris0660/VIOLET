@@ -9,11 +9,12 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, StrictInt
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from ...auth import require_admin_mode
 from ...config import settings
 from ...database import get_db
-from ...models import User
+from ...models import User, SourceConceptProductRun
 from ...services.pixiv_metadata_vertical_slice_service import (
     repository_synthetic_pixiv_fixture,
     run_synthetic_pixiv_vertical_slice,
@@ -44,6 +45,9 @@ class ProductRunRequest(BaseModel):
     confirm: bool = False
     confirm_phrase: str = ""
     canary_percent: StrictInt | None = None
+    accepted_selection_fingerprint: str | None = None
+    accepted_product_fingerprint: str | None = None
+    accepted_binding_fingerprint: str | None = None
 
 
 class ProductRollbackRequest(BaseModel):
@@ -63,6 +67,9 @@ def _require_apply(request: ProductRunRequest, expected_phrase: str) -> None:
         raise HTTPException(status_code=403, detail="px3_product_apply_disabled")
     if not request.confirm or request.confirm_phrase != expected_phrase:
         raise HTTPException(status_code=400, detail="px3_apply_confirmation_invalid")
+    if not all((request.accepted_selection_fingerprint, request.accepted_product_fingerprint,
+                request.accepted_binding_fingerprint)):
+        raise HTTPException(status_code=409, detail='px3_accepted_plan_required')
 
 
 @router.get("/status")
@@ -70,14 +77,16 @@ async def product_status(
     _current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
+    if not settings.SCV2_PX3_PRODUCT_INTEGRATION_ENABLED:
+        return {'enabled': False}
     runs = list_pixiv_product_runs(db)
     return {
         "enabled": settings.SCV2_PX3_PRODUCT_INTEGRATION_ENABLED,
         "apply_enabled": settings.SCV2_PX3_PRODUCT_APPLY_ENABLED,
         "synthetic_ui_enabled": settings.SCV2_PX3_SYNTHETIC_UI_ENABLED,
         "real_provider_execution_enabled": False,
-        "run_count": len(runs),
-        "active_run_count": sum(row["status"] == "active" for row in runs),
+        "run_count": db.query(SourceConceptProductRun).count(),
+        "active_run_count": db.query(SourceConceptProductRun).filter_by(status='active').count(),
         "latest_run": runs[0] if runs else None,
         "owner_gates": {
             "controlled_provider_smoke": "not_authorized",
@@ -93,6 +102,7 @@ async def product_runs(
     _current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
+    _require_product_enabled()
     return {"runs": list_pixiv_product_runs(db)}
 
 
@@ -102,7 +112,11 @@ async def product_run_detail(
     _current_user: User = Depends(require_admin_mode),
     db: Session = Depends(get_db),
 ):
-    detail = get_pixiv_product_run(db, run_key)
+    _require_product_enabled()
+    try:
+        detail = get_pixiv_product_run(db, run_key)
+    except PixivProductIntegrationError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if detail is None:
         raise HTTPException(status_code=404, detail="px3_product_run_not_found")
     return detail
@@ -145,7 +159,13 @@ async def run_source_metadata_product_integration(
             source_mode="existing_source_metadata",
             apply=request.mode == "apply",
             input_selection=selection,
+            accepted_selection_fingerprint=request.accepted_selection_fingerprint,
+            accepted_product_fingerprint=request.accepted_product_fingerprint,
+            accepted_binding_fingerprint=request.accepted_binding_fingerprint,
         )
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail='px3_apply_conflict_retry_dry_run') from exc
     except (
         PixivMetadataClusteringError,
         PixivMetadataProjectionError,
@@ -181,7 +201,13 @@ async def run_synthetic_product_integration(
             scope_key="pixiv:repository-synthetic",
             source_mode="repository_synthetic",
             apply=request.mode == "apply",
+            accepted_selection_fingerprint=request.accepted_selection_fingerprint,
+            accepted_product_fingerprint=request.accepted_product_fingerprint,
+            accepted_binding_fingerprint=request.accepted_binding_fingerprint,
         )
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail='px3_apply_conflict_retry_dry_run') from exc
     except (
         PixivMetadataClusteringError,
         PixivMetadataProjectionError,

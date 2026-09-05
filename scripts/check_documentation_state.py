@@ -465,6 +465,8 @@ SCV2_PX3_READY_STATUS = (
     "SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY"
 )
 SCV2_PX3_IN_PROGRESS_BLOCKER = "scv2_px3_implementation_in_progress"
+SCV2_PX3_CLOSURE_READY_STATUS = 'SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE'
+SCV2_PX3_MERGED_STATUS = 'SCV2_PX3_MERGED_READY_FOR_CONTROLLED_CANARY'
 SCV2_PX3_READY_BLOCKER = "pending_scv2_px3_owner_acceptance_and_controlled_canary"
 SCV2_PX3_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST = frozenset(
     {
@@ -2213,17 +2215,23 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         raise DocumentationStateError("draft_must_be_boolean")
 
     status = state.get("current_status")
-    if status not in {SCV2_PX3_IN_PROGRESS_STATUS, SCV2_PX3_READY_STATUS}:
+    closure = status in {SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS}
+    merged = status == SCV2_PX3_MERGED_STATUS
+    merge_authorized = status == SCV2_PX3_CLOSURE_READY_STATUS
+    if status not in {SCV2_PX3_IN_PROGRESS_STATUS, SCV2_PX3_READY_STATUS,
+                      SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS}:
         raise DocumentationStateError("scv2_px3_status_invalid")
-    ready = status == SCV2_PX3_READY_STATUS
+    ready = status == SCV2_PX3_READY_STATUS or closure
     expected_manual = (
         "pending_scv2_px3_owner_acceptance_and_controlled_canary"
         if ready
         else "px3_product_integration_in_progress"
     )
+    if closure:
+        expected_manual = 'owner_accepted_final_bounded_product_closure'
     if (
         state.get("target_met") is not ready
-        or state.get("safe_to_merge") is not False
+        or state.get("safe_to_merge") is not merge_authorized
         or state.get("route_approved") is not False
         or state.get("manual_acceptance_status") != expected_manual
         or state.get("next_phase_started") is not False
@@ -2233,7 +2241,7 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         or (ready and (state.get("pr_number") is None or state.get("draft") is not False))
     ):
         raise DocumentationStateError("scv2_px3_status_fields_conflict")
-    if state.get("authorities") != SCV2_PX3_EXPECTED_AUTHORITIES:
+    if state.get("authorities") != {**SCV2_PX3_EXPECTED_AUTHORITIES, 'px3_merge_authorized': merge_authorized}:
         raise DocumentationStateError("scv2_px3_authority_map_invalid")
     expected_contract = {
         "contract_id": SCV2_PX3_CONTRACT_ID,
@@ -2249,10 +2257,36 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         "machine_verifiable_ci": False,
         "owner_authority_machine_verifiable": False,
     }
+    if closure:
+        expected_contract.update({key: True for key in (
+            'media_binding_verified', 'actual_gallery_search_verified',
+            'accepted_plan_apply_verified', 'rollback_ownership_verified')})
+        if (state.get('px3_target_met') is not True
+            or state.get('px3_owner_accepted') is not True
+            or state.get('px3_merged') is not merged
+            or state.get('three_phase_implementation_route_completed') is not merged
+            or state.get('conditional_expected_head_merge_authorized') is not True):
+            raise DocumentationStateError('scv2_px3_closure_status_conflict')
+        for key in ('controlled_canary_authorized', 'real_pixiv_network_execution_authorized',
+                    'provider_credentials_authorized', 'existing_database_or_app_storage_access_authorized',
+                    'real_source_or_icloud_access_authorized', 'user_data_import_authorized',
+                    'production_authorized', 'full_library_import_authorized'):
+            if state.get(key) is not False:
+                raise DocumentationStateError('scv2_px3_closure_real_authority_forbidden')
+        verification = state.get('closure_verification', {})
+        if any(verification.get(key) is not True for key in (
+            'media_binding_contract_passed', 'accepted_plan_exact_match_passed',
+            'actual_search_and_detail_passed', 'rollback_ownership_and_cache_passed',
+            'synthetic_edge_browser_passed', 'backup_restore_before_normal_startup_stop_recorded')):
+            raise DocumentationStateError('scv2_px3_closure_evidence_missing')
+        if verification.get('implementation_head') != state['implementation_evidence_head']:
+            raise DocumentationStateError('scv2_px3_closure_head_mismatch')
     if state.get("pipeline_contract") != expected_contract:
         raise DocumentationStateError("scv2_px3_contract_projection_invalid")
     blocker = state.get("active_blocker")
     expected_blocker = SCV2_PX3_READY_BLOCKER if ready else SCV2_PX3_IN_PROGRESS_BLOCKER
+    if closure:
+        expected_blocker = 'controlled_canary_authorization_required' if merged else 'expected_head_merge_pending'
     if (
         not isinstance(blocker, dict)
         or blocker.get("code") != expected_blocker
@@ -2276,9 +2310,9 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
             protected.get("px3_started") is not True,
             protected.get("px3_implementation_completed") is not ready,
             protected.get("product_integration_verified") is not ready,
-            protected.get("px3_owner_accepted") is not False,
-            protected.get("px3_safe_to_merge") is not False,
-            protected.get("px3_merge_authorized") is not False,
+            protected.get("px3_owner_accepted") is not closure,
+            protected.get("px3_safe_to_merge") is not merge_authorized,
+            protected.get("px3_merge_authorized") is not merge_authorized,
             protected.get("existing_db_or_app_storage_activity") != 0,
             protected.get("provider_network_activity") != 0,
             protected.get("real_source_activity") != 0,
@@ -2311,7 +2345,8 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         and isinstance(debt.get("requirements"), list)
         and debt["requirements"]
     }
-    if debt_ids != SCV2_PX1_REQUIRED_DEFERRED_GATES:
+    expected_debt = SCV2_PX1_REQUIRED_DEFERRED_GATES | ({'SCV2_PX3_MULTIWORKER_APPLY_GATE'} if closure else set())
+    if debt_ids != expected_debt:
         raise DocumentationStateError("scv2_px3_deferred_due_gate_set_invalid")
     if state.get("upcoming_route") != [
         {
@@ -3017,7 +3052,7 @@ def _validate_scv2_px3_git_ancestry(state: dict[str, Any], *, root: Path) -> Non
         != state["branch"]
     ):
         raise DocumentationStateError("scv2_px3_branch_identity_invalid")
-    if state.get("current_status") == SCV2_PX3_READY_STATUS:
+    if state.get("current_status") in {SCV2_PX3_READY_STATUS, SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS}:
         paths = _trusted_git_changed_paths(
             [
                 "diff",
@@ -3041,6 +3076,14 @@ def _validate_scv2_px3_git_ancestry(state: dict[str, Any], *, root: Path) -> Non
             raise DocumentationStateError(
                 "scv2_px3_evidence_behavior_drift:" + ",".join(unexpected)
             )
+    if state.get('current_status') == SCV2_PX3_MERGED_STATUS:
+        merge = state['protected_evidence'].get('px3_merge_commit', '')
+        accepted = state['protected_evidence'].get('px3_accepted_head', '')
+        expected_base = state['protected_evidence'].get('px3_expected_merge_base', '')
+        if (not HEX40.fullmatch(merge) or not HEX40.fullmatch(accepted)
+            or _trusted_git_value(root, 'show', '-s', '--format=%P', merge).split() != [expected_base, accepted]
+            or _trusted_git_value(root, 'rev-parse', f'{merge}^{{tree}}') != _trusted_git_value(root, 'rev-parse', f'{accepted}^{{tree}}')):
+            raise DocumentationStateError('scv2_px3_merge_topology_or_tree_invalid')
 
 
 def validate_git_ancestry(
@@ -3296,7 +3339,7 @@ def _validate_scv2_px3_roadmaps(state: dict[str, Any], *, root: Path) -> None:
         "SCV2_PX2_MERGED",
         "SCV2-PX3",
         "px3_started=true",
-        "px3_merge_authorized=false",
+        f"px3_merge_authorized={str(state['authorities']['px3_merge_authorized']).lower()}",
         "real_pixiv_network_execution_authorized=false",
         "existing_database_or_app_storage_mutation_authorized=false",
         "production_authorized=false",
@@ -3685,8 +3728,8 @@ def _render_scv2_px3_handoff(state: dict[str, Any]) -> str:
         f"- Branch: `{state['branch']}`.",
         f"- Status: `{state['current_status']}`.",
         f"- Implementation evidence HEAD/tree: `{state['implementation_evidence_head']}` / `{state['implementation_evidence_tree']}`.",
-        f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge=false`; `route_approved=false`.",
-        f"- `px3_started=true`; `px3_owner_accepted=false`; `px3_merge_authorized=false`.",
+        f"- `target_met={str(state['target_met']).lower()}`; `safe_to_merge={str(state['safe_to_merge']).lower()}`; `route_approved=false`.",
+        f"- `px3_started=true`; `px3_owner_accepted={str(protected['px3_owner_accepted']).lower()}`; `px3_merge_authorized={str(protected['px3_merge_authorized']).lower()}`.",
         "",
         "## PX2 Merge Projection",
         "",
@@ -3725,6 +3768,8 @@ def _render_scv2_px3_handoff(state: dict[str, Any]) -> str:
         f"- Resolution: {state['active_blocker']['resolution']}",
         "- `repository_migration_code_authorized=true`; migrations may be tested only on task-owned temporary databases.",
         "- `synthetic_local_server_browser_e2e_authorized=true`.",
+        "- STOP: normal startup executes Base.metadata.create_all() and schema migration. Back up and successfully restore before the first normal startup against any existing database.",
+        "- Next owner authorization only: backup/restore -> 1-5 work metadata-only provider smoke -> existing DB read-only dry-run -> accept exact selection/result fingerprints -> 1% apply canary -> gallery search/media detail acceptance -> replay/rollback checks.",
         "- `real_pixiv_network_execution_authorized=false`; real gallery-dl execution is likewise forbidden.",
         "- `existing_database_or_app_storage_mutation_authorized=false`.",
         "- `real_source_or_icloud_access_authorized=false`; `provider_credentials_authorized=false`.",

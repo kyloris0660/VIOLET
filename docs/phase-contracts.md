@@ -66,98 +66,88 @@ outside the automated contract.
 
 <!-- CURRENT_PHASE: SCV2-PX3 -->
 
-PR #148 / SCV2-PX2 is owner accepted and merged at
-`421e2989d274e2dc4492d5bccc10720dcfbbaa4f`, tree
-`507a223a9156ff2f9944524303419e85891812fa`. Accepted PR HEAD
-`bf8055af61c3a5d32155701ed7110db692047dba` is the second merge parent and
-has the same tree; no parallel main commit was present. Status:
-`SCV2_PX2_MERGED`.
-
-Current PX3 projection:
-
-- `status=SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY`
-- `contract_id=scv2_px3_pixiv_product_integration_contract_v1`
-- `public_schema=violet.scv2-px3-pixiv-product-integration-result.v1`
-- `pr=149`
-- `implementation_evidence_head=389ab3994bb81ca772ce491dac88eb1d8b292d3d`
-- `implementation_evidence_tree=2bed89386dc89b1231ee30198d447c5d6af23643`
-- `px3_started=true`
-- `target_met=true`
-- `safe_to_merge=false`
-- `route_approved=false`
-- `px3_owner_accepted=false`
-- `px3_merge_authorized=false`
-- `real_pixiv_network_execution_authorized=false`
-- `existing_database_or_app_storage_mutation_authorized=false`
-- `production_authorized=false`
-- blocker: `pending_scv2_px3_owner_acceptance_and_controlled_canary`
-
-The PX3 executable contract independently regenerates repository-owned
-synthetic PX1 inputs, PX2 clusters/candidates/ambiguity, and the PX3 product
-projection. It applies, replays, and rolls back against a fresh task-owned
-temporary database; reconstructs persisted business content; exercises the
-read API and synthetic admin UI; and exact-compares evidence rather than
-trusting a caller `passed=true` field.
-
-The durable chain is:
+The current-route authority is `docs/state/current-phase.json`.
+The verified incoming mainline was PR #148 / `SCV2_PX2_MERGED` at
+`421e2989d274e2dc4492d5bccc10720dcfbbaa4f`, with accepted second parent
+`bf8055af61c3a5d32155701ed7110db692047dba` and matching tree
+`507a223a9156ff2f9944524303419e85891812fa`. No unreviewed main increment was present.
 
 ```text
-existing Pixiv route adapter (execution disabled)
-  -> PX1 canonical aggregate and signal projection
-  -> PX2 strict consumer and existing SourceConcept resolver
-  -> versioned PX3 public-safe integration result
-  -> dry-run/apply/replay/rollback product service
-  -> SourceConcept-owned run, candidate, ambiguity, and provenance persistence
-  -> read API and operable admin UI
+current_status=scv2_px3_product_integration_in_progress
+contract_id=scv2_px3_pixiv_product_integration_contract_v1
+public_schema=violet.scv2-px3-pixiv-product-integration-result.v1
+pr=149
+implementation_evidence_head=389ab3994bb81ca772ce491dac88eb1d8b292d3d
+implementation_evidence_tree=2bed89386dc89b1231ee30198d447c5d6af23643
+px3_started=true
+target_met=false
+safe_to_merge=false
+route_approved=false
+px3_owner_accepted=false
+px3_merged=false
+px3_merge_authorized=false
+real_pixiv_network_execution_authorized=false
+existing_database_or_app_storage_mutation_authorized=false
+production_authorized=false
+active_blocker=scv2_px3_implementation_in_progress
 ```
 
-The eventual canonical commands are:
+The fixed route contains only SCV2-PX1, SCV2-PX2 and SCV2-PX3. This final
+bounded correction stays on PR #149; no PX3.1, PX4 or hardening phase is created.
+phase-4.5-PX1 is historical compatibility evidence.
+
+PX1 database-neutral aggregates/signals and PX2 clustering remain unchanged.
+PX3 binds verified work/page/provider provenance to every matching current
+SourceMetadataRecord and Media using a minimal evidence-media association.
+Two duplicate media keep support; names never establish creator identity.
+The existing ordinary `/api/search` and media-detail SourceConcept API consume
+these edges. Historical creator aliases, tags/titles and creator+work AND
+queries are exercised through actual endpoint results, with wrong-work recall zero.
+
+Dry-run reports media/source-record/edge counts with zero writes. Apply requires
+the exact accepted selection, product result and local binding fingerprints,
+all recomputed before persistence. Row IDs occur only in local binding identity.
+Replay adds no duplicate edges. Rollback accepts only an active, wholly owned,
+unchanged resolution run, deletes only its support and owned core, retains product
+audit rows, and invalidates search caches after successful commit. Existing empty
+resolution runs and superseded/shared/changed core fail closed.
+
+Disabled product routes hide runs/detail and return only feature state from
+status. Persisted child and whole-projection fingerprints are verified on reads.
+Admin initialization requests status and at most 50 run summaries; full detail
+loads only on selection/expansion. UI apply requires the currently viewed plan
+and blocks repeated clicks. Stable uniqueness conflicts return HTTP 409.
+
+**STOP before normal startup against any existing database.** Normal startup
+calls `Base.metadata.create_all()` and schema migration. Backup and successful
+restore must precede the first normal startup. The additive association migration
+was exercised twice on a task-owned temporary SQLite DB. No configured task-owned
+PostgreSQL was available; no existing PostgreSQL connection or infrastructure
+installation was attempted. See [controlled canary gates](development/scv2-px3-controlled-canary.md).
+
+The only next owner authorization package is:
+backup/restore -> 1-5 work metadata-only provider smoke -> existing DB read-only
+dry-run -> accept exact selection/result fingerprints -> 1% apply canary ->
+gallery search/media detail acceptance -> replay/rollback checks.
+Every real provider, credential, existing DB/storage, source/iCloud, user import,
+production and full-library execution remains unauthorized.
+
+`SCV2_PX3_MULTIWORKER_APPLY_GATE` is deferred until before multiple workers,
+multiple owners or concurrent apply; `run.py` uses the default single worker.
+`SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` keeps its existing exact due
+boundary before untrusted paths/evidence or existing DB/real-path execution.
+These gates do not create a new phase or block the owner-authorized local merge.
+
+The earlier projection is historical. `px3_target_met=false` remains in force until final binding/search/rollback/accepted-plan evidence and receipt pass.
+
+Canonical commands (repository venv, task-owned temporary evidence only):
 
 ```powershell
-& "$PY" -B scripts/run_scv2_px3_pixiv_product_integration.py --evidence-dir <task-owned-temp>
-& "$PY" -B scripts/create_scv2_px3_validation_receipt.py --evidence-dir <task-owned-temp>
-& "$PY" -B scripts/check_phase_contract.py --contract scv2_px3_pixiv_product_integration_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python "$PY" --px3-evidence <task-owned-temp>
+& $PY -B scripts/run_scv2_px3_pixiv_product_integration.py --evidence-dir <task-owned-temp>
+& $PY -B scripts/create_scv2_px3_validation_receipt.py --evidence-dir <task-owned-temp>
+& $PY -B scripts/check_phase_contract.py --contract scv2_px3_pixiv_product_integration_contract_v1 --summary <task-owned-temp>/public-summary.json --repo-root <trusted-repo> --expected-python $PY --px3-evidence <task-owned-temp>
+& $PY -B scripts/check_documentation_state.py --check
 ```
-
-Exact implementation evidence is bound to HEAD
-`389ab3994bb81ca772ce491dac88eb1d8b292d3d`, tree
-`2bed89386dc89b1231ee30198d447c5d6af23643`. The same-HEAD local receipt is
-positive and clean before/after; its command and stdout fingerprints are
-`b0e86eb459415ddc15b013809d60b8163421c5d2f6d6a7675227762ba862fb27`
-and `d3a6f0e7b7e41cb5520666b9a7f409295ec49e775ff8f414b19caedde3889744`.
-The independent contract reports zero errors and zero warnings.
-
-The canonical product result accounts for 20 clusters, 34 member signals, 59
-candidate dispositions (`52 must_link`, `4 cannot_link`, `3
-deferred_nonblocking`), and 29 ambiguity records. Its product and public
-canonical fingerprints are
-`f1ba10194cd72232b4b8bb2ee24e7fe421d0a18115ac3d4918dc1e8af72ce020`
-and `0afd1722d54444710fd80e4446d205a7ebe596e8fc9ce86e38da2c22195bdf59`.
-Temporary apply/replay is idempotent, rollback/reapply is verified, and the
-service atomically persists the reused SourceConcept resolution and its product
-projection without writing outside SourceConcept-owned temporary tables.
-
-The synthetic browser verified dry-run, apply, cluster/member/provenance
-detail, candidate and context-conflict filters, rollback, and reapply against
-the real local API/UI, ending with zero console errors. The final runtime
-non-E2E suite reported 4337 passed, 22 skipped, 3 failed, and 15 warnings; two
-pre-carry-forward documentation assertions are closed by the final governance
-projection, while the exact historical `missing_original_ai_execution_evidence`
-limitation remains truthful and nonfunctional.
-
-Repository migration code and synthetic local server/browser E2E are
-authorized. Real Pixiv network execution, provider credentials, real
-source/iCloud access, existing database/app-storage mutation, user-data import,
-production, full-library import, and PX3 merge remain unauthorized. Controlled
-provider smoke, existing-DB backup/restore canary, and 1%-5% import canary are
-owner gates inside PX3, not a new phase.
-
-The route remains exactly `SCV2-PX1`, `SCV2-PX2`, and `SCV2-PX3`. No PX2.1,
-hardening phase, or fourth phase exists. phase-4.5-PX1 is historical; its
-artifacts remain compatibility evidence. `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE`
-remains due before caller-controlled paths, untrusted evidence, existing DB,
-real-source canary, or production, and does not block repository-owned
-synthetic temporary paths.
 
 The following PX2 record is retained as historical input to PX3.
 
@@ -178,7 +168,7 @@ Historical final PX2 projection (superseded by the PR #148 merge above):
 - `implementation_evidence_head=9ee1d96004daa843544b977ed3ae607c51299f9b`
 - `implementation_evidence_tree=743e63a6f7f2931393db860600bedd20ffaeae8e`
 - `px2_started=true`
-- `target_met=true`
+- `target_met=false`
 - `safe_to_merge=false`
 - `route_approved=false`
 - `px2_owner_accepted=false`
@@ -392,7 +382,7 @@ lists, and `truncate_drop_reset_used=false`. Missing false-valued proofs do not
 count as evidence. User-controlled run IDs are bounded to a safe filename
 format, and exact final Markdown/JSON redaction failure blocks public writes.
 
-R2 quality is multidimensional: `constraint_safety_target_met=true` may coexist
+R2 quality is multidimensional: `constraint_safety_target_met=false` may coexist
 with `search_quality_improved=false`, `gap_quality_improved=false`,
 `recall_closure_complete=false`, and `route_quality_ready_for_scale=false`.
 Those acknowledged route debts do not invalidate the narrow constraint target,
@@ -596,7 +586,7 @@ The contract also derives `blocked_ml2_runtime_media_binding`,
 `blocked_ml2_existing_component_fragmentation`,
 `blocked_ml2_environment_isolation`, and `blocked_ml2_graph_safety` from their
 independent evidence. Its terminal status is
-`target_met_multilingual_identity_candidate_closure` with `target_met=true`,
+`target_met_multilingual_identity_candidate_closure` with `target_met=false`,
 `safe_to_merge=true`, `route_approved=false`, and no active blockers.
 
 ## Route Gate

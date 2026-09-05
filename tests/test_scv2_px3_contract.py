@@ -244,6 +244,25 @@ def test_boundary_mutations_fail_closed(
     assert any(error in finding.code for finding in result.errors), result.to_dict()
 
 
+def test_coordinated_binding_search_acceptance_rollback_claims_are_rederived(tmp_path, base_evidence):
+    summary, paths = _evidence(tmp_path, base_evidence)
+    forged = copy.deepcopy(summary)
+    persistence = forged['persistence_proof']
+    binding = persistence['media_binding_proof']
+    outcome = binding['outcomes'][0]
+    outcome.update(persisted_binding_count=0, accepted_plan_mismatch_rejected_count=0,
+                   rollback_immediately_revoked_search_and_detail=False)
+    outcome['actual_search_results']['AsterHistorical'] = []
+    binding['canonical_fingerprint'] = canonical_fingerprint({k: v for k, v in binding.items() if k != 'canonical_fingerprint'})
+    persistence['canonical_fingerprint'] = canonical_fingerprint({k: v for k, v in persistence.items() if k != 'canonical_fingerprint'})
+    _write(paths.root / 'product-persistence-proof.json', persistence)
+    _rewrite_public(paths.root, forged)
+    result = check_phase_contract('scv2_px3_pixiv_product_integration_contract_v1', forged,
+                                   repository_context=_context(paths))
+    assert not result.passed
+    assert any('independent_replay_projection_mismatch' in error.code for error in result.errors)
+
+
 def test_missing_private_context_fails_closed() -> None:
     result = check_phase_contract(
         "scv2_px3_pixiv_product_integration_contract_v1",

@@ -1,101 +1,77 @@
 # V.I.O.L.E.T. Project Roadmap
 
-## Project Vision
-
-V.I.O.L.E.T. is a personal, local-first anime and illustration library. It
-combines safe ingestion, local classification, Danbooru-style retrieval,
-Chinese display localization, and provenance-preserving source evidence without
-treating provider metadata, SourceConcept, or model output as Entity truth.
-
-## Current Active Roadmap
-
 <!-- CURRENT_PHASE: SCV2-PX3 -->
 
-The only machine-readable current-route truth is
-`docs/state/current-phase.json`.
-
-PR #148 / `SCV2-PX2` is owner accepted and merged at
-`421e2989d274e2dc4492d5bccc10720dcfbbaa4f`. Its second parent is accepted
-PR HEAD `bf8055af61c3a5d32155701ed7110db692047dba`; accepted and merge trees are
-`507a223a9156ff2f9944524303419e85891812fa`. No parallel main commit was
-present. Status: `SCV2_PX2_MERGED`.
-
-Current projection:
+The current-route authority is `docs/state/current-phase.json`.
+The verified incoming mainline was PR #148 / `SCV2_PX2_MERGED` at
+`421e2989d274e2dc4492d5bccc10720dcfbbaa4f`, with accepted second parent
+`bf8055af61c3a5d32155701ed7110db692047dba` and matching tree
+`507a223a9156ff2f9944524303419e85891812fa`. No unreviewed main increment was present.
 
 ```text
-current_status=SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY
+current_status=scv2_px3_product_integration_in_progress
 contract_id=scv2_px3_pixiv_product_integration_contract_v1
 public_schema=violet.scv2-px3-pixiv-product-integration-result.v1
 pr=149
 implementation_evidence_head=389ab3994bb81ca772ce491dac88eb1d8b292d3d
 implementation_evidence_tree=2bed89386dc89b1231ee30198d447c5d6af23643
 px3_started=true
-target_met=true
+target_met=false
 safe_to_merge=false
 route_approved=false
 px3_owner_accepted=false
+px3_merged=false
 px3_merge_authorized=false
 real_pixiv_network_execution_authorized=false
 existing_database_or_app_storage_mutation_authorized=false
 production_authorized=false
-active_blocker=pending_scv2_px3_owner_acceptance_and_controlled_canary
+active_blocker=scv2_px3_implementation_in_progress
 ```
 
-## Fixed Route
+The fixed route contains only SCV2-PX1, SCV2-PX2 and SCV2-PX3. This final
+bounded correction stays on PR #149; no PX3.1, PX4 or hardening phase is created.
+phase-4.5-PX1 is historical compatibility evidence.
 
-1. `SCV2-PX1` — merged canonical Pixiv metadata ingestion/projection.
-2. `SCV2-PX2` — merged deterministic SourceConcept clustering and persistence.
-3. `SCV2-PX3` — implementation complete in normal Ready PR #149: durable
-   product run facts, dry-run/apply/rollback, API/UI, and controlled canary
-   entrypoints.
+PX1 database-neutral aggregates/signals and PX2 clustering remain unchanged.
+PX3 binds verified work/page/provider provenance to every matching current
+SourceMetadataRecord and Media using a minimal evidence-media association.
+Two duplicate media keep support; names never establish creator identity.
+The existing ordinary `/api/search` and media-detail SourceConcept API consume
+these edges. Historical creator aliases, tags/titles and creator+work AND
+queries are exercised through actual endpoint results, with wrong-work recall zero.
 
-PX3 reuses the existing provider metadata adapter, PX1 aggregate/signal contract,
-PX2 clustering service, SourceConcept resolver, graph policy, models, persistence
-seam, API router, admin page, import boundaries, and feature flags. It must not
-create a second parser, resolver, graph engine, candidate registry, or storage
-system.
+Dry-run reports media/source-record/edge counts with zero writes. Apply requires
+the exact accepted selection, product result and local binding fingerprints,
+all recomputed before persistence. Row IDs occur only in local binding identity.
+Replay adds no duplicate edges. Rollback accepts only an active, wholly owned,
+unchanged resolution run, deletes only its support and owned core, retains product
+audit rows, and invalidates search caches after successful commit. Existing empty
+resolution runs and superseded/shared/changed core fail closed.
 
-Repository migration code and task-owned temporary database validation are
-authorized. Synthetic local server/browser E2E is authorized. Real Pixiv
-network or credentials, real source/iCloud access, existing database/app storage
-mutation, user-data import, production, full-library import, and PX3 merge are
-not authorized.
+Disabled product routes hide runs/detail and return only feature state from
+status. Persisted child and whole-projection fingerprints are verified on reads.
+Admin initialization requests status and at most 50 run summaries; full detail
+loads only on selection/expansion. UI apply requires the currently viewed plan
+and blocks repeated clicks. Stable uniqueness conflicts return HTTP 409.
 
-The real provider path may be connected to the integration seam but cannot run
-in this task. Controlled provider smoke, existing-DB canary with backup/restore,
-and 1%-5% import canary are explicit owner gates within PX3, not a PX4.
+**STOP before normal startup against any existing database.** Normal startup
+calls `Base.metadata.create_all()` and schema migration. Backup and successful
+restore must precede the first normal startup. The additive association migration
+was exercised twice on a task-owned temporary SQLite DB. No configured task-owned
+PostgreSQL was available; no existing PostgreSQL connection or infrastructure
+installation was attempted. See [controlled canary gates](development/scv2-px3-controlled-canary.md).
 
-The exact implementation evidence contains 20 clusters, 34 member signals, 59
-candidate dispositions (`52 must_link`, `4 cannot_link`, `3
-deferred_nonblocking`), and 29 queryable ambiguity records. Apply/replay is
-idempotent, rollback/reapply is verified, and only SourceConcept-owned product
-tables are added in a task-owned temporary SQLite database. The executable
-contract passed with zero errors or warnings on implementation HEAD
-`389ab3994bb81ca772ce491dac88eb1d8b292d3d`.
+The only next owner authorization package is:
+backup/restore -> 1-5 work metadata-only provider smoke -> existing DB read-only
+dry-run -> accept exact selection/result fingerprints -> 1% apply canary ->
+gallery search/media detail acceptance -> replay/rollback checks.
+Every real provider, credential, existing DB/storage, source/iCloud, user import,
+production and full-library execution remains unauthorized.
 
-The synthetic browser exercised dry-run, apply, cluster/member/provenance
-detail, cannot-link and context-conflict filters, rollback, and reapply against
-the real local API/UI. Its final clean run had zero console errors. No real
-provider, credential, source, existing database, user import, LLM, or
-production activity occurred.
+`SCV2_PX3_MULTIWORKER_APPLY_GATE` is deferred until before multiple workers,
+multiple owners or concurrent apply; `run.py` uses the default single worker.
+`SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` keeps its existing exact due
+boundary before untrusted paths/evidence or existing DB/real-path execution.
+These gates do not create a new phase or block the owner-authorized local merge.
 
-Safety work remains a gate inside the three phases. No PX2.1, hardening phase,
-or fourth planning phase exists. `phase-4.5-PX1 is historical`; its artifacts
-are compatibility evidence only.
-
-## Documentation Map
-
-- `docs/state/current-phase.json` — current-route fact source.
-- `docs/current-handoff.md` — generated public-safe projection.
-- `docs/roadmap/current-mainline-roadmap.md` — current implementation route.
-- `docs/phase-contracts.md` — executable evidence boundary.
-- `docs/pixiv-metadata-ingestion-and-promotion-policy.md` — Pixiv input policy.
-- `docs/source-concept-tag-search-semantics.md` — resolver semantics.
-- `docs/development/agent-runbook.md` — operating procedure.
-- `docs/test-workflow.md` — validation workflow.
-
-## Governance
-
-PX3 stops at normal Ready PR #149 for owner acceptance and controlled canary
-decisions. Local evidence cannot grant owner acceptance, hosted CI, real-data
-authority, production readiness, or merge authority.
+The earlier projection is historical. `px3_target_met=false` remains in force until final binding/search/rollback/accepted-plan evidence and receipt pass.

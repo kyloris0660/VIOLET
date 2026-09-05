@@ -7,9 +7,9 @@
 - Phase: `SCV2-PX3` - Pixiv Product Integration.
 - Repository / PR: `kyloris0660/VIOLET` / PR #149.
 - Branch: `codex/scv2-px3-pixiv-product-integration`.
-- Status: `SCV2_PX3_PIXIV_PRODUCT_INTEGRATION_READY_FOR_OWNER_ACCEPTANCE_AND_CONTROLLED_CANARY`.
+- Status: `scv2_px3_product_integration_in_progress`.
 - Implementation evidence HEAD/tree: `389ab3994bb81ca772ce491dac88eb1d8b292d3d` / `2bed89386dc89b1231ee30198d447c5d6af23643`.
-- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
+- `target_met=false`; `safe_to_merge=false`; `route_approved=false`.
 - `px3_started=true`; `px3_owner_accepted=false`; `px3_merge_authorized=false`.
 
 ## PX2 Merge Projection
@@ -34,21 +34,23 @@
 - Contract: `scv2_px3_pixiv_product_integration_contract_v1`.
 - Public schema: `violet.scv2-px3-pixiv-product-integration-result.v1`.
 - Repository gap map completed: `true`.
-- PX1/PX2 reused: `true`.
-- Product persistence verified: `true`.
-- Dry-run/apply/rollback verified: `true`.
-- API/UI verified: `true`.
-- Synthetic browser E2E verified: `true`.
-- Controlled canary entrypoints verified: `true`.
+- PX1/PX2 reused: `false`.
+- Product persistence verified: `false`.
+- Dry-run/apply/rollback verified: `false`.
+- API/UI verified: `false`.
+- Synthetic browser E2E verified: `false`.
+- Controlled canary entrypoints verified: `false`.
 - Hosted CI and owner authority remain separate and are not synthesized by local evidence.
 
 ## Current Gate And Authority
 
-- Gate: `pending_scv2_px3_owner_acceptance_and_controlled_canary`.
-- Scope: PX3 implementation is complete in normal PR #149; owner acceptance, controlled real-provider and existing-database canaries, production, and merge remain outside local evidence authority
-- Resolution: Owner audits the exact Ready PR head, then separately authorizes any bounded provider smoke, backup-gated existing-database canary, 1%-5% import canary, or merge.
+- Gate: `scv2_px3_implementation_in_progress`.
+- Scope: Final bounded PX3 media binding, actual search, accepted-plan apply and rollback correction on PR149
+- Resolution: Complete owner-specified regressions and exact-head local evidence, then use the once-authorized expected-head merge commit and stop before controlled canary.
 - `repository_migration_code_authorized=true`; migrations may be tested only on task-owned temporary databases.
 - `synthetic_local_server_browser_e2e_authorized=true`.
+- STOP: normal startup executes Base.metadata.create_all() and schema migration. Back up and successfully restore before the first normal startup against any existing database.
+- Next owner authorization only: backup/restore -> 1-5 work metadata-only provider smoke -> existing DB read-only dry-run -> accept exact selection/result fingerprints -> 1% apply canary -> gallery search/media detail acceptance -> replay/rollback checks.
 - `real_pixiv_network_execution_authorized=false`; real gallery-dl execution is likewise forbidden.
 - `existing_database_or_app_storage_mutation_authorized=false`.
 - `real_source_or_icloud_access_authorized=false`; `provider_credentials_authorized=false`.
@@ -115,4 +117,4 @@
 - `STABLE_REPLAY_GATE` - due before `any real-data Stable Replay consumption or authority`; PX1 proves deterministic synthetic business replay only and does not authorize historical or user-data Stable Replay.
 - `SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE` - due before `caller or user supplied workspace or evidence path, remote CI consumption of untrusted evidence, existing database or app-storage access, real-source canary, or production`; Dangling symlinks, component swaps, fixed-name evidence symlinks, SQLite URL-sensitive path characters, and hostile caller-controlled workspaces are outside the repository-owned temporary workspace threat model proven by synthetic PX1.
 
-Updated: `2026-09-03`.
+Updated: `2026-09-05`.
