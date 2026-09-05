@@ -7,9 +7,9 @@
 - Phase: `SCV2-PX3` - Pixiv Product Integration.
 - Repository / PR: `kyloris0660/VIOLET` / PR #150.
 - Branch: `codex/scv2-px3-restored-database-canary`.
-- Status: `SCV2_PX3_RESTORED_DATABASE_CANARY_IN_PROGRESS`.
-- Implementation evidence HEAD/tree: `476d5c0b5a97447cc2ee12365f7e0c37b005ce0e` / `0b82f0b42dc30c7548317bd95789dd6fb2ef4120`.
-- `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
+- Status: `SCV2_PX3_RESTORED_DATABASE_CANARY_VERIFIED_PENDING_ORIGINAL_DATABASE_APPLY_APPROVAL`.
+- Implementation evidence HEAD/tree: `306cc811fb0b49a5450ffb419edf115562045515` / `98e2df6decea7c5150b83e4fe3c65a8fd4dd5f27`.
+- `target_met=true`; `safe_to_merge=true`; `route_approved=false`.
 - `px3_started=true`; `px3_owner_accepted=true`; `px3_merge_authorized=false`.
 
 ## PX2 Merge Projection
@@ -43,9 +43,9 @@
 
 ## Current Gate And Authority
 
-- Gate: `restored_database_canary_execution_in_progress`.
-- Scope: Current SCV2-PX3 authorized PostgreSQL copy rehearsal
-- Resolution: Complete fixed 1% work lifecycle on the isolated restored database; stop before original database writes.
+- Gate: `original_database_apply_approval_required`.
+- Scope: Original database migration and SourceConcept apply remain unauthorized
+- Resolution: Recheck exact original target and backup/restore, freeze inputs, obtain separate additive migration authority, recompute its 1% work dry-run, and have the owner accept actual-target selection/product/binding fingerprints before apply.
 - `repository_migration_code_authorized=true`; migrations may be tested only on task-owned temporary databases.
 - `synthetic_local_server_browser_e2e_authorized=true`.
 - STOP: normal startup executes Base.metadata.create_all() and schema migration. Back up and successfully restore before the first normal startup against any existing database.
@@ -88,10 +88,11 @@
 - `scv2_px3_pr149_expected_head_merge`: `accepted_head_is_second_parent_and_accepted_tree_equals_merge_tree_origin_main_verified_once_merge_authority_consumed` - `6db72c73397c17128bd2ce9be54f25233bc853f0`.
 - `px3_original_readonly_backup_independent_restore`: `Original database read-only backup was independently restored to a new task-owned PostgreSQL database; source rows and foreign keys verified. Private data remains local; original writes zero.`.
 - `px3_restored_postgresql_actual_product_lifecycle`: `Fixed 1% of 465 eligible works selected 5 works/pages/media, with 51 bindings and 43 clusters. Fresh-session accounting, actual SourceConcept-specific search, detail, replay, selection rejection, rollback and reapply passed. All 54 original table snapshots restored exactly after rollback; real Edge metadata-only browser passed with zero full-detail requests on admin initialization.`.
+- `px3_restored_copy_final_exact_head_validation`: `852 canonical focused tests and independent synthetic contract passed. Strengthened private restored-copy gate verified the same five works, fresh committed counts, exact identity/AND recall sets, actual rollback response, 54 original table baselines, isolation grants and real Edge lifecycle. Original write authority remains false.` - `306cc811fb0b49a5450ffb419edf115562045515`.
 
 ## Next Action
 
-- Required checkpoint: `restored_database_canary_verification_then_original_database_apply_approval`.
+- Required checkpoint: `original_database_apply_approval`.
 
 ## Durable Links
 

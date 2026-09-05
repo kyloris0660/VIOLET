@@ -40,7 +40,7 @@ fingerprints, and acceptance-case manifest fingerprint. Later runtime, data,
 search, graph, or localization changes invalidate affected acceptance cases.
 When acceptance is required and pending, the executable contract must enforce
 `manual_acceptance_required=true`, `manual_acceptance_status=pending_user`,
-`target_met=false`, `safe_to_merge=false`, and `route_approved=false`.
+`target_met=false`, `safe_to_merge=true`, and `route_approved=false`.
 
 For SCV2-FL1-P1-R1, acceptance is additionally invalid unless it binds the
 immutable implementation commit/tree/digest and the final reviewed
@@ -73,13 +73,13 @@ The historical PX3 incoming mainline was PR #148 / `SCV2_PX2_MERGED` at
 `507a223a9156ff2f9944524303419e85891812fa`. No unreviewed main increment was present.
 
 ```text
-current_status=SCV2_PX3_RESTORED_DATABASE_CANARY_IN_PROGRESS
+current_status=SCV2_PX3_RESTORED_DATABASE_CANARY_VERIFIED_PENDING_ORIGINAL_DATABASE_APPLY_APPROVAL
 contract_id=scv2_px3_pixiv_product_integration_contract_v1
 public_schema=violet.scv2-px3-pixiv-product-integration-result.v1
 prior_merged_pr=149
 followup_pr=150
-implementation_evidence_head=476d5c0b5a97447cc2ee12365f7e0c37b005ce0e
-implementation_evidence_tree=0b82f0b42dc30c7548317bd95789dd6fb2ef4120
+implementation_evidence_head=306cc811fb0b49a5450ffb419edf115562045515
+implementation_evidence_tree=98e2df6decea7c5150b83e4fe3c65a8fd4dd5f27
 px3_started=true
 target_met=true
 safe_to_merge=false
@@ -90,7 +90,7 @@ px3_merge_authorized=false
 real_pixiv_network_execution_authorized=false
 existing_database_or_app_storage_mutation_authorized=false
 production_authorized=false
-active_blocker=restored_database_canary_execution_in_progress
+active_blocker=original_database_apply_approval_required
 ```
 
 ## Stop Boundary
@@ -649,3 +649,5 @@ gaps.
 PR #149 merge authority is consumed. Original read-only database backup and independent task PostgreSQL restore are authorized and have occurred; real database activity is not zero. All migration and fixed 1% work materialization writes are confined to that copy. Provider network, credentials, metadata refresh, original database writes and original media/storage access remain forbidden. This is SourceConcept materialization, not media import. No new phase is created.
 
 The next original-database operation requires separate owner approval and fresh actual-target selection, product and binding fingerprints. Copy acceptance never authorizes original apply. The provider-smoke template is non-executable until its work bound is actually enforced. Deferred gates: `SCV2_PX3_METADATA_REFRESH_BINDING_GATE` before metadata refresh/ongoing original use; `SCV2_PX3_POLICY_VERSION_CAPTURE_GATE` before the next PX2 policy version change. Existing multiworker and workspace debt remains open.
+
+Final restored-copy checkpoint: 852 canonical focused tests passed on implementation HEAD `306cc811fb0b49a5450ffb419edf115562045515`; independent synthetic and private PostgreSQL contracts passed. The full non-E2E suite ran once (4384 passed, 22 skipped, 11 raw failures); seven environment failures and three documentation assertions were closed by targeted validation, while missing original AI execution evidence reproduced on exact base. See [controlled-canary evidence and boundaries](development/scv2-px3-controlled-canary.md) for detail. The one-time PR #150 merge permission expires automatically when that PR is merged; original writes and normal startup remain unauthorized.

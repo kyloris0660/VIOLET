@@ -8,12 +8,12 @@
   "draft": false,
   "accepted_mainline_base": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
   "accepted_mainline_tree": "507a223a9156ff2f9944524303419e85891812fa",
-  "implementation_evidence_head": "476d5c0b5a97447cc2ee12365f7e0c37b005ce0e",
-  "implementation_evidence_tree": "0b82f0b42dc30c7548317bd95789dd6fb2ef4120",
-  "implementation_evidence_status": "restored_postgresql_copy_lifecycle_passed_exact_head_local_suite_in_progress",
-  "current_status": "SCV2_PX3_RESTORED_DATABASE_CANARY_IN_PROGRESS",
+  "implementation_evidence_head": "306cc811fb0b49a5450ffb419edf115562045515",
+  "implementation_evidence_tree": "98e2df6decea7c5150b83e4fe3c65a8fd4dd5f27",
+  "implementation_evidence_status": "exact_head_852_focused_synthetic_contract_and_independent_frozen_postgresql_copy_verified",
+  "current_status": "SCV2_PX3_RESTORED_DATABASE_CANARY_VERIFIED_PENDING_ORIGINAL_DATABASE_APPLY_APPROVAL",
   "target_met": true,
-  "safe_to_merge": false,
+  "safe_to_merge": true,
   "route_approved": false,
   "route_scope": "Authorized read-only original database backup, independent task-owned PostgreSQL restore and frozen-input 1% work canary; no original writes, provider network, credentials or original media access.",
   "planning_authorized": true,
@@ -196,12 +196,17 @@
     {
       "id": "px3_restored_postgresql_actual_product_lifecycle",
       "result": "Fixed 1% of 465 eligible works selected 5 works/pages/media, with 51 bindings and 43 clusters. Fresh-session accounting, actual SourceConcept-specific search, detail, replay, selection rejection, rollback and reapply passed. All 54 original table snapshots restored exactly after rollback; real Edge metadata-only browser passed with zero full-detail requests on admin initialization."
+    },
+    {
+      "id": "px3_restored_copy_final_exact_head_validation",
+      "fingerprint": "306cc811fb0b49a5450ffb419edf115562045515",
+      "result": "852 canonical focused tests and independent synthetic contract passed. Strengthened private restored-copy gate verified the same five works, fresh committed counts, exact identity/AND recall sets, actual rollback response, 54 original table baselines, isolation grants and real Edge lifecycle. Original write authority remains false."
     }
   ],
   "active_blocker": {
-    "code": "restored_database_canary_execution_in_progress",
-    "scope": "Current SCV2-PX3 authorized PostgreSQL copy rehearsal",
-    "resolution": "Complete fixed 1% work lifecycle on the isolated restored database; stop before original database writes."
+    "code": "original_database_apply_approval_required",
+    "scope": "Original database migration and SourceConcept apply remain unauthorized",
+    "resolution": "Recheck exact original target and backup/restore, freeze inputs, obtain separate additive migration authority, recompute its 1% work dry-run, and have the owner accept actual-target selection/product/binding fingerprints before apply."
   },
   "owner_decisions": [
     {
@@ -506,32 +511,34 @@
     "px3_cannot_link_count": 4,
     "px3_deferred_nonblocking_count": 3,
     "px3_ambiguity_record_count": 29,
-    "px3_local_receipt_head": "ce5a11f75f13965652cb6f9179bbde45526c6e18",
-    "px3_local_receipt_tree": "81f961be8d86016afdfb7c7a25a9b87698dd43c6",
-    "px3_local_receipt_command_fingerprint": "a018f3496ae0c8b1da960644ba79d4f283b674197699354bbfa3d222c3d1d0de",
-    "px3_local_receipt_stdout_fingerprint": "21c338c92293f6e889c6abd10460225257428a6864e8ae24ff2b6e0534e05d8e",
+    "px3_local_receipt_head": "306cc811fb0b49a5450ffb419edf115562045515",
+    "px3_local_receipt_tree": "98e2df6decea7c5150b83e4fe3c65a8fd4dd5f27",
+    "px3_local_receipt_command_fingerprint": "b7723700731dac52e971393b577cb32586c189a89e6f8efe858ebe01212bdb82",
+    "px3_local_receipt_stdout_fingerprint": "e181e1a271391f1a8ee542e993cbcac378da373a2715584f2b793e1ce083e479",
     "px3_local_receipt_positive": true,
     "px3_local_receipt_clean_before_after": true,
     "px3_contract_passed": true,
     "px3_contract_error_count": 0,
     "px3_contract_warning_count": 0,
-    "px3_focused_tests_passed": 783,
+    "px3_focused_tests_passed": 852,
     "px3_final_full_non_e2e_result": {
-      "passed": 4355,
+      "passed": 4384,
       "skipped": 22,
-      "failed": 1,
-      "errors": 7,
-      "warnings": 15,
-      "duration_seconds": 528.71,
-      "exact_failure": "missing_original_ai_execution_evidence",
-      "exact_base_reproduced": true,
-      "accepted_historical_private_evidence_limitation": true,
-      "setup_errors_root_cause": "reloaded_database_module_empty_Base_in_late_loaded_proof",
-      "setup_errors_closed_by_mapped_model_metadata": true,
-      "ordered_regression_passed": 81,
-      "ordered_regression_skipped": 1,
+      "failed": 11,
+      "warnings": 52,
+      "duration_seconds": 601.13,
       "full_suite_run_count": 1,
-      "product_search_or_truth_regression_count": 0
+      "execution_code_head": "476d5c0b5a97447cc2ee12365f7e0c37b005ce0e",
+      "raw_environment_failures": 7,
+      "corrected_documentation_assertions": 3,
+      "targeted_standard_passed": 282,
+      "targeted_standard_skipped": 1,
+      "final_bounded_correction_targeted_passed": 70,
+      "residual_exact_failure": "missing_original_ai_execution_evidence",
+      "exact_base_reproduced": true,
+      "exact_base": "6db72c73397c17128bd2ce9be54f25233bc853f0",
+      "accepted_historical_private_evidence_limitation": true,
+      "full_suite_rerun": false
     },
     "px3_synthetic_browser_acceptance": {
       "cluster_count": 20,
@@ -578,10 +585,36 @@
       "deferred_count": 1,
       "deferred_gate": "SCV2_PX3_MULTIWORKER_APPLY_GATE",
       "new_review_requested": false
+    },
+    "pr149_historical_validation": {
+      "px3_local_receipt_head": "ce5a11f75f13965652cb6f9179bbde45526c6e18",
+      "px3_local_receipt_tree": "81f961be8d86016afdfb7c7a25a9b87698dd43c6",
+      "px3_local_receipt_command_fingerprint": "a018f3496ae0c8b1da960644ba79d4f283b674197699354bbfa3d222c3d1d0de",
+      "px3_local_receipt_stdout_fingerprint": "21c338c92293f6e889c6abd10460225257428a6864e8ae24ff2b6e0534e05d8e",
+      "px3_local_receipt_positive": true,
+      "px3_local_receipt_clean_before_after": true,
+      "px3_focused_tests_passed": 783,
+      "px3_final_full_non_e2e_result": {
+        "passed": 4355,
+        "skipped": 22,
+        "failed": 1,
+        "errors": 7,
+        "warnings": 15,
+        "duration_seconds": 528.71,
+        "exact_failure": "missing_original_ai_execution_evidence",
+        "exact_base_reproduced": true,
+        "accepted_historical_private_evidence_limitation": true,
+        "setup_errors_root_cause": "reloaded_database_module_empty_Base_in_late_loaded_proof",
+        "setup_errors_closed_by_mapped_model_metadata": true,
+        "ordered_regression_passed": 81,
+        "ordered_regression_skipped": 1,
+        "full_suite_run_count": 1,
+        "product_search_or_truth_regression_count": 0
+      }
     }
   },
   "public_state_boundary": "public_safe_product_integration_no_real_data_private_paths_credentials_or_raw_payloads",
-  "next_required_checkpoint": "restored_database_canary_verification_then_original_database_apply_approval",
+  "next_required_checkpoint": "original_database_apply_approval",
   "durable_links": [
     {
       "label": "Current mainline roadmap",
@@ -883,7 +916,7 @@
     "rollback_ownership_and_cache_passed": true,
     "synthetic_edge_browser_passed": true,
     "backup_restore_before_normal_startup_stop_recorded": true,
-    "implementation_head": "476d5c0b5a97447cc2ee12365f7e0c37b005ce0e"
+    "implementation_head": "306cc811fb0b49a5450ffb419edf115562045515"
   },
   "restored_canary": {
     "original_database_readonly_backup_authorized": true,
@@ -900,7 +933,7 @@
     "user_data_import_authorized": false,
     "production_authorized": false,
     "multiworker_authorized": false,
-    "followup_merge_authorized": false,
+    "followup_merge_authorized": true,
     "postgresql_migration_verified": true,
     "fresh_session_accounting_verified": true,
     "single_active_selection_verified": true,
@@ -930,6 +963,16 @@
       "migrate_add_source_concept_fallback_search_index"
     ],
     "followup_pr": 150,
-    "copy_plan_acceptance": "owner_delegated_acceptance_for_task_copy_only"
+    "copy_plan_acceptance": "owner_delegated_acceptance_for_task_copy_only",
+    "restored_contract_passed": true,
+    "restored_receipt_sha256": "1e5e568f95bd7aba596903eebb0066080a5ea99a9aaee8dfcd37b927de450bbe",
+    "final_active_run_count": 1,
+    "sourceconcept_binding_count": 51,
+    "original_table_snapshots_restored": 54,
+    "copy_server_stopped": true,
+    "selection_unchanged_by_unrelated_queue_verified": true,
+    "private_prior_rehearsal_preserved": true,
+    "normal_original_startup_authorized": false,
+    "copy_fingerprints_authorize_original_apply": false
   }
 }

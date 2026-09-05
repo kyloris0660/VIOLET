@@ -154,3 +154,43 @@ The API apply and rollback confirmation phrases, exact commands, required
 future authorities, success checks, and stop conditions are present in each
 machine-readable plan. Full-library import remains a later owner decision at
 the end of PX3, not an automatic continuation of a successful canary.
+
+## Final local validation and owner stop
+
+Implementation HEAD `306cc811fb0b49a5450ffb419edf115562045515`, tree `98e2df6decea7c5150b83e4fe3c65a8fd4dd5f27`:
+852 canonical focused tests passed in 162.52 seconds, with clean before/after
+identity and a local operator receipt. Independent synthetic contract: zero errors,
+zero warnings. The strengthened restored-copy contract also passed; both receipts
+and all private evidence remain local. Docs-only carry-forward is restricted to
+the six registered projection documents.
+
+The full non-E2E suite ran **once**: 4,384 passed, 22 skipped, 11 raw failures,
+52 warnings (601.13 seconds). Seven failures came from a private test wrapper's
+nonstandard Python encoding/environment; three were stale governance assertions.
+Their corrected standard-environment targeted run passed 282 tests with one skip.
+The final bounded selection/evidence corrections passed another 70 targeted tests,
+then the 852-test canonical receipt above. The remaining
+`missing_original_ai_execution_evidence` reproduced on exact base
+`6db72c73397c17128bd2ce9be54f25233bc853f0`; no private evidence was fabricated.
+This does not relabel the original full run as green. Black was unavailable and
+was not installed. Local evidence is not hosted CI; no new review was requested.
+
+The final copy retains one active run and 51 bindings. The first complete rehearsal
+was privately preserved, then its active run was business-rolled back before the
+same five works received the revised exact plan. Both runs' product audit rows
+remain. The second complete API/Edge lifecycle and all 54 rollback baseline digests
+passed. A final read-only privilege audit corrected a schema-unqualified catalog
+lookup in the private helper; no application or database state was changed by that
+failed query. The final copy service is stopped.
+
+Final status:
+`SCV2_PX3_RESTORED_DATABASE_CANARY_VERIFIED_PENDING_ORIGINAL_DATABASE_APPLY_APPROVAL`.
+The original readonly backup is a real database operation (one backup); original
+database writes, original storage/media access, provider network/credentials and
+media imports remain zero. The original lacks the PX3 tables: its first canary
+requires separate additive migration authority after refreshed backup/restore
+proof. Normal application startup runs create_all and the wider migration chain;
+this rehearsal does not authorize normal startup against the original database.
+The precise original target, copied work IDs, expected core writes and rollback
+plan are in the local private owner package. Recompute all three fingerprints on
+the actual target and obtain owner acceptance; never reuse copy acceptance.
