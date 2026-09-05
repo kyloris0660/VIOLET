@@ -5,10 +5,10 @@
 ## Current Facts
 
 - Phase: `SCV2-PX3` - Pixiv Product Integration.
-- Repository / PR: `kyloris0660/VIOLET` / PR pending creation.
+- Repository / PR: `kyloris0660/VIOLET` / PR #150.
 - Branch: `codex/scv2-px3-restored-database-canary`.
 - Status: `SCV2_PX3_RESTORED_DATABASE_CANARY_IN_PROGRESS`.
-- Implementation evidence HEAD/tree: `ce5a11f75f13965652cb6f9179bbde45526c6e18` / `81f961be8d86016afdfb7c7a25a9b87698dd43c6`.
+- Implementation evidence HEAD/tree: `476d5c0b5a97447cc2ee12365f7e0c37b005ce0e` / `0b82f0b42dc30c7548317bd95789dd6fb2ef4120`.
 - `target_met=true`; `safe_to_merge=false`; `route_approved=false`.
 - `px3_started=true`; `px3_owner_accepted=true`; `px3_merge_authorized=false`.
 

@@ -4,13 +4,13 @@
   "phase_title": "Pixiv Product Integration",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/scv2-px3-restored-database-canary",
-  "pr_number": null,
+  "pr_number": 150,
   "draft": false,
   "accepted_mainline_base": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
   "accepted_mainline_tree": "507a223a9156ff2f9944524303419e85891812fa",
-  "implementation_evidence_head": "ce5a11f75f13965652cb6f9179bbde45526c6e18",
-  "implementation_evidence_tree": "81f961be8d86016afdfb7c7a25a9b87698dd43c6",
-  "implementation_evidence_status": "final_media_binding_product_closure_exact_head_local_receipt",
+  "implementation_evidence_head": "476d5c0b5a97447cc2ee12365f7e0c37b005ce0e",
+  "implementation_evidence_tree": "0b82f0b42dc30c7548317bd95789dd6fb2ef4120",
+  "implementation_evidence_status": "restored_postgresql_copy_lifecycle_passed_exact_head_local_suite_in_progress",
   "current_status": "SCV2_PX3_RESTORED_DATABASE_CANARY_IN_PROGRESS",
   "target_met": true,
   "safe_to_merge": false,
@@ -883,7 +883,7 @@
     "rollback_ownership_and_cache_passed": true,
     "synthetic_edge_browser_passed": true,
     "backup_restore_before_normal_startup_stop_recorded": true,
-    "implementation_head": "ce5a11f75f13965652cb6f9179bbde45526c6e18"
+    "implementation_head": "476d5c0b5a97447cc2ee12365f7e0c37b005ce0e"
   },
   "restored_canary": {
     "original_database_readonly_backup_authorized": true,
@@ -928,6 +928,8 @@
       "migrate_add_source_concept_product_integration",
       "migrate_add_source_concept_product_media_bindings",
       "migrate_add_source_concept_fallback_search_index"
-    ]
+    ],
+    "followup_pr": 150,
+    "copy_plan_acceptance": "owner_delegated_acceptance_for_task_copy_only"
   }
 }
