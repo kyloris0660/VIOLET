@@ -467,6 +467,9 @@ SCV2_PX3_READY_STATUS = (
 SCV2_PX3_IN_PROGRESS_BLOCKER = "scv2_px3_implementation_in_progress"
 SCV2_PX3_CLOSURE_READY_STATUS = 'SCV2_PX3_FINAL_PRODUCT_CLOSURE_ACCEPTED_PENDING_EXPECTED_HEAD_MERGE'
 SCV2_PX3_MERGED_STATUS = 'SCV2_PX3_MERGED_READY_FOR_CONTROLLED_CANARY'
+SCV2_PX3_RESTORE_PROGRESS = 'SCV2_PX3_RESTORED_DATABASE_CANARY_IN_PROGRESS'
+SCV2_PX3_RESTORE_VERIFIED = 'SCV2_PX3_RESTORED_DATABASE_CANARY_VERIFIED_PENDING_ORIGINAL_DATABASE_APPLY_APPROVAL'
+SCV2_PX3_RESTORE_BRANCH = 'codex/scv2-px3-restored-database-canary'
 SCV2_PX3_READY_BLOCKER = "pending_scv2_px3_owner_acceptance_and_controlled_canary"
 SCV2_PX3_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST = frozenset(
     {
@@ -475,6 +478,7 @@ SCV2_PX3_DOCS_ONLY_CARRY_FORWARD_ALLOWLIST = frozenset(
         "docs/project-roadmap.md",
         "docs/roadmap/current-mainline-roadmap.md",
         "docs/state/current-phase.json",
+        "docs/development/scv2-px3-controlled-canary.md",
     }
 )
 SCV2_PX3_EXPECTED_AUTHORITIES = {
@@ -2184,7 +2188,7 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         or state.get("phase_id") != "SCV2-PX3"
         or state.get("phase_title") != "Pixiv Product Integration"
         or state.get("repository") != "kyloris0660/VIOLET"
-        or state.get("branch") != SCV2_PX3_BRANCH
+        or state.get("branch") != (SCV2_PX3_RESTORE_BRANCH if state.get('restored_canary') else SCV2_PX3_BRANCH)
         or state.get("accepted_mainline_base") != SCV2_PX3_ACCEPTED_MAIN
         or state.get("accepted_mainline_tree") != SCV2_PX3_ACCEPTED_MAIN_TREE
         or state.get("previous_phase") != "SCV2-PX2"
@@ -2215,11 +2219,13 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         raise DocumentationStateError("draft_must_be_boolean")
 
     status = state.get("current_status")
-    closure = status in {SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS}
-    merged = status == SCV2_PX3_MERGED_STATUS
+    restored = status in {SCV2_PX3_RESTORE_PROGRESS, SCV2_PX3_RESTORE_VERIFIED}
+    closure = status in {SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS} or restored
+    merged = status == SCV2_PX3_MERGED_STATUS or restored
     merge_authorized = status == SCV2_PX3_CLOSURE_READY_STATUS
     if status not in {SCV2_PX3_IN_PROGRESS_STATUS, SCV2_PX3_READY_STATUS,
-                      SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS}:
+                      SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS,
+                      SCV2_PX3_RESTORE_PROGRESS, SCV2_PX3_RESTORE_VERIFIED}:
         raise DocumentationStateError("scv2_px3_status_invalid")
     ready = status == SCV2_PX3_READY_STATUS or closure
     expected_manual = (
@@ -2231,14 +2237,14 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         expected_manual = 'owner_accepted_final_bounded_product_closure'
     if (
         state.get("target_met") is not ready
-        or state.get("safe_to_merge") is not merge_authorized
+        or state.get("safe_to_merge") is not (state.get('restored_canary', {}).get('followup_merge_authorized', False) if restored else merge_authorized)
         or state.get("route_approved") is not False
         or state.get("manual_acceptance_status") != expected_manual
         or state.get("next_phase_started") is not False
         or state.get("planning_authorized") is not True
         or state.get("planning_completed") is not True
         or state.get("planning_approved") is not True
-        or (ready and (state.get("pr_number") is None or state.get("draft") is not False))
+        or (ready and not restored and (state.get("pr_number") is None or state.get("draft") is not False))
     ):
         raise DocumentationStateError("scv2_px3_status_fields_conflict")
     if state.get("authorities") != {**SCV2_PX3_EXPECTED_AUTHORITIES, 'px3_merge_authorized': merge_authorized}:
@@ -2265,13 +2271,14 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
             or state.get('px3_owner_accepted') is not True
             or state.get('px3_merged') is not merged
             or state.get('three_phase_implementation_route_completed') is not merged
-            or state.get('conditional_expected_head_merge_authorized') is not True):
+            or state.get('conditional_expected_head_merge_authorized') is not (not restored)):
             raise DocumentationStateError('scv2_px3_closure_status_conflict')
         for key in ('controlled_canary_authorized', 'real_pixiv_network_execution_authorized',
                     'provider_credentials_authorized', 'existing_database_or_app_storage_access_authorized',
                     'real_source_or_icloud_access_authorized', 'user_data_import_authorized',
                     'production_authorized', 'full_library_import_authorized'):
-            if state.get(key) is not False:
+            expected = restored and key == 'existing_database_or_app_storage_access_authorized'
+            if state.get(key) is not expected:
                 raise DocumentationStateError('scv2_px3_closure_real_authority_forbidden')
         verification = state.get('closure_verification', {})
         if any(verification.get(key) is not True for key in (
@@ -2283,10 +2290,31 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
             raise DocumentationStateError('scv2_px3_closure_head_mismatch')
     if state.get("pipeline_contract") != expected_contract:
         raise DocumentationStateError("scv2_px3_contract_projection_invalid")
+    if restored:
+        canary = state.get('restored_canary', {})
+        allowed = ('original_database_readonly_backup_authorized', 'task_owned_database_create_restore_authorized',
+                   'restored_sourceconcept_materialization_authorized', 'metadata_inputs_frozen')
+        forbidden = ('original_database_write_authorized', 'original_storage_write_authorized',
+                     'provider_network_authorized', 'provider_credentials_authorized', 'original_media_read_authorized',
+                     'user_data_import_authorized', 'production_authorized', 'multiworker_authorized')
+        if any(canary.get(key) is not True for key in allowed) or any(canary.get(key) is not False for key in forbidden):
+            raise DocumentationStateError('scv2_px3_restored_canary_authority_map_invalid')
+        if canary.get('prior_pr149_merge_authority_consumed') is not True or canary.get('work_percentage') != 1:
+            raise DocumentationStateError('scv2_px3_restored_canary_scope_invalid')
+        if status == SCV2_PX3_RESTORE_PROGRESS and canary.get('followup_merge_authorized') is not False:
+            raise DocumentationStateError('scv2_px3_restored_canary_merge_before_verification')
+        if status == SCV2_PX3_RESTORE_VERIFIED:
+            for key in ('backup_restore_verified','postgresql_migration_verified','fresh_session_accounting_verified',
+                        'single_active_selection_verified','search_detail_verified','rollback_baseline_verified',
+                        'replay_reapply_verified','browser_metadata_only_verified'):
+                if canary.get(key) is not True:
+                    raise DocumentationStateError('scv2_px3_restored_canary_evidence_missing:' + key)
     blocker = state.get("active_blocker")
     expected_blocker = SCV2_PX3_READY_BLOCKER if ready else SCV2_PX3_IN_PROGRESS_BLOCKER
     if closure:
         expected_blocker = 'controlled_canary_authorization_required' if merged else 'expected_head_merge_pending'
+    if restored:
+        expected_blocker = 'original_database_apply_approval_required' if status == SCV2_PX3_RESTORE_VERIFIED else 'restored_database_canary_execution_in_progress'
     if (
         not isinstance(blocker, dict)
         or blocker.get("code") != expected_blocker
@@ -2313,7 +2341,7 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
             protected.get("px3_owner_accepted") is not closure,
             protected.get("px3_safe_to_merge") is not merge_authorized,
             protected.get("px3_merge_authorized") is not merge_authorized,
-            protected.get("existing_db_or_app_storage_activity") != 0,
+            protected.get("existing_db_or_app_storage_activity") != (1 if restored else 0),
             protected.get("provider_network_activity") != 0,
             protected.get("real_source_activity") != 0,
             protected.get("llm_activity") != 0,
@@ -2346,6 +2374,8 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
         and debt["requirements"]
     }
     expected_debt = SCV2_PX1_REQUIRED_DEFERRED_GATES | ({'SCV2_PX3_MULTIWORKER_APPLY_GATE'} if closure else set())
+    if restored:
+        expected_debt |= {'SCV2_PX3_METADATA_REFRESH_BINDING_GATE','SCV2_PX3_POLICY_VERSION_CAPTURE_GATE'}
     if debt_ids != expected_debt:
         raise DocumentationStateError("scv2_px3_deferred_due_gate_set_invalid")
     if state.get("upcoming_route") != [
@@ -3052,7 +3082,7 @@ def _validate_scv2_px3_git_ancestry(state: dict[str, Any], *, root: Path) -> Non
         != state["branch"]
     ):
         raise DocumentationStateError("scv2_px3_branch_identity_invalid")
-    if state.get("current_status") in {SCV2_PX3_READY_STATUS, SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS}:
+    if state.get("current_status") in {SCV2_PX3_READY_STATUS, SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS, SCV2_PX3_RESTORE_VERIFIED}:
         paths = _trusted_git_changed_paths(
             [
                 "diff",
@@ -3076,7 +3106,7 @@ def _validate_scv2_px3_git_ancestry(state: dict[str, Any], *, root: Path) -> Non
             raise DocumentationStateError(
                 "scv2_px3_evidence_behavior_drift:" + ",".join(unexpected)
             )
-    if state.get('current_status') == SCV2_PX3_MERGED_STATUS:
+    if state.get('current_status') in {SCV2_PX3_MERGED_STATUS, SCV2_PX3_RESTORE_PROGRESS, SCV2_PX3_RESTORE_VERIFIED}:
         merge = state['protected_evidence'].get('px3_merge_commit', '')
         accepted = state['protected_evidence'].get('px3_accepted_head', '')
         expected_base = state['protected_evidence'].get('px3_expected_merge_base', '')
@@ -3778,6 +3808,17 @@ def _render_scv2_px3_handoff(state: dict[str, Any]) -> str:
         "## Completed Checkpoints",
         "",
     ]
+    if state.get('restored_canary'):
+        lines = [line for line in lines if not line.startswith((
+            '- Controlled provider smoke,', '- Next owner authorization only:'))]
+        lines.extend([
+            '- PR #149 is already merged. Its expected-head merge permission is consumed.',
+            '- Original database read-only identification and private backup occurred; real database activity is nonzero. Original database/storage writes remain forbidden.',
+            '- Independent PostgreSQL restore, additive migration and fixed 1% work SourceConcept materialization are authorized only in the task copy. This is not media import.',
+            '- Copy metadata is frozen; runtime credentials must deny metadata refresh. No original media, thumbnails, source files, provider network or credentials may be accessed.',
+            '- Original first canary remains owner-gated: recheck target and backup/restore, authorize incremental schema startup separately, recompute actual-target dry-run and accept all three exact fingerprints before apply.',
+            '',
+        ])
     for checkpoint in state["completed_checkpoints"]:
         suffix = (
             f" - `{checkpoint['fingerprint']}`"

@@ -254,8 +254,8 @@ _SIGNAL_ORIGINS = frozenset(
 _SIGNAL_ROLES = frozenset(
     {"artist", "character", "person", "work", "source_title", "unknown"}
 )
-_SIGNAL_TRUST = frozenset({"strong", "medium", "weak"})
-_SIGNAL_STATUS = frozenset({"active", "needs_review"})
+_SIGNAL_TRUST = frozenset({"strong", "medium", "weak", "rejected"})
+_SIGNAL_STATUS = frozenset({"active", "needs_review", "rejected"})
 
 
 class PixivMetadataClusteringError(ValueError):
@@ -426,6 +426,8 @@ def _reconstruct_signal(
         raise PixivMetadataClusteringError("px1_signal_trust_invalid")
     if signal.get("status") not in _SIGNAL_STATUS:
         raise PixivMetadataClusteringError("px1_signal_status_invalid")
+    if (signal.get('trust_tier') == 'rejected') != (signal.get('status') == 'rejected'):
+        raise PixivMetadataClusteringError('px1_signal_rejected_state_invalid')
     for field in ("raw_value", "display_value", "normalized_key", "canonical_key"):
         if not isinstance(signal.get(field), str) or not signal.get(field):
             raise PixivMetadataClusteringError(f"px1_signal_{field}_invalid")

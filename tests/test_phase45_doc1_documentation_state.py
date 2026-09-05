@@ -15,6 +15,8 @@ from scripts.check_documentation_state import (
     SCV2_PX3_READY_STATUS,
     SCV2_PX3_CLOSURE_READY_STATUS,
     SCV2_PX3_MERGED_STATUS,
+    SCV2_PX3_RESTORE_PROGRESS,
+    SCV2_PX3_RESTORE_VERIFIED,
     load_state,
     render_handoff,
     validate_roadmaps,
@@ -57,10 +59,12 @@ def test_px3_state_and_active_docs_validate() -> None:
         SCV2_PX3_READY_STATUS,
         SCV2_PX3_CLOSURE_READY_STATUS,
         SCV2_PX3_MERGED_STATUS,
+        SCV2_PX3_RESTORE_PROGRESS,
+        SCV2_PX3_RESTORE_VERIFIED,
     }
     ready = state["current_status"] != SCV2_PX3_IN_PROGRESS_STATUS
     assert state["target_met"] is ready
-    assert state["safe_to_merge"] is (state['current_status'] == SCV2_PX3_CLOSURE_READY_STATUS)
+    assert state["safe_to_merge"] is (state.get('restored_canary', {}).get('followup_merge_authorized', False) or state['current_status'] == SCV2_PX3_CLOSURE_READY_STATUS)
     assert state["route_approved"] is False
     assert state["next_phase_started"] is False
 
@@ -102,6 +106,8 @@ def test_pr148_merge_identity_is_exact() -> None:
 def test_protected_evidence_mutation_fails_closed(field: str, value: object) -> None:
     state = copy.deepcopy(_state())
     state["protected_evidence"][field] = (not state['protected_evidence'][field]) if isinstance(value, bool) else value
+    if field == 'existing_db_or_app_storage_activity':
+        state['protected_evidence'][field] = _state()['protected_evidence'][field] + 1
     with pytest.raises(DocumentationStateError, match="protected_evidence"):
         validate_state(state)
 
@@ -129,7 +135,8 @@ def test_forbidden_authority_mutation_fails_closed(field: str) -> None:
 def test_due_gate_set_cannot_be_omitted() -> None:
     state = copy.deepcopy(_state())
     assert {item["id"] for item in state["deferred_debt"]} == (
-        SCV2_PX1_REQUIRED_DEFERRED_GATES | ({'SCV2_PX3_MULTIWORKER_APPLY_GATE'} if state['current_status'] in {SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS} else set())
+        SCV2_PX1_REQUIRED_DEFERRED_GATES | ({'SCV2_PX3_MULTIWORKER_APPLY_GATE'} if state['current_status'] in {SCV2_PX3_CLOSURE_READY_STATUS, SCV2_PX3_MERGED_STATUS, SCV2_PX3_RESTORE_PROGRESS, SCV2_PX3_RESTORE_VERIFIED} else set())
+        | ({'SCV2_PX3_METADATA_REFRESH_BINDING_GATE', 'SCV2_PX3_POLICY_VERSION_CAPTURE_GATE'} if state.get('restored_canary') else set())
     )
     state["deferred_debt"].pop()
     with pytest.raises(DocumentationStateError, match="deferred_due_gate_set"):
@@ -143,6 +150,9 @@ def test_due_gate_set_cannot_be_omitted() -> None:
 ])
 def test_final_product_closure_cannot_omit_independent_gate(field):
     state = copy.deepcopy(_state())
+    state.pop('restored_canary', None)
+    state['branch'] = 'codex/scv2-px3-pixiv-product-integration'
+    state['pr_number'] = 149
     state.update(current_status=SCV2_PX3_CLOSURE_READY_STATUS, target_met=True, safe_to_merge=True,
                  manual_acceptance_status='owner_accepted_final_bounded_product_closure',
                  px3_target_met=True, px3_owner_accepted=True, px3_merged=False,
@@ -183,3 +193,22 @@ def test_tracked_current_json_is_public_safe() -> None:
     assert "cookie=" not in text.casefold()
     assert "bearer " not in text.casefold()
     assert "raw provider response" not in text.casefold()
+
+
+def test_restored_copy_authority_cannot_expand_to_original_writes():
+    state = copy.deepcopy(_state())
+    if not state.get('restored_canary'):
+        pytest.skip('Historical PX3 state')
+    state['restored_canary']['original_database_write_authorized'] = True
+    with pytest.raises(DocumentationStateError, match='restored_canary_authority_map'):
+        validate_state(state)
+
+
+def test_restored_verified_checkpoint_requires_rollback_evidence():
+    state = copy.deepcopy(_state())
+    if not state.get('restored_canary'):
+        pytest.skip('Historical PX3 state')
+    state['current_status'] = SCV2_PX3_RESTORE_VERIFIED
+    state['restored_canary']['rollback_baseline_verified'] = False
+    with pytest.raises(DocumentationStateError, match='restored_canary_evidence_missing:rollback'):
+        validate_state(state)

@@ -9,7 +9,51 @@ from ..models import (
 from .pixiv_metadata_projection_service import (
     _record_business_projection, _provenance_identity_matches, canonical_fingerprint,
 )
-from .pixiv_metadata_ingestion_service import is_trusted_complete_pixiv_metadata_record
+from .pixiv_metadata_ingestion_service import (
+    is_trusted_complete_pixiv_metadata_record, normalize_gallery_dl_records,
+    PixivMetadataGateError, PIXIV_LEGACY_NORMALIZER_VERSION,
+)
+from .pixiv_identity_policy import (
+    canonical_pixiv_work_id, canonical_pixiv_page_index,
+    canonical_pixiv_provider_marker_consensus,
+)
+
+
+def verified_local_binding_provenance(record, projection=None):
+    """Verify stored provenance without rewriting PX1/PX2 business identity.
+
+    Historical gallery-dl rows predate stable_identity_key. Their already
+    stored provider payload may prove the exact work/page through the existing
+    normalizer. Redacted receipts and external artifact pointers cannot.
+    """
+    if not is_trusted_complete_pixiv_metadata_record(record):
+        return False
+    projection = projection or _record_business_projection(record)
+    if _provenance_identity_matches(projection):
+        return True
+    provenance = record.provenance or {}
+    raw = record.raw_metadata_json or {}
+    if (projection['normalizer_version'] != PIXIV_LEGACY_NORMALIZER_VERSION
+        or 'stable_identity_key' in provenance
+        or provenance.get('adapter') != 'gallery-dl'
+        or provenance.get('metadata_only') is not True
+        or provenance.get('original_downloaded') is not False
+        or canonical_pixiv_provider_marker_consensus(raw) != 'pixiv'):
+        return False
+    work_fields = [raw[key] for key in ('id', 'illust_id', 'work_id', 'pid') if key in raw]
+    page_fields = [raw[key] for key in ('num', 'page_index', 'page') if key in raw]
+    if (not work_fields or not page_fields
+        or any(canonical_pixiv_work_id(value) != record.source_work_id for value in work_fields)
+        or any(canonical_pixiv_page_index(value) != record.source_page_index for value in page_fields)):
+        return False
+    try:
+        pages = normalize_gallery_dl_records([raw], record.source_work_id)
+    except PixivMetadataGateError:
+        return False
+    return bool(len(pages) == 1 and pages[0]['page_index'] == record.source_page_index
+                and pages[0]['creator_id'] == projection['provider_creator_id']
+                and pages[0]['title'] == projection['title']
+                and pages[0]['creator_name'] == projection['creator_display_name'])
 
 
 def plan_media_bindings(session, run):
@@ -25,7 +69,7 @@ def plan_media_bindings(session, run):
         if aggregate is None or not is_trusted_complete_pixiv_metadata_record(record):
             continue
         projection = _record_business_projection(record)
-        if not _provenance_identity_matches(projection):
+        if not verified_local_binding_provenance(record, projection):
             continue
         if canonical_fingerprint(projection) not in aggregate['source_fingerprints']:
             continue
