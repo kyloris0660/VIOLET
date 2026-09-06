@@ -272,7 +272,8 @@ def test_private_recovery_bounds_large_discovery_and_keeps_missing_link_identity
         sync_state='deferred', import_status='deferred', deferred_reason='unsupported_extension')
     db.add_all([gap, excluded])
     db.flush()
-    stable = [dict(relative_path=f'stable-{i}.png', reason='unchanged') for i in range(40000)]
+    settled_reasons = ('unchanged', 'skipped_existing_media', 'skipped_duplicate')
+    stable = [dict(relative_path=f'stable-{i}.png', reason=settled_reasons[i % 3]) for i in range(40000)]
     errors = [dict(relative_path=f'missing-{i}.png', source_item_id=gap.id if i == 0 else None,
         reason='stat_error', metadata={'private_diagnostic': {'exception_type': 'FileNotFoundError', 'errno': 2}})
         for i in range(205)]

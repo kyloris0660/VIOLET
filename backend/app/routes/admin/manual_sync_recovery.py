@@ -21,7 +21,7 @@ router = APIRouter()
 # observations belong in the recovery UI, with a separate bounded page cursor.
 _SETTLED_DISCOVERY_REASONS = frozenset({
     'unchanged', 'imported', 'existing_media_hash', 'downstream_followup_planned',
-    'non_target_content_class',
+    'non_target_content_class', 'skipped_existing_media', 'skipped_duplicate',
 })
 
 
