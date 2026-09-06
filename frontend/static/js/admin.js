@@ -3193,7 +3193,7 @@ class AdminPanel {
         statusEl.innerHTML = `
             <div>最新手动同步任务 #${job.id}: <span class="font-bold">${this.escapeHtml(job.status || '-')}</span> | 操作员状态=${this.escapeHtml(operatorStatusLabel)}</div>
             <div>${active ? '当前阶段' : '结果汇总'}=${this.escapeHtml(this._manualSyncStageLabel(currentStage))} | 阶段状态=${this.escapeHtml(this._manualSyncStageStatusLabel(execute.current_stage_status || stageStatus[currentStage] || '-'))} | 当前项目=${this.escapeHtml(currentItem)} | 心跳=${this.escapeHtml(heartbeat)}</div>
-            <div>本次新增=${Number(outcomes.imported || 0)}，已有内容=${Number(outcomes.skipped_existing_media || 0) + Number(outcomes.skipped_duplicate || 0)}，实际导入失败=${Number(outcomes.failed || 0)}，未执行导入=${Number(execute.unprocessed_import_planned_count || 0)}，未执行源重试=${Number(execute.unprocessed_retry_source_count || outcomes.retry_source_not_deferred || 0)}</div>
+            <div>本次新增=${Number(active ? job.new_items || 0 : outcomes.imported || 0)}，已有内容=${Number(outcomes.skipped_existing_media || 0) + Number(outcomes.skipped_duplicate || 0)}，实际导入失败=${Number(active ? job.failed_items || 0 : outcomes.failed || 0)}，未执行导入=${Number(execute.unprocessed_import_planned_count || 0)}，未执行源重试=${Number(execute.unprocessed_retry_source_count || outcomes.retry_source_not_deferred || 0)}</div>
             <div>策略排除/暂缓=${Number(outcomes.skipped_unsupported || 0) + Number(outcomes.skipped_placeholder || 0)}；下游各阶段结果见明细。未执行阶段显示跳过。</div>
             <div class="text-secondary">WorkItem：${workItemSummary}</div>
             <div class="text-secondary">结果拆解：${visibleOutcomes}</div>
@@ -3217,7 +3217,7 @@ class AdminPanel {
         this._updateManualSyncExecuteButton();
     }
 
-    async loadManualSyncRecovery(rootId, afterId = 0) {
+    async loadManualSyncRecovery(rootId, afterId = 0, discoveryOffset = 0, includePolicyExcluded = false) {
         if (!rootId) return;
         let panel = document.getElementById('dynamic-sync-recovery-items');
         if (!panel) {
@@ -3227,24 +3227,29 @@ class AdminPanel {
             document.getElementById('dynamic-sync-job-status')?.after(panel);
         }
         panel.textContent = '正在读取来源账本…';
-        const labels = {retryable: '可尝试', complete: '已处理', followup_pending: '已入库，下游待补做', waiting_retry: '等待重试时间', deferred_diagnosis: '暂缓待诊断', terminal: '当前版本策略排除', ignored: '主动忽略'};
+        const labels = {retryable: '可尝试', complete: '已处理', followup_pending: '已入库，下游待补做', waiting_retry: '等待重试时间', waiting_source: '等待来源重新可用', deferred_diagnosis: '暂缓待诊断', terminal: '当前版本策略排除', policy_excluded: '当前格式不支持', ignored: '主动忽略'};
         const reasons = {read_timeout: '读取超时', read_error: '读取失败', import_failed: '复制、解码或导入失败', stat_error: '文件属性读取失败', source_missing: '来源暂时不可见', content_changed_after_plan: '生成计划后文件发生变化', not_processed_budget_stop: '尚未执行，保留在续接队列', not_processed_cancelled: '取消时尚未执行', unsupported_extension: '当前格式不支持'};
         try {
-            const data = await app.apiCall(`/api/admin/dynamic-library-sync/recovery-items?root_id=${rootId}&after_id=${afterId}`, {method: 'GET'});
+            const data = await app.apiCall(`/api/admin/dynamic-library-sync/recovery-items?root_id=${rootId}&after_id=${afterId}&discovery_offset=${discoveryOffset}&include_policy_excluded=${includePolicyExcluded}`, {method: 'GET'});
             panel.innerHTML = `<div class="mb-2">当前待处理账本 ${data.total} 项。暂缓和策略排除可在条件变化后恢复；读取失败不代表文件损坏。</div>` +
+                `<label class="block mb-2"><input type="checkbox" data-recovery-policy ${includePolicyExcluded ? 'checked' : ''}> 包含历史不支持格式记录</label>` +
                 data.items.map(item => `<div class="border-t py-2">
                     <div>${this.escapeHtml(item.relative_path)} <span class="text-secondary">#${item.source_item_id}</span></div>
                     <div>${item.unexecuted ? '未执行' : this.escapeHtml(labels[item.disposition] || item.disposition)} · ${this.escapeHtml(reasons[item.reason] || item.reason || '等待补处理')}</div>
                     <div>最近尝试任务：${item.last_attempt_run_id || '尚无'}；下次可尝试：${this.escapeHtml(item.recovery.next_attempt_at || '见处置条件')}</div>
+                    ${item.metadata_diagnostic ? `<details><summary>最新元数据观察（任务 ${item.last_metadata_run_id}）</summary><pre class="whitespace-pre-wrap">${this.escapeHtml(JSON.stringify(item.metadata_diagnostic, null, 2))}</pre></details>` : ''}
                     <details><summary>具体原因与阶段</summary><pre class="whitespace-pre-wrap">${this.escapeHtml(JSON.stringify(item.diagnostic || {说明: '历史原异常未记录'}, null, 2))}</pre><div>分类：${this.escapeHtml(item.classification_status)}；标签：${this.escapeHtml(item.ai_tagging_status)}；本地化：${this.escapeHtml(item.localization_status)}</div></details>
                     <button class="border px-2 py-1 mt-1" data-recovery-id="${item.source_item_id}" data-recovery-action="resume">恢复为可尝试</button>
                     <button class="border px-2 py-1 mt-1" data-recovery-id="${item.source_item_id}" data-recovery-action="defer">暂缓待诊断</button>
                     <button class="border px-2 py-1 mt-1" data-recovery-id="${item.source_item_id}" data-recovery-action="ignore">主动忽略</button>
                 </div>`).join('') + (data.next_after_id ? '<button class="border px-3 py-1" data-recovery-next>下一页</button>' : '') +
-                `<details class="mt-2"><summary>计划阶段未执行项目及目录覆盖限制（${(data.metadata_dispositions || []).length} 项）</summary>` +
-                (data.metadata_dispositions || []).map(item => `<div class="border-t py-1">${this.escapeHtml(item.relative_path)}：${this.escapeHtml(reasons[item.reason] || labels[item.reason] || item.reason)}<pre class="whitespace-pre-wrap">${this.escapeHtml(JSON.stringify((item.metadata || {}).private_diagnostic || {}, null, 2))}</pre></div>`).join('') +
-                (data.directory_errors || []).map(item => `<div>${this.escapeHtml(item.path || '')}：目录覆盖未知，${this.escapeHtml(item.reason || item.exception_type || '未记录')}</div>`).join('') + '</details>';
-            panel.querySelector('[data-recovery-next]')?.addEventListener('click', () => this.loadManualSyncRecovery(rootId, data.next_after_id));
+                `<details class="mt-2"><summary>计划观察：暂缓、策略排除及覆盖限制（共 ${Number(data.discovery_total || 0)} 项，本页最多 100 项）</summary>` +
+                (data.metadata_dispositions || []).map(item => `<div class="border-t py-1">${this.escapeHtml(item.relative_path)}：${this.escapeHtml(reasons[item.reason] || labels[item.reason] || item.reason)}${(item.metadata || {}).private_diagnostic ? `<pre class="whitespace-pre-wrap">${this.escapeHtml(JSON.stringify(item.metadata.private_diagnostic, null, 2))}</pre>` : ''}</div>`).join('') +
+                (data.directory_errors || []).map(item => `<div>${this.escapeHtml(item.path || '')}：目录覆盖未知，${this.escapeHtml(item.reason || item.exception_type || '未记录')}</div>`).join('') +
+                (data.next_discovery_offset !== null ? '<button class="border px-3 py-1" data-discovery-next>下一页计划观察</button>' : '') + '</details>';
+            panel.querySelector('[data-recovery-next]')?.addEventListener('click', () => this.loadManualSyncRecovery(rootId, data.next_after_id, discoveryOffset, includePolicyExcluded));
+            panel.querySelector('[data-discovery-next]')?.addEventListener('click', () => this.loadManualSyncRecovery(rootId, afterId, data.next_discovery_offset, includePolicyExcluded));
+            panel.querySelector('[data-recovery-policy]')?.addEventListener('change', event => this.loadManualSyncRecovery(rootId, 0, 0, event.target.checked));
             panel.querySelectorAll('[data-recovery-action]').forEach(button => button.addEventListener('click', async () => {
                 button.disabled = true;
                 try {
@@ -3252,7 +3257,7 @@ class AdminPanel {
                     this.dynamicSyncPlan = null;
                     this._updateManualSyncExecuteButton();
                     app.showNotification('处置已保存。重新生成正常同步计划即可推进可尝试项目。', 'success');
-                    await this.loadManualSyncRecovery(rootId, afterId);
+                    await this.loadManualSyncRecovery(rootId, afterId, discoveryOffset, includePolicyExcluded);
                 } catch (error) { app.showNotification(error.message || '处置未保存', 'error'); button.disabled = false; }
             }));
         } catch (error) { panel.textContent = error.message || '读取账本失败'; }

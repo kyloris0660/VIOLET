@@ -5,11 +5,11 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`VALIDATING_PRODUCTION_IMPORT_RECOVERY_CANDIDATE`。
+- 状态：`EXECUTING_PRODUCTION_IMPORT_RECOVERY`。
 - 分支：`codex/production-import-recovery`；PR：`None`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
 - 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
-- 修复生产候选：`尚未部署`。
+- 修复生产候选：`b14417cea390c3b7fd559cc5d3b3e633004d9014`。
 
 ## 当前检查点
 
@@ -22,6 +22,9 @@
 - 提交前预验证：受影响focused 327 passed / 2 skipped，隔离PostgreSQL 80 passed；后续界面复核修正仍需最终候选验证。
 - 独立有界面Edge已验证4个测试导入、1个版本排除及三个恢复动作；截图复核补上单项失败总览与下游待补做列表。
 - 314d028聚焦438 passed / 3 skipped、隔离PostgreSQL 83 passed；真实控制器文件入口发现包导入路径缺陷，旧生产已恢复，启动锚点尚未切换；补充独立子进程回归后冻结新候选。
+- b14417c最终聚焦439 passed / 3 skipped，隔离PostgreSQL83 passed；正常便携启动器界面启动和重启通过，原production8012运行修复候选，原库/存储/认证和5 Media / 51绑定核实，apply关闭。
+- 真实恢复#28完整处理493候选：40新增、263关联、190读取失败；原108和82全部实际尝试，下游42分类/36标签及本地化覆盖，无下游失败。
+- 精确关联修复#29完成四行；总计267关联修复，剩余1个来源缺失且无可靠哈希。最终界面与缺口观察已在隔离副本预验证，确认所有生产任务结束后进入最终候选维护窗口。
 
 ## 执行顺序
 
@@ -50,7 +53,7 @@
 自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
 执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
 
-下一检查点：冻结修复候选并完成该HEAD验证，再部署日常生产入口和执行真实恢复。
+下一检查点：冻结并验证最终候选，经正常启动器部署和实际浏览复验，逐项对账后提交正常PR，待负责人复审合并。
 
 ## 持久入口
 

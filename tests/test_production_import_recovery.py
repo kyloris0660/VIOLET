@@ -230,6 +230,86 @@ def test_stat_failure_records_exact_listed_identity(db, tmp_path, monkeypatch):
     assert 'known.png' not in str(planner._redact_private_sync_payload(plan))
 
 
+def test_missing_unlinked_noop_is_observed_and_reenters_when_source_returns(db, tmp_path, monkeypatch):
+    _enable_manual_execute(monkeypatch)
+    _patch_test_storage(monkeypatch, tmp_path)
+    monkeypatch.setenv('CONTENT_CLASSIFICATION_ENABLED', 'false')
+    monkeypatch.setenv('AI_TAGGING_ENABLED', 'false')
+    source = tmp_path/'source'
+    source.mkdir()
+    root = planner.register_source_root(db, path=source, label='missing-link-fixture')
+    item = DynamicSourceItem(source_root_id=root.id, relative_path='missing.png',
+        relative_path_hash=planner._hash_text('missing.png'), sync_state='skipped_existing_media',
+        import_status='deferred', deferred_reason='existing_media_hash', file_size=10, mtime_ns=20)
+    db.add(item)
+    db.commit()
+    plan = planner.plan_manual_sync_dry_run(db, source_path=source, source_record_id=root.id,
+        max_files=10, stable_age_seconds=0, include_private_details=True)
+    observed = next(row for row in plan['private_details']['metadata_dispositions'] if row.get('source_item_id') == item.id)
+    assert observed['reason'] == 'stat_error'
+    assert observed['metadata']['private_diagnostic']['exception_type'] == 'FileNotFoundError'
+    assert item.media_id is None  # No invented link or successful content read.
+    _write_png(source/'missing.png')
+    run, _ = enqueue(db, root, 1)
+    result = execute_manual_sync_run(db, run_id=run.id)['manual_sync_execute']
+    db.refresh(item)
+    assert result['outcome_counts']['imported'] == 1
+    assert item.media_id is not None
+
+
+def test_private_recovery_bounds_large_discovery_and_keeps_missing_link_identity(db, tmp_path, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.models import DynamicSyncRun
+    from app.routes.admin import manual_sync_recovery as routes
+    _patch_test_storage(monkeypatch, tmp_path)
+    source = tmp_path/'source'
+    source.mkdir()
+    root = planner.register_source_root(db, path=source, label='large-discovery-fixture')
+    gap = DynamicSourceItem(source_root_id=root.id, relative_path='missing.png', relative_path_hash='gap',
+        sync_state='skipped_existing_media', import_status='deferred', deferred_reason='existing_media_hash')
+    excluded = DynamicSourceItem(source_root_id=root.id, relative_path='old.heic', relative_path_hash='excluded',
+        sync_state='deferred', import_status='deferred', deferred_reason='unsupported_extension')
+    db.add_all([gap, excluded])
+    db.flush()
+    stable = [dict(relative_path=f'stable-{i}.png', reason='unchanged') for i in range(40000)]
+    errors = [dict(relative_path=f'missing-{i}.png', source_item_id=gap.id if i == 0 else None,
+        reason='stat_error', metadata={'private_diagnostic': {'exception_type': 'FileNotFoundError', 'errno': 2}})
+        for i in range(205)]
+    run = DynamicSyncRun(run_type='manual_sync_execute', status='completed',
+        summary_json={'manual_sync_execute': {'request': {'root_id': root.id}, 'private_discovery': {
+            'metadata_dispositions': stable + errors,
+            'directory_errors': [dict(path=f'dir-{i}', reason='denied', coverage='unknown') for i in range(3)]}}})
+    db.add(run)
+    db.commit()
+    app = FastAPI()
+    app.include_router(routes.router, prefix='/api/admin')
+    app.dependency_overrides[routes.get_db] = lambda: db
+    app.dependency_overrides[routes.require_admin_mode] = lambda: SimpleNamespace(id=1)
+    client = TestClient(app)
+    url = '/api/admin/dynamic-library-sync/recovery-items'
+    response = client.get(url, params={'root_id': root.id, 'include_policy_excluded': False})
+    assert response.status_code == 200
+    body = response.json()
+    assert body['total'] == 1 and body['items'][0]['source_item_id'] == gap.id
+    assert body['items'][0]['last_attempt_run_id'] is None
+    assert body['items'][0]['disposition'] == 'waiting_source'
+    assert body['items'][0]['reason'] == 'source_missing'
+    assert body['items'][0]['last_metadata_run_id'] == run.id
+    assert body['items'][0]['metadata_diagnostic']['errno'] == 2
+    assert body['discovery_total'] == 208 and body['next_discovery_offset'] == 100
+    assert len(response.content) < 100000 and 'stable-' not in response.text
+    seen = list(body['metadata_dispositions'])
+    for offset in (100, 200):
+        page = client.get(url, params={'root_id': root.id, 'discovery_offset': offset}).json()
+        assert len(page['metadata_dispositions']) + len(page['directory_errors']) <= 100
+        seen += page['metadata_dispositions']
+    assert len({row['relative_path'] for row in seen}) == 205
+    assert len(page['directory_errors']) == 3 and page['next_discovery_offset'] is None
+    assert next(item for item in page['items'] if item['source_item_id'] == excluded.id)['disposition'] == 'policy_excluded'
+    assert client.get(url, params={'root_id': root.id, 'limit': 201}).status_code == 422
+
+
 def test_real_cap_one_runs_reach_old_retry_tail(db, tmp_path, monkeypatch):
     from app.models import DynamicSyncRun
     _enable_manual_execute(monkeypatch)

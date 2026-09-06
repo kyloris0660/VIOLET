@@ -2554,6 +2554,10 @@ def _manual_plan_priority_for_known_item(
     lifecycle = classify_source_item(item)
     if lifecycle.kind == LifecycleKind.APP_MEDIA_FOLLOWUP:
         return _manual_plan_media_followup_candidate_priority(item)
+    if item.media_id is None and sync_state in {'skipped_existing_media', 'skipped_duplicate', 'unchanged'}:
+        # An old unlinked no-op remains a known gap even when its path is absent
+        # from today's directory listing. Stat it once and retain its identity.
+        return 32
     if lifecycle.kind == LifecycleKind.STABLE_NOOP:
         return None
     if _manual_plan_media_backed_pending_noop(item):
