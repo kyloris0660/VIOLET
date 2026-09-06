@@ -2431,6 +2431,10 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
+    if state.get('phase_id') == 'PRODUCTION-IMPORT-RECOVERY':
+        from scripts.production_import_recovery_state import validate
+        validate(state, root)
+        return
     if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
         from scripts.production_pixiv_a1_state import validate
         validate(state, root)
@@ -3126,7 +3130,7 @@ def validate_git_ancestry(
     root: Path = ROOT,
     implementation_evidence: dict[str, Any] | None = None,
 ) -> None:
-    if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
+    if state.get('phase_id') in {'PRODUCTION-PIXIV-A1', 'PRODUCTION-IMPORT-RECOVERY'}:
         if _trusted_git_value(root, 'rev-parse', '--abbrev-ref', 'HEAD') != state['branch']:
             raise DocumentationStateError('a1_live_branch')
         if _trusted_git_value(root, 'merge-base', state['accepted_mainline_base'], 'HEAD') != state['accepted_mainline_base']:
@@ -3400,6 +3404,12 @@ def _validate_scv2_px3_roadmaps(state: dict[str, Any], *, root: Path) -> None:
 
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
+    if state.get('phase_id') == 'PRODUCTION-IMPORT-RECOVERY':
+        for path in ACTIVE_ROUTE_PATHS:
+            content = (root / path.relative_to(ROOT)).read_text(encoding='utf-8')
+            if re.findall(r'<!-- CURRENT_PHASE: ([^ ]+) -->', content) != ['PRODUCTION-IMPORT-RECOVERY']:
+                raise DocumentationStateError('import_recovery_roadmap_marker')
+        return
     if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
         for path in ACTIVE_ROUTE_PATHS:
             content = (root / path.relative_to(ROOT)).read_text(encoding='utf-8')
@@ -3866,6 +3876,9 @@ def _render_scv2_px3_handoff(state: dict[str, Any]) -> str:
 def render_handoff(state: dict[str, Any]) -> str:
     """Render the complete public-safe I2 planning handoff."""
 
+    if state.get('phase_id') == 'PRODUCTION-IMPORT-RECOVERY':
+        from scripts.production_import_recovery_state import render
+        return render(state)
     if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
         from scripts.production_pixiv_a1_state import render
         return render(state)

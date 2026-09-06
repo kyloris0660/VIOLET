@@ -368,11 +368,11 @@ def _media(**overrides: object) -> SimpleNamespace:
             None,
             None,
             False,
-            LifecycleKind.STABLE_NOOP,
-            WorkItemKind.NOOP_DIAGNOSTIC,
-            False,
-            False,
-            False,
+            LifecycleKind.IMPORT_CANDIDATE,
+            WorkItemKind.IMPORT,
+            True,
+            True,
+            True,
         ),
         (
             "media_backed_downstream_complete_ignores_stale_continuation",
@@ -420,11 +420,11 @@ def _media(**overrides: object) -> SimpleNamespace:
             None,
             None,
             False,
-            LifecycleKind.STABLE_NOOP,
-            WorkItemKind.NOOP_DIAGNOSTIC,
-            False,
-            False,
-            False,
+            LifecycleKind.IMPORT_CANDIDATE,
+            WorkItemKind.IMPORT,
+            True,
+            True,
+            True,
         ),
         (
             "source_missing_media_backed_downstream_incomplete",
@@ -578,7 +578,7 @@ def test_manual_sync_lifecycle_operator_status_mapping() -> None:
             outcome_counts={"failed": 5, "read_timeout": 1},
             retryable_source_failure_count=1,
         )
-        == "failed_systemic"
+        == "completed_with_item_failures"
     )
     assert map_manual_sync_operator_status(run_status="completed", outcome_counts={}) == "completed"
     assert (

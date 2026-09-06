@@ -64,7 +64,15 @@ outside the automated contract.
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A1 -->
+<!-- CURRENT_PHASE: PRODUCTION-IMPORT-RECOVERY -->
+
+当前修复契约为 `production_import_recovery_v1`，入口为
+`scripts/check_production_import_recovery.py`，统一检查器使用
+`--import-recovery-evidence`。它核对同候选 focused/PostgreSQL 原始测试结果、
+逐项恢复附件、日常启动锚点和重启身份、有界面 Edge 与原五样本/51绑定。
+工程完成只表示已交付待负责人复审的候选；接受、合并及合并后主线对齐分别记账。
+
+### 上一已接受阶段：PR #151 / A1
 
 本次契约为 `production_pixiv_a1_v1`，入口为 `scripts/check_production_pixiv_a1.py`。
 现有 `scripts/check_phase_contract.py` 通过 `--a1-evidence` 读取本机实际备份、

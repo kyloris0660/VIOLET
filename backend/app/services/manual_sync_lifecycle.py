@@ -35,6 +35,7 @@ class WorkItemKind(str, Enum):
 
 OPERATOR_STATUS_LABELS_ZH = {
     "completed": "已完成：本批次没有剩余操作员动作",
+    "completed_with_item_failures": "已完成当前批次：部分文件未导入，请查看原因与处置",
     "completed_with_retryable_failures": "已完成但有可重试源文件债务：稍后可重试源文件读取",
     "completed_with_followup_required": "已完成但需要后续补处理：分类、AI 标签或本地化仍有未完成项",
     "completed_with_continuation": "已完成当前批次：还有下一批或源文件重试恢复后的导入需要继续计划",
@@ -88,6 +89,9 @@ def manual_sync_operator_label_catalog() -> dict[str, dict[str, str]]:
 
 RETRYABLE_SOURCE_FAILURE_REASONS = frozenset(
     {
+        "import_failed",
+        "stat_error",
+        "corrupted_image",
         "cloud_hydration_failed",
         "cloud_network_unavailable",
         "content_changed_after_plan",
@@ -602,7 +606,7 @@ def classify_source_item(
             attempted_in_run=attempted,
             current_downstream_complete=current_complete,
         )
-    if import_status == "pending" and current_priority:
+    if import_status == "import_in_progress" or (import_status == "pending" and current_priority):
         return _decision(
             LifecycleKind.IMPORT_CANDIDATE,
             reason_code=reason or "pending_import",
@@ -610,6 +614,9 @@ def classify_source_item(
             attempted_in_run=attempted,
             current_downstream_complete=current_complete,
         )
+    if not has_media and sync_state in {"unchanged", "skipped_existing_media", "skipped_duplicate"}:
+        return _decision(LifecycleKind.IMPORT_CANDIDATE,
+            reason_code="content_link_requires_reconciliation", evidence=evidence)
     if current_complete or sync_state in {"unchanged", "skipped_existing_media", "skipped_duplicate"}:
         return _decision(
             LifecycleKind.STABLE_NOOP,
@@ -710,11 +717,15 @@ def map_manual_sync_operator_status(
         return "blocked_preflight"
     if fatal_blocker or status == "failed_systemic":
         return "failed_systemic"
+    if stopped in {"systemic_storage_unavailable", "execution_dependency_unavailable", "database_unavailable"}:
+        return "failed_systemic"
     if status in {"cancelled", "cancelling"} or stopped == "cancelled":
         return "cancelled"
-    if non_retryable_failed:
+    if non_retryable_failed and status == "failed" and not stopped:
         return "failed_systemic"
-    if stopped in {"stopped_by_failure_budget", "stopped_by_duration_budget"} and followup_required:
+    if non_retryable_failed:
+        return "completed_with_item_failures"
+    if stopped == "stopped_by_failure_budget" and followup_required:
         return "failed_systemic"
     if status == "failed" and stopped in {"stopped_by_failure_budget", "stopped_by_duration_budget"}:
         if continuation and retryable:
