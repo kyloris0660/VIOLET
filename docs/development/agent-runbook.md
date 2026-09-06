@@ -14,6 +14,10 @@ ChatGPT 会话，路线与复审）、执行代理（当前 Codex，实现与验
 （注明实际主体）及产品用户（功能体验）。自动执行不冒称授权人亲自操作或接受；
 原始会话、历史审批主体和归档证据保留原貌。其他项目按实际职责重新映射。
 
+工具是手段。已知 Computer Use URL 识别故障不反复重试；只有当前规则明确允许
+的独立接口和目标操作才可作为替代路径，明确的安全或访问拒绝不得绕过。单项
+阻塞不搁置其他可做的检查、报告和 PR；调用前记录完成状态及下一动作。
+
 This repository is **V.I.O.L.E.T.** (Visual Image Organizer for Local Evaluation & Tagging), based on [Blombooru](https://github.com/mrblomblo/blombooru) — a self-hosted anime/illustration media tagging tool built with FastAPI + PostgreSQL + Jinja2/Tailwind.
 
 The project goal is a personal, local anime image library with Danbooru-style tag-based retrieval and Chinese localization. See `docs/project-roadmap.md` for the full phase plan and `docs/current-handoff.md` for the latest state.

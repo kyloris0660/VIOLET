@@ -9,6 +9,9 @@
   自动操作记录为“执行代理依据项目所有者授权完成”，不得冒称人工验收。
 - 按当前任务的明确授权连续推进；已授权的普通实现、恢复排练和验收不重复
   请求确认。历史阶段授权只适用于当时范围，不能自动延伸或否定新的明确授权。
+- 工具是手段：已知 Computer Use URL 识别故障不反复重试；使用当前规则明确
+  允许的独立路径完成真实验收，明确的安全或访问拒绝不得绕过。单项阻塞不
+  搁置其他可做的检查、报告和 PR。
 
 V.I.O.L.E.T. is a local anime/illustration library built with FastAPI,
 PostgreSQL, Jinja2/Tailwind, and vanilla JavaScript. Before acting, read and
