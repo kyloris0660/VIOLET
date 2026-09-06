@@ -33,6 +33,7 @@ from ..models import (
     blombooru_media_tags,
 )
 from ..routes.media import process_and_save_media
+from .media_commit_boundary import MediaCommittedError
 from ..schemas import RatingEnum
 from ..utils.logger import logger
 from ..utils.local_library_scanner import _is_scannable_file
@@ -1634,6 +1635,10 @@ def _copy_and_import_media(db: Session, source_file: Path) -> tuple[int, int]:
             category_hints=None,
         )
         return int(media.id), int(bytes_copied)
+    except MediaCommittedError as exc:
+        # The durable Media owns this file even if the response failed.
+        exc.bytes_copied = bytes_copied
+        raise
     except HTTPException:
         if copied:
             try:
@@ -2480,7 +2485,14 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     metadata={**import_metadata, "import": {"status": "in_progress"}},
                 )
                 db.commit()
-                media_id, bytes_copied = _copy_and_import_media(db, source_file)
+                try:
+                    media_id, bytes_copied = _copy_and_import_media(db, source_file)
+                except MediaCommittedError as exc:
+                    from .media_commit_boundary import recover_committed_media
+                    saved = recover_committed_media(db, exc, expected_hash=current_content_hash)
+                    media_id, bytes_copied = int(saved.id), int(exc.bytes_copied)
+                    import_metadata['post_commit_recovery'] = dict(exc.detail)
+                    counts['imported_recovery_pending'] += 1
                 imported_media_ids.append(media_id)
                 item = _get_or_create_source_item(
                     db,
@@ -2532,7 +2544,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 item.classification_status = "deferred"
                 item.ai_tagging_status = "deferred"
                 item.localization_status = "deferred"
-                item.failure_reason = None if duplicate else "import_failed"
+                item.failure_reason = None if duplicate else (exc.detail.get('code') if isinstance(exc, MediaCommittedError) else "import_failed")
                 item.deferred_reason = "existing_media_hash" if duplicate else None
                 _record_run_item(
                     db,

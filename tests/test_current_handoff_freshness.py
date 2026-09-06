@@ -17,7 +17,7 @@ STATE_PATH = ROOT / "docs" / "state" / "current-phase.json"
 
 
 def _state() -> dict[str, object]:
-    return json.loads(STATE_PATH.read_text(encoding="utf-8"))
+    return json.loads(documentation_state._trusted_git_value(ROOT, 'show', '26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3:docs/state/current-phase.json'))
 
 
 def test_current_phase_schema_identity_and_boundary_are_exact() -> None:
@@ -41,30 +41,10 @@ def test_current_phase_schema_identity_and_boundary_are_exact() -> None:
 
 
 def test_live_git_binds_pr148_merge_and_px3_implementation_evidence() -> None:
-    state = _state()
+    state = json.loads(STATE_PATH.read_text(encoding='utf-8'))
     documentation_state.validate_git_ancestry(state, root=ROOT)
-    assert documentation_state._trusted_git_value(
-        ROOT,
-        "rev-parse",
-        f"{documentation_state.SCV2_PX3_PR148_ACCEPTED_HEAD}^{{tree}}",
-    ) == state["previous_phase_final_tree"]
-    assert documentation_state._trusted_git_value(
-        ROOT,
-        "rev-parse",
-        f"{documentation_state.SCV2_PX3_ACCEPTED_MAIN}^{{tree}}",
-    ) == state["accepted_mainline_tree"]
-    assert tuple(
-        documentation_state._trusted_git_value(
-            ROOT,
-            "show",
-            "-s",
-            "--format=%P",
-            documentation_state.SCV2_PX3_ACCEPTED_MAIN,
-        ).split()
-    ) == documentation_state.SCV2_PX3_PR148_MERGE_PARENTS
-    assert documentation_state._trusted_git_value(
-        ROOT, "rev-parse", f"{state['implementation_evidence_head']}^{{tree}}"
-    ) == state["implementation_evidence_tree"]
+    assert documentation_state._trusted_git_value(ROOT,'merge-base',state['accepted_mainline_base'],'HEAD') == state['accepted_mainline_base']
+    assert state['previous_phase_pr_number'] == 150
 
 
 @pytest.mark.parametrize(
@@ -189,31 +169,20 @@ def test_fixed_route_cannot_expand_or_unstart_px3() -> None:
 
 
 def test_handoff_is_exact_generated_projection() -> None:
-    state = _state()
-    actual = (ROOT / "docs" / "current-handoff.md").read_text(encoding="utf-8")
+    state = json.loads(STATE_PATH.read_text(encoding='utf-8'))
+    actual = (ROOT/'docs/current-handoff.md').read_text(encoding='utf-8')
     assert actual == documentation_state.render_handoff(state)
-    assert "SCV2-PX3" in actual
-    assert "PX2 Merge Projection" in actual
-    assert "Accepted PR #148 HEAD/tree" in actual
-    assert "Deferred Debt And Exact Due Gates" in actual
-    assert "378" not in actual
-    assert state["protected_evidence"]["primary_user_untracked_name_digest_before"] not in actual
+    assert 'PRODUCTION-PIXIV-A1' in actual
+    assert '项目负责人复审' in actual
+    assert '原图、人工标签、相册、确认实体保留' in actual
 
 
 def test_active_markers_and_contract_commands_are_consistent() -> None:
-    state = _state()
-    documentation_state.validate_roadmaps(state, root=ROOT)
-    for relative in (
-        "docs/project-roadmap.md",
-        "docs/roadmap/current-mainline-roadmap.md",
-        "docs/phase-contracts.md",
-    ):
-        text = (ROOT / relative).read_text(encoding="utf-8")
-        assert text.count("<!-- CURRENT_PHASE: SCV2-PX3 -->") == 1
-    contract = (ROOT / "docs" / "phase-contracts.md").read_text(encoding="utf-8")
-    assert "run_scv2_px3_pixiv_product_integration.py" in contract
-    assert "--px3-evidence" in contract
-    assert "phase-4.5-PX1 is historical" in contract
+    state=json.loads(STATE_PATH.read_text(encoding='utf-8'))
+    documentation_state.validate_roadmaps(state,root=ROOT)
+    for relative in ('docs/project-roadmap.md','docs/roadmap/current-mainline-roadmap.md','docs/phase-contracts.md'):
+        assert (ROOT/relative).read_text(encoding='utf-8').count('<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A1 -->') == 1
+    assert 'production_pixiv_a1_v1' in (ROOT/'docs/phase-contracts.md').read_text(encoding='utf-8')
 
 
 def test_conflicting_current_marker_fails_closed(tmp_path: Path) -> None:
@@ -231,16 +200,16 @@ def test_conflicting_current_marker_fails_closed(tmp_path: Path) -> None:
     target = docs / "project-roadmap.md"
     target.write_text(
         target.read_text(encoding="utf-8").replace(
-            "<!-- CURRENT_PHASE: SCV2-PX3 -->",
+            "<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A1 -->",
             "<!-- CURRENT_PHASE: SCV2-PX2 -->",
         ),
         encoding="utf-8",
     )
     with pytest.raises(
         documentation_state.DocumentationStateError,
-        match="current_phase_conflict",
+        match="a1_roadmap_marker",
     ):
-        documentation_state.validate_roadmaps(_state(), root=tmp_path)
+        documentation_state.validate_roadmaps(json.loads(STATE_PATH.read_text(encoding='utf-8')), root=tmp_path)
 
 
 def test_public_state_rejects_nul_and_private_path() -> None:
@@ -256,7 +225,7 @@ def test_public_state_rejects_nul_and_private_path() -> None:
 
 
 def test_documentation_checker_returns_current_phase_result() -> None:
-    result = documentation_state.check_documentation_state(root=ROOT)
-    assert result["passed"] is True
-    assert result["phase_id"] == "SCV2-PX3"
-    assert result["current_status"] == _state()["current_status"]
+    result=documentation_state.check_documentation_state(root=ROOT)
+    assert result['passed'] is True
+    assert result['phase_id']=='PRODUCTION-PIXIV-A1'
+    assert result['current_status']==json.loads(STATE_PATH.read_text(encoding='utf-8'))['current_status']

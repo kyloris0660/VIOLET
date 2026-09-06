@@ -12,6 +12,7 @@ from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 import re
+import os
 from typing import Any, Iterable, Mapping, Sequence
 
 from sqlalchemy import create_engine
@@ -72,6 +73,9 @@ from .source_concept_resolver_service import (
 PX3_CONTRACT_ID = "scv2_px3_pixiv_product_integration_contract_v1"
 PX3_PUBLIC_SCHEMA = "violet.scv2-px3-pixiv-product-integration-result.v1"
 PX3_POLICY_VERSION = "scv2_px3_pixiv_product_projection_v1"
+# Proven implementation at PR #150. These literals must never track new constants.
+LEGACY_CONTEXT_POLICY = "scv2_px2_pixiv_role_context_policy_v1"
+LEGACY_CANDIDATE_POLICY = "scv2_px2_resolver_candidate_disposition_v1"
 PX3_PERSISTENCE_SCHEMA = "violet.scv2-px3-product-persistence-proof.v1"
 PX3_OPERATION_RECEIPT_SCHEMA = "violet.scv2-px3-operation-receipt.v1"
 PX3_EXECUTED_STAGES = (
@@ -693,14 +697,25 @@ def _stored_product_projection(
         .order_by(SourceConceptAmbiguityRecord.record_key)
         .all()
     ]
+    versions = (row.summary_json or {}).get('policy_versions')
+    historical = versions is None
+    if versions is not None and (
+        versions.get('resolver_version') != row.resolver_version
+        or versions.get('product_policy_version') != row.policy_version
+    ):
+        raise PixivProductIntegrationError('px3_persisted_policy_version_drift')
+    versions = versions or {
+        'context_policy_version': LEGACY_CONTEXT_POLICY,
+        'candidate_policy_version': LEGACY_CANDIDATE_POLICY,
+    }
     projection = {
         "scope_key": row.scope_key,
         "source_mode": row.source_mode,
         "px1_input_fingerprint": row.input_fingerprint,
         "px2_business_projection_fingerprint": row.business_fingerprint,
         "resolver_version": row.resolver_version,
-        "context_policy_version": PX2_CONTEXT_POLICY_VERSION,
-        "candidate_policy_version": PX2_CANDIDATE_POLICY_VERSION,
+        "context_policy_version": versions.get('context_policy_version'),
+        "candidate_policy_version": versions.get('candidate_policy_version'),
         "product_policy_version": row.policy_version,
         "clusters": clusters,
         "candidate_dispositions": candidates,
@@ -726,6 +741,8 @@ def _stored_product_projection(
     candidates.sort(key=lambda item: item['pair_key'])
     ambiguities.sort(key=lambda item: item['record_key'])
     if canonical_fingerprint(projection) != row.result_fingerprint:
+        if historical:
+            raise PixivProductIntegrationError('px3_historical_policy_unknown')
         raise PixivProductIntegrationError('px3_persisted_projection_drift')
     return projection
 
@@ -820,7 +837,7 @@ def apply_pixiv_product_plan(
         input_selection=input_selection,
     )
     with session.no_autoflush:
-        edges = plan_media_bindings(session, run)
+        edges = plan_media_bindings(session, run, lock=apply)
     plan['media_binding'] = binding_plan_summary(edges)
     selection_fingerprint = (
         input_selection['canonical_fingerprint'] if input_selection else
@@ -946,7 +963,7 @@ def apply_pixiv_product_plan(
                 0 if source_mode == "repository_synthetic" else 1
             ),
             "user_data_import_activity": 0,
-            "production_activity": 0,
+            "production_activity": int(os.environ.get('VIOLET_ENV') == 'production'),
         }
         if existing is None:
             existing = SourceConceptProductRun(run_key=plan["run_key"])
@@ -964,6 +981,10 @@ def apply_pixiv_product_plan(
         existing.invariants_json = plan["invariants"]
         existing.operation_receipt_json = receipt
         existing.summary_json = {
+            "policy_versions": {key: business[key] for key in (
+                'resolver_version', 'context_policy_version',
+                'candidate_policy_version', 'product_policy_version',
+            )},
             "counts": plan["counts"],
             "execution_boundary": plan["execution_boundary"],
             "input_selection": plan.get("input_selection"),
@@ -1033,7 +1054,7 @@ def apply_pixiv_product_plan(
     return applied
 
 
-def _rollback_ownership_fingerprint(session, product_run):
+def _rollback_ownership_fingerprint(session, product_run, *, allow_source_withdrawal=False):
     """Bind all owned core rows and references, including later consumers."""
     run_id = product_run.resolver_run_id
     signals = session.query(SourceConceptSignal.id).filter_by(created_by_run_id=run_id)
@@ -1057,12 +1078,44 @@ def _rollback_ownership_fingerprint(session, product_run):
                 SourceConceptEvidence.concept_id.in_(concepts) | SourceConceptEvidence.signal_id.in_(signals)))),
     ]
     payload = []
+    table_names = []
     for query in queries:
+        table_names.append(query.column_descriptions[0]['entity'].__tablename__)
         rows = []
         for item in query.all():
             rows.append({column.name: getattr(item, column.name) for column in item.__table__.columns
                          if column.name not in {'created_at', 'updated_at', 'started_at', 'finished_at'}})
         payload.append(sorted(rows, key=lambda item: item['id']))
+    if allow_source_withdrawal:
+        for change in reversed((product_run.rollback_guard_json or {}).get('source_invalidations', [])):
+            before, after = change['before'], change['after']
+            from sqlalchemy import Float
+            # PostgreSQL to_jsonb(float8) writes integral values as JSON ints;
+            # restore the ORM column type before comparing canonical payloads.
+            for value in (before, after):
+                if value is not None:
+                    value_types = Base.metadata.tables[change['table']].columns
+                    for column in value_types:
+                        if isinstance(column.type, Float) and value.get(column.name) is not None:
+                            value[column.name] = float(value[column.name])
+            matched = False
+            for table, rows in zip(table_names, payload):
+                if table != change['table']:
+                    continue
+                actual = next((item for item in rows if item['id'] == before['id']), None)
+                # Signals occur in two ownership projections. A row that was
+                # never in this projection must not be injected into it.
+                if actual is None and after is not None:
+                    continue
+                if canonical_fingerprint(actual) != canonical_fingerprint(after):
+                    raise PixivProductIntegrationError('px3_rollback_source_withdrawal_drift')
+                if actual is not None:
+                    rows.remove(actual)
+                rows.append(before)
+                rows.sort(key=lambda item: item['id'])
+                matched = True
+            if not matched:
+                raise PixivProductIntegrationError('px3_rollback_source_withdrawal_missing')
     return canonical_fingerprint(payload)
 
 
@@ -1084,7 +1137,7 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
         "preexisting_core_business_row_count"
     ) != 0 or guard.get('resolution_run_created') is not True:
         raise PixivProductIntegrationError("px3_rollback_guard_not_satisfied")
-    if guard.get('ownership_fingerprint') != _rollback_ownership_fingerprint(session, row):
+    if guard.get('ownership_fingerprint') != _rollback_ownership_fingerprint(session, row, allow_source_withdrawal=True):
         raise PixivProductIntegrationError('px3_rollback_core_or_binding_drift')
     if session.query(SourceConceptProductRun).filter(
         SourceConceptProductRun.id != row.id,
@@ -1152,6 +1205,7 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
         **dict(row.operation_receipt_json or {}),
         "mode": "rollback",
         "deleted_core_rows": deleted,
+        "source_withdrawal_reconciled_count": len(guard.get('source_invalidations', [])),
         "forbidden_truth_table_write_count": 0,
     }
     session.commit()
@@ -1208,6 +1262,15 @@ def get_pixiv_product_run(
     projection = _stored_product_projection(session, row)
     result = {
         **_serialize_product_run(row),
+        "policy_versions": {key: projection[key] for key in (
+            'resolver_version', 'context_policy_version',
+            'candidate_policy_version', 'product_policy_version',
+        )},
+        "policy_version_evidence": (
+            'captured_at_apply' if (row.summary_json or {}).get('policy_versions')
+            else 'legacy_implementation_verified_by_result_fingerprint'
+        ),
+        "source_withdrawal_count": len((row.rollback_guard_json or {}).get('source_invalidations', [])),
         "clusters": projection["clusters"],
         "candidate_dispositions": projection["candidate_dispositions"],
         "ambiguity_records": projection["ambiguity_records"],

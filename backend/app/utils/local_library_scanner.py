@@ -393,16 +393,21 @@ def scan_and_import(
 
                 source_uri = f"file://{file_path}"
 
-                media_resp = process_and_save_media(
-                    db=db,
-                    file_path=copied_path,
-                    unique_filename=unique_name,
-                    rating=RatingEnum.safe,
-                    tags="",
-                    album_ids=None,
-                    source=source_uri,
-                    category_hints=None,
-                )
+                from ..services.media_commit_boundary import MediaCommittedError, recover_committed_media
+                try:
+                    media_resp = process_and_save_media(
+                        db=db,
+                        file_path=copied_path,
+                        unique_filename=unique_name,
+                        rating=RatingEnum.safe,
+                        tags="",
+                        album_ids=None,
+                        source=source_uri,
+                        category_hints=None,
+                    )
+                except MediaCommittedError as exc:
+                    media_resp = recover_committed_media(db, exc, expected_hash=file_hash)
+                    stats.setdefault('imported_recovery_pending_ids', []).append(media_resp.id)
 
                 existing_hashes.add(file_hash)
                 stats["imported"] += 1
@@ -421,7 +426,7 @@ def scan_and_import(
                     pass
 
                 # --- Orphan file cleanup (Fix E) ---
-                if copied_path and copied_path.exists():
+                if not getattr(e, 'media_committed', False) and copied_path and copied_path.exists():
                     try:
                         copied_path.unlink()
                     except OSError:

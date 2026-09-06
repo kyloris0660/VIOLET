@@ -2,6 +2,17 @@
 
 ## Entry point
 
+- 面向用户的计划、进度、PR 和报告使用简体中文，保留代码标识与日志原文。
+- 正式材料按职责称谓：项目所有者为 kyloris0660（资产与操作授权），项目负责人
+  为本次 VIOLET 路线规划的 ChatGPT 会话（路线与交付复审），当前 Codex 为
+  执行代理（实现、测试和已授权操作）；审查者注明实际主体，使用体验称产品用户。
+  自动操作记录为“执行代理依据项目所有者授权完成”，不得冒称人工验收。
+- 按当前任务的明确授权连续推进；已授权的普通实现、恢复排练和验收不重复
+  请求确认。历史阶段授权只适用于当时范围，不能自动延伸或否定新的明确授权。
+- 工具是手段：已知 Computer Use URL 识别故障不反复重试；使用当前规则明确
+  允许的独立路径完成真实验收，明确的安全或访问拒绝不得绕过。单项阻塞不
+  搁置其他可做的检查、报告和 PR。
+
 V.I.O.L.E.T. is a local anime/illustration library built with FastAPI,
 PostgreSQL, Jinja2/Tailwind, and vanilla JavaScript. Before acting, read and
 validate `docs/state/current-phase.json`, then load only the durable links named

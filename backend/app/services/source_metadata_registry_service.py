@@ -1270,6 +1270,10 @@ def persist_source_registry_bundle(
     }
 
     metadata_by_key: dict[str, SourceMetadataRecord] = {}
+    # 数据库触发器先撤回旧支持；保存刷新前身份，以保留原有撤回计数与索引整理。
+    previous_live = {model: set() for model in (SourceTagObservation, SourceNameObservation, SourceSearchableNameAssertion)}
+    previous_alias_ids = {value for value, in session.query(SourceNameAliasCandidate.id).filter(
+        SourceNameAliasCandidate.status != 'superseded').all()}
     for draft in bundle.metadata_records:
         row = (
             session.query(SourceMetadataRecord)
@@ -1282,6 +1286,11 @@ def persist_source_registry_bundle(
             session.add(row)
             summary["inserted"]["SourceMetadataRecord"] += 1
         else:
+            with session.no_autoflush:
+                for model, identities in previous_live.items():
+                    scope = model.status != 'superseded' if model is SourceSearchableNameAssertion else model.status == 'observed'
+                    identities.update(value for value, in session.query(model.id).filter(
+                        model.source_metadata_record_id == row.id, scope).all())
             for key, value in fields.items():
                 setattr(row, key, value)
             summary["updated"]["SourceMetadataRecord"] += 1
@@ -1294,7 +1303,8 @@ def persist_source_registry_bundle(
         incoming_tag_keys = {draft.observation_key for draft in tag_drafts_by_record.get(record_key, [])}
         for row in (
             session.query(SourceTagObservation)
-            .filter_by(source_metadata_record_id=metadata.id, status="observed")
+            .filter_by(source_metadata_record_id=metadata.id)
+            .filter(SourceTagObservation.id.in_(previous_live[SourceTagObservation]))
             .all()
         ):
             if row.observation_key not in incoming_tag_keys:
@@ -1305,7 +1315,8 @@ def persist_source_registry_bundle(
         incoming_name_keys = {draft.observation_key for draft in name_drafts_by_record.get(record_key, [])}
         for row in (
             session.query(SourceNameObservation)
-            .filter_by(source_metadata_record_id=metadata.id, status="observed")
+            .filter_by(source_metadata_record_id=metadata.id)
+            .filter(SourceNameObservation.id.in_(previous_live[SourceNameObservation]))
             .all()
         ):
             if row.observation_key not in incoming_name_keys:
@@ -1434,7 +1445,7 @@ def persist_source_registry_bundle(
             summary["updated"]["SourceNameAliasCandidate"] += 1
     for row in (
         session.query(SourceNameAliasCandidate)
-        .filter(SourceNameAliasCandidate.status != "superseded")
+        .filter(SourceNameAliasCandidate.id.in_(previous_alias_ids))
         .all()
     ):
         key = (row.source_name_key, row.target_name_key, row.relation_type, row.evidence_source)
@@ -1493,7 +1504,7 @@ def persist_source_registry_bundle(
             session.query(SourceSearchableNameAssertion)
             .filter(
                 SourceSearchableNameAssertion.source_metadata_record_id == metadata.id,
-                SourceSearchableNameAssertion.status != "superseded",
+                SourceSearchableNameAssertion.id.in_(previous_live[SourceSearchableNameAssertion]),
             )
             .all()
         ):

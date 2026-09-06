@@ -3,11 +3,14 @@ from datetime import datetime, timezone
 
 from sqlalchemy import (JSON, BigInteger, Boolean, Column, DateTime, Enum, Float,
                         ForeignKey, Index, Integer, String, Table, Text,
-                        UniqueConstraint)
+                        UniqueConstraint, false)
 from sqlalchemy.orm import relationship
+from sqlalchemy import event
+from .services.source_binding_revision import after_schema_create
 from sqlalchemy.sql import func
 
 from .database import Base
+event.listen(Base.metadata, 'after_create', after_schema_create)
 from .enums import (
     ContentClassEnum,
     EntityAliasTypeEnum,
@@ -34,7 +37,7 @@ blombooru_media_tags = Table(
     Column('source', String(50), nullable=False, server_default='manual'),
     Column('confidence', Float, nullable=True),
     Column('is_locked', Boolean, nullable=False, server_default='true'),
-    Column('is_suggestion', Boolean, nullable=False, server_default='false'),
+    Column('is_suggestion', Boolean, nullable=False, server_default=false()),
     Column('created_at', DateTime(timezone=True), server_default=func.now()),
     Column('updated_at', DateTime(timezone=True), server_default=func.now()),
 )
@@ -675,6 +678,7 @@ class SourceMetadataRecord(Base):
     )
 
     id = Column(Integer, primary_key=True, index=True)
+    binding_revision = Column(Integer, nullable=False, default=0, server_default='0')
     provider = Column(String(100), nullable=False, index=True)
     provider_run_id = Column(String(255), nullable=True, index=True)
     run_label = Column(String(255), nullable=True)
@@ -1255,6 +1259,7 @@ class SourceConceptProductMediaBinding(Base):
     )
 
     id = Column(Integer, primary_key=True)
+    source_revision = Column(Integer, nullable=False, default=-1, server_default='-1')
     product_run_id = Column(Integer, ForeignKey('blombooru_source_concept_product_runs.id', ondelete='CASCADE'), nullable=False, index=True)
     evidence_id = Column(Integer, ForeignKey('blombooru_source_concept_evidence.id', ondelete='CASCADE'), nullable=False, index=True)
     media_id = Column(Integer, ForeignKey('blombooru_media.id', ondelete='CASCADE'), nullable=False, index=True)

@@ -2431,6 +2431,10 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
+        from scripts.production_pixiv_a1_state import validate
+        validate(state, root)
+        return
     if state.get("phase_id") == "SCV2-PX1":
         _validate_scv2_px1_state(state, root=root)
         return
@@ -3122,6 +3126,12 @@ def validate_git_ancestry(
     root: Path = ROOT,
     implementation_evidence: dict[str, Any] | None = None,
 ) -> None:
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
+        if _trusted_git_value(root, 'rev-parse', '--abbrev-ref', 'HEAD') != state['branch']:
+            raise DocumentationStateError('a1_live_branch')
+        if _trusted_git_value(root, 'merge-base', state['accepted_mainline_base'], 'HEAD') != state['accepted_mainline_base']:
+            raise DocumentationStateError('a1_base_ancestry')
+        return
     if state.get("phase_id") == "SCV2-PX1":
         _validate_scv2_px1_git_ancestry(state, root=root)
         return
@@ -3390,6 +3400,12 @@ def _validate_scv2_px3_roadmaps(state: dict[str, Any], *, root: Path) -> None:
 
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
+        for path in ACTIVE_ROUTE_PATHS:
+            content = (root / path.relative_to(ROOT)).read_text(encoding='utf-8')
+            if re.findall(r'<!-- CURRENT_PHASE: ([^ ]+) -->', content) != ['PRODUCTION-PIXIV-A1']:
+                raise DocumentationStateError('a1_roadmap_marker')
+        return
     if state.get("phase_id") == "SCV2-PX1":
         _validate_scv2_px1_roadmaps(state, root=root)
         return
@@ -3850,6 +3866,9 @@ def _render_scv2_px3_handoff(state: dict[str, Any]) -> str:
 def render_handoff(state: dict[str, Any]) -> str:
     """Render the complete public-safe I2 planning handoff."""
 
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A1':
+        from scripts.production_pixiv_a1_state import render
+        return render(state)
     if state.get("phase_id") == "SCV2-PX1":
         return _render_scv2_px1_handoff(state)
     if state.get("phase_id") == "SCV2-PX2":

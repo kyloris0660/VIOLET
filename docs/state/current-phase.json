@@ -1,648 +1,100 @@
 {
   "schema_version": "violet.current-phase.v2",
-  "phase_id": "SCV2-PX3",
-  "phase_title": "Pixiv Product Integration",
+  "phase_id": "PRODUCTION-PIXIV-A1",
+  "phase_title": "生产 Pixiv A1 接入与原库验收",
   "repository": "kyloris0660/VIOLET",
-  "branch": "codex/scv2-px3-restored-database-canary",
-  "pr_number": 150,
+  "branch": "codex/production-pixiv-a1",
+  "pr_number": 151,
   "draft": false,
-  "accepted_mainline_base": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
-  "accepted_mainline_tree": "507a223a9156ff2f9944524303419e85891812fa",
-  "implementation_evidence_head": "306cc811fb0b49a5450ffb419edf115562045515",
-  "implementation_evidence_tree": "98e2df6decea7c5150b83e4fe3c65a8fd4dd5f27",
-  "implementation_evidence_status": "exact_head_852_focused_synthetic_contract_and_independent_frozen_postgresql_copy_verified",
-  "current_status": "SCV2_PX3_RESTORED_DATABASE_CANARY_VERIFIED_PENDING_ORIGINAL_DATABASE_APPLY_APPROVAL",
+  "accepted_mainline_base": "26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3",
+  "previous_phase": "SCV2-PX3",
+  "previous_phase_pr_number": 150,
+  "previous_phase_merge_commit": "26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3",
+  "previous_phase_status": "merged_restored_copy_verified",
+  "current_status": "A1_PR151_BOUNDED_FIX_ENGINEERING_COMPLETE_PENDING_PROJECT_LEAD_REVIEW",
   "target_met": true,
-  "safe_to_merge": true,
+  "safe_to_merge": false,
   "route_approved": false,
-  "route_scope": "Authorized read-only original database backup, independent task-owned PostgreSQL restore and frozen-input 1% work canary; no original writes, provider network, credentials or original media access.",
   "planning_authorized": true,
   "planning_completed": true,
   "planning_approved": true,
-  "manual_acceptance_status": "owner_accepted_final_bounded_product_closure",
+  "manual_acceptance_status": "pending_project_lead_review",
   "next_phase_started": false,
-  "previous_phase": "SCV2-PX2",
-  "previous_phase_status": "owner_accepted_pr148_merged_with_exact_tree_preserved",
-  "previous_phase_pr_number": 148,
-  "previous_phase_merge_commit": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
-  "previous_phase_merge_tree": "507a223a9156ff2f9944524303419e85891812fa",
-  "previous_phase_final_head": "bf8055af61c3a5d32155701ed7110db692047dba",
-  "previous_phase_final_tree": "507a223a9156ff2f9944524303419e85891812fa",
-  "repository_sync_preflight": {
-    "trusted_remote": "origin",
-    "fetched": true,
-    "pr148_merged": true,
-    "accepted_pr_head_is_merge_ancestor": true,
-    "accepted_pr_tree_matches_merge_tree": true,
-    "origin_main_head": "6db72c73397c17128bd2ce9be54f25233bc853f0",
-    "origin_main_tree": "f49a75b1ac2859919d4faae9e81dc437f8cddf89",
-    "post_merge_commit_audit_count": 0,
-    "classification": "pr149_once_expected_head_merge_verified_no_parallel_main_increment"
-  },
-  "pipeline_contract": {
-    "contract_id": "scv2_px3_pixiv_product_integration_contract_v1",
-    "public_schema": "violet.scv2-px3-pixiv-product-integration-result.v1",
-    "repository_gap_map_completed": true,
-    "px1_px2_reused": true,
-    "product_persistence_verified": true,
-    "dry_run_apply_rollback_verified": true,
-    "api_ui_verified": true,
-    "provider_adapter_wired_without_execution": true,
-    "synthetic_browser_e2e_verified": true,
-    "controlled_canary_entrypoints_verified": true,
-    "machine_verifiable_ci": false,
-    "owner_authority_machine_verifiable": false,
-    "media_binding_verified": true,
-    "actual_gallery_search_verified": true,
-    "accepted_plan_apply_verified": true,
-    "rollback_ownership_verified": true
-  },
+  "route_scope": "执行代理依据项目所有者授权完成项目负责人裁决的 PR151 一轮有界修正及工程验证；项目负责人接受仍待复审。",
   "authorities": {
-    "px3_audit_design_and_implementation_authorized": true,
-    "repository_migration_code_authorized": true,
-    "task_owned_temporary_database_authorized": true,
-    "synthetic_local_server_browser_e2e_authorized": true,
-    "isolated_worktree_authorized": true,
-    "branch_commit_push_authorized": true,
-    "one_normal_pull_request_authorized": true,
-    "documentation_state_transition_authorized": true,
-    "px3_merge_authorized": false,
-    "real_pixiv_network_execution_authorized": false,
-    "provider_credentials_authorized": false,
-    "real_source_or_icloud_access_authorized": false,
-    "existing_database_or_app_storage_mutation_authorized": false,
-    "user_data_import_authorized": false,
-    "production_authorized": false,
-    "full_library_import_authorized": false
+    "production": true,
+    "additive_migration": true,
+    "sample_apply_rollback": true,
+    "sample_media_read": true,
+    "merge": false,
+    "provider_network": false,
+    "llm": false,
+    "original_file_mutation": false,
+    "truth_mutation": false
   },
   "completed_checkpoints": [
-    {
-      "id": "scv2_fl1_i2_pr146_merge_projection",
-      "result": "accepted_head_is_merge_parent_and_accepted_tree_equals_merge_tree",
-      "fingerprint": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc"
-    },
-    {
-      "id": "scv2_px1_remote_sync_preflight",
-      "result": "trusted_origin_main_exact_expected_merge_with_no_later_commits",
-      "fingerprint": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71"
-    },
-    {
-      "id": "scv2_px1_governance_entry",
-      "result": "implementation_authorized_synthetic_offline_only_route_entered_with_all_data_plane_authorities_false"
-    },
-    {
-      "id": "scv2_px1_vertical_slice_and_signal_projection",
-      "result": "fourteen_deterministic_work_page_aggregates_and_forty_existing_sourceconcept_compatible_signals_replayed_with_zero_name_only_identity_anchors_or_cross_context_unions",
-      "fingerprint": "c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1"
-    },
-    {
-      "id": "scv2_px1_same_head_receipt_and_contract",
-      "result": "final_correction_local_operator_receipt_passed_433_focused_tests_on_exact_implementation_head_and_executable_contract_independently_rebuilds_fixture_aggregate_signal_px2_consumer_and_authority_facts",
-      "fingerprint": "782360c04da475cac98f928038f34c5a337c814f"
-    },
-    {
-      "id": "scv2_px1_full_non_e2e_compatibility",
-      "result": "4238_passed_22_skipped_four_raw_failures_two_detached_validation_worktree_branch_identity_checks_one_docs_only_historical_phrase_assertion_closed_by_final_projection_and_one_missing_original_ai_execution_evidence_failure_reproduced_on_exact_origin_main"
-    },
-    {
-      "id": "scv2_px1_final_exact_head_review_correction",
-      "result": "four_accepted_metadata_input_and_compatibility_findings_closed_and_same_name_cross_work_artist_finding_disproved_by_exact_early_guard_regression_without_clustering_policy_change",
-      "fingerprint": "782360c04da475cac98f928038f34c5a337c814f"
-    },
-    {
-      "id": "scv2_px1_normal_pr_created",
-      "result": "pr147_created_as_draft_for_final_exact_head_validation_then_single_ready_transition_without_merge"
-    },
-    {
-      "id": "scv2_px1_pr147_expected_head_merge",
-      "result": "owner_accepted_head_is_second_merge_parent_merge_tree_equals_accepted_tree_and_origin_main_has_no_parallel_commit",
-      "fingerprint": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e"
-    },
-    {
-      "id": "scv2_px2_governance_entry",
-      "result": "px2_synthetic_implementation_started_from_verified_pr147_merge_with_all_real_data_migration_model_ui_and_production_authorities_false",
-      "fingerprint": "480d6a548e6276afeccf49ec75a73d7389b995fe"
-    },
-    {
-      "id": "scv2_px2_deterministic_clustering_vertical_slice",
-      "result": "fourteen_px1_bundles_and_forty_signals_resolved_to_twenty_concepts_with_all_fifty_nine_candidate_pairs_accounted_and_nonblocking_ambiguous_ledger_persisted",
-      "fingerprint": "6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a"
-    },
-    {
-      "id": "scv2_px2_same_head_receipt_and_contract",
-      "result": "five_hundred_seventy_six_canonical_focused_tests_passed_on_exact_implementation_head_and_contract_independently_rebuilt_repository_px1_fixture_consumer_resolver_candidate_ledger_persistence_and_authority_facts",
-      "fingerprint": "9ee1d96004daa843544b977ed3ae607c51299f9b"
-    },
-    {
-      "id": "scv2_px2_final_full_non_e2e_compatibility",
-      "result": "4296_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_binding_checks_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_failure_15_warnings_without_px2_functional_regression"
-    },
-    {
-      "id": "scv2_px2_final_review_correction",
-      "result": "repository_owned_px1_evidence_rederived_operation_receipt_actual_path_counted_source_state_ledger_matches_effective_resolution_and_only_approved_or_stably_authoritative_aliases_can_union_five_threads_replied_once_and_resolved",
-      "fingerprint": "9ee1d96004daa843544b977ed3ae607c51299f9b"
-    },
-    {
-      "id": "scv2_px2_pr148_ready",
-      "result": "normal_pr148_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_docs_projection_without_merge"
-    },
-    {
-      "id": "scv2_px1_post_merge_late_review_adjudication",
-      "result": "seven_threads_created_after_pr147_merge_once_adjudicated_five_real_path_findings_bound_to_px3_one_retained_database_binding_finding_rejected_by_independent_replay_one_stable_aggregate_key_finding_closed_at_px2_consumer_boundary_and_only_original_workspace_thread_remains_unresolved",
-      "fingerprint": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e"
-    },
-    {
-      "id": "scv2_px2_pr148_expected_head_merge",
-      "result": "owner_authorized_head_is_second_merge_parent_merge_tree_equals_accepted_tree_and_origin_main_has_no_parallel_commit",
-      "fingerprint": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f"
-    },
-    {
-      "id": "scv2_px3_repository_gap_map_and_governance_entry",
-      "result": "existing_ingestion_px2_resolver_sourceconcept_persistence_api_frontend_import_and_feature_flag_seams_mapped_and_final_phase_started_with_real_data_plane_authorities_false",
-      "fingerprint": "507a223a9156ff2f9944524303419e85891812fa"
-    },
-    {
-      "id": "scv2_px3_product_integration_vertical_slice",
-      "result": "frozen_SCV2-PX1_and_SCV2-PX2_chain_reused_twenty_clusters_fifty_nine_candidate_dispositions_and_twenty_nine_ambiguity_records_projected_through_atomic_sourceconcept_owned_product_persistence_read_api_and_operable_admin_ui",
-      "fingerprint": "f1ba10194cd72232b4b8bb2ee24e7fe421d0a18115ac3d4918dc1e8af72ce020"
-    },
-    {
-      "id": "scv2_px3_same_head_receipt_and_contract",
-      "result": "canonical_focused_validation_passed_on_exact_implementation_head_clean_before_after_and_contract_independently_rebuilt_px1_px2_product_persistence_api_and_authority_facts_with_zero_errors_or_warnings",
-      "fingerprint": "389ab3994bb81ca772ce491dac88eb1d8b292d3d"
-    },
-    {
-      "id": "scv2_px3_full_non_e2e_and_synthetic_browser_acceptance",
-      "result": "4337_passed_22_skipped_three_raw_failures_two_pre_carry_forward_documentation_assertions_closed_by_final_projection_and_one_historical_missing_original_ai_execution_evidence_limitation_while_real_browser_dry_run_apply_detail_filter_rollback_reapply_completed_with_zero_final_console_errors"
-    },
-    {
-      "id": "scv2_px3_pr149_ready",
-      "result": "normal_pr149_created_as_draft_at_exact_implementation_head_then_transitioned_to_ready_once_after_final_governance_projection_without_merge"
-    },
-    {
-      "id": "scv2_px3_final_local_media_product_closure",
-      "result": "actual_gallery_search_media_detail_duplicate_support_row_id_neutrality_exact_plan_apply_replay_rollback_reapply_verified_by_independent_contract_and_real_edge_browser",
-      "fingerprint": "ce5a11f75f13965652cb6f9179bbde45526c6e18"
-    },
-    {
-      "id": "scv2_px3_pr149_expected_head_merge",
-      "result": "accepted_head_is_second_parent_and_accepted_tree_equals_merge_tree_origin_main_verified_once_merge_authority_consumed",
-      "fingerprint": "6db72c73397c17128bd2ce9be54f25233bc853f0"
-    },
-    {
-      "id": "px3_original_readonly_backup_independent_restore",
-      "result": "Original database read-only backup was independently restored to a new task-owned PostgreSQL database; source rows and foreign keys verified. Private data remains local; original writes zero."
-    },
-    {
-      "id": "px3_restored_postgresql_actual_product_lifecycle",
-      "result": "Fixed 1% of 465 eligible works selected 5 works/pages/media, with 51 bindings and 43 clusters. Fresh-session accounting, actual SourceConcept-specific search, detail, replay, selection rejection, rollback and reapply passed. All 54 original table snapshots restored exactly after rollback; real Edge metadata-only browser passed with zero full-detail requests on admin initialization."
-    },
-    {
-      "id": "px3_restored_copy_final_exact_head_validation",
-      "fingerprint": "306cc811fb0b49a5450ffb419edf115562045515",
-      "result": "852 canonical focused tests and independent synthetic contract passed. Strengthened private restored-copy gate verified the same five works, fresh committed counts, exact identity/AND recall sets, actual rollback response, 54 original table baselines, isolation grants and real Edge lifecycle. Original write authority remains false."
-    }
+    "历史检查点（本轮修正前）：可信 origin/main 与已合并 PR #150 已核实。",
+    "历史检查点（本轮修正前）：保留原目录，建立 A1 隔离分支。",
+    "历史检查点（本轮修正前）：实施与增量迁移方案已记录；代码修复已完成。",
+    "历史检查点（本轮修正前）：新鲜原库只读备份及独立 PostgreSQL 恢复完成，54 张表计数一致",
+    "历史检查点（本轮修正前）：恢复副本四项增量迁移重复执行通过",
+    "历史检查点（本轮修正前）：最终 1% 选择：5 作品、5 页面、5 Media；实际 API 生命周期、51 条绑定和按归属撤回已验证",
+    "历史检查点（本轮修正前）：执行代理依据项目所有者授权完成副本操作；项目负责人复审仍待进行",
+    "历史检查点（本轮修正前）：最终代码副本 fresh-session 搜索/详情复核通过，原有 51 条绑定保持一致",
+    "历史检查点（本轮修正前）：PostgreSQL 回归 37 通过；focused 的状态文案断言已修正并补跑通过",
+    "历史检查点（本轮修正前）：完整 non-E2E 原始结果 4382 通过、62 失败、15 跳过；失败已定位并针对性补跑，保留历史缺失 AI 证据失败",
+    "历史检查点（本轮修正前）：240-query、720 次测量结果集保持一致；p50 6.51 ms、p95 33.377 ms、最大 72.985 ms",
+    "历史检查点（本轮修正前）：执行代理依据项目所有者授权完成原库四项增量迁移，54 张既有表计数保持一致",
+    "历史检查点（本轮修正前）：原有启动器经已保存的候选锚点启动生产；PID 8592、健康 OK、schema compatible",
+    "历史检查点（本轮修正前）：原库实际 API dry-run/apply/replay/owned rollback/repeated rollback/reapply 通过；5 works/pages/Media、51 绑定、54 张既有表撤回后保持一致",
+    "历史检查点（本轮修正前）：Computer Use 无法可靠识别当前浏览器 URL，真实页面验收未完成；执行代理关闭临时 apply 开关并通过现有控制器重启后复核搜索",
+    "历史检查点（本轮修正前）：续接只读核对通过：既有候选和生产进程、1 active run、51 绑定、五样本新会话搜索一致；未重复原库写入",
+    "历史检查点（本轮修正前）：独立有界面 Playwright Edge 完成五样本缩略图、详情、全屏及普通界面搜索；执行代理已实际查看截图",
+    "历史检查点（本轮修正前）：最终失败项针对性补跑 70 passed / 1 historical failure；完整 non-E2E 原始记录保留",
+    "历史检查点（本轮修正前）：注册 A1 本机证据投影通过，报告和完整操作恢复记录已形成；项目负责人接受仍 pending",
+    "历史检查点（本轮修正前）：正常 PR #151 已创建，分支已推送；实际运行候选 8ec23cd，后继仅文档；未触发额外审查或合并",
+    "项目负责人独立审计裁决已核对：PR #151 七项本轮修正，一项 squash 建议不适用；历史结论保留并补充修正",
+    "PR151 有界修正候选已通过隔离验证；执行代理依据项目所有者授权完成触发器增量更新和既有控制器重启，5 Media / 51 绑定保留、apply 关闭",
+    "本轮刷新闭环补齐：隔离 PostgreSQL 的真实 existing-source API 正式 rollback、新计划 apply/replay 及软别名/事务/独立消费者验证通过；不倒填旧证据",
+    "7dd8733 实测：PostgreSQL 67 passed；focused 257 passed / 1 Windows symlink skipped；原失败精确补跑 70 passed / 1 历史 AI 证据缺失",
+    "原始 62 个失败 node 逐项对账：59 同 ID，3 个参数各映射 4 个 caller；61 项有精确 PASS，唯一历史失败保留",
+    "7dd8733 部署重启后真实有界面 Edge 完成五样本三视图、19 次搜索及来源 chip；20 张生产关键截图实际查看，隔离禁用 chip 另行实查",
+    "新候选 1 active run / 51 绑定 / 5 Media，读取开启、apply 关闭；隔离 UI 服务已停止，生产保持健康",
+    "A1 本机证据投影及注册契约通过；当前报告显式保留并修正审计前过早结论，实际运行与文档后继版本分开记录"
   ],
-  "active_blocker": {
-    "code": "original_database_apply_approval_required",
-    "scope": "Original database migration and SourceConcept apply remain unauthorized",
-    "resolution": "Recheck exact original target and backup/restore, freeze inputs, obtain separate additive migration authority, recompute its 1% work dry-run, and have the owner accept actual-target selection/product/binding fingerprints before apply."
-  },
-  "owner_decisions": [
-    {
-      "id": "owner_authorized_scv2_px1_pixiv_metadata_consolidation_20260826",
-      "decision": "Authorize actual SCV2-PX1 implementation, synthetic fixtures, task-owned temporary databases, isolated branch commit and push, one normal PR, and governance transition; prohibit merge and every real provider, source, existing database, media, import, model, UI, and production operation."
-    },
-    {
-      "id": "owner_fixed_near_term_pixiv_route_20260826",
-      "decision": "The only near-term functional phases are SCV2-PX1, SCV2-PX2, and SCV2-PX3; safety checks remain internal gates and phase-4.5-PX1 remains historical."
-    },
-    {
-      "id": "owner_adjudicated_scv2_px1_bounded_correction_20260827",
-      "decision": "Perform exactly one bounded correction on existing PR #147 for current Pixiv identity, deterministic replay, work-level consistency, PX2 consumer, redaction, and exact-evidence correctness; defer hostile workspace confinement to SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE; do not merge, start PX2, create a phase, or repeat real provider work."
-    },
-    {
-      "id": "owner_authorized_scv2_px1_final_correction_merge_and_px2_20260902",
-      "decision": "Close the four accepted exact-head PX1 findings, disprove the unreachable artist finding with an exact regression, reply to and resolve those five threads, consume one expected-head merge-commit authority for PR #147 after all gates pass, then start and implement synthetic SCV2-PX2 from the verified merge; PX2 merge and all real data-plane authorities remain false."
-    },
-    {
-      "id": "owner_authorized_scv2_px2_final_correction_merge_and_px3_20260902",
-      "decision": "Close exactly the PX1 evidence binding and operation receipt, source-state ledger, and alias approval root causes on PR #148; retain the strict clean isolated-worktree receipt boundary; after all substantive gates pass consume one exact-head merge-commit authority for PR #148, then implement the final SCV2-PX3 product integration in a new isolated branch without real provider, credential, source, existing-database, user-import, production, or PX3 merge authority."
-    },
-    {
-      "id": "owner_authorized_px3_final_product_closure_20260905",
-      "decision": "Approve minimal additive evidence-media association migration and final bounded implementation, seven review dispositions, synthetic DB/browser validation, one full non-E2E run, final branch push and one conditional expected-head merge commit. All real data-plane execution remains forbidden."
-    },
-    {
-      "id": "owner_authorized_px3_restored_database_rehearsal_20260905",
-      "decision": "Read-only original backup and a new PostgreSQL restore are authorized; fixed 1% work metadata materialization and localhost metadata-only browser execution occur only in the copy. One follow-up PR and one conditional expected-head merge commit are authorized. Original database writes, provider execution and original media access remain forbidden."
-    }
-  ],
-  "authorized_operations": [
-    "read repository files and trusted Git or GitHub control-plane state",
-    "reuse PX1 ingestion and PX2 SourceConcept resolution through one final product integration service",
-    "add repository migration code and validate it only against task-owned temporary SQLite databases",
-    "run a synthetic local server and browser E2E against task-owned temporary data",
-    "wire but do not execute the real Pixiv provider adapter",
-    "commit and normally push the PX3 feature branch and create one normal Ready pull request",
-    "update current governance state and public-safe documentation",
-    "Read-only original database identity queries and one local private backup.",
-    "Create an independent task PostgreSQL restore; only the copy may migrate/materialize/replay/rollback/reapply.",
-    "One follow-up PR and conditional one-time expected-head merge commit after copy verification."
-  ],
-  "forbidden_operations": [
-    "direct main push, squash merge, rebase merge, force-push, auto-merge, reset, stash, clean, or overwrite",
-    "real source or iCloud access, inventory, listing, stat, open, read, hash, or mutation",
-    "real Pixiv or gallery-dl provider execution, credentials, network, media, or thumbnail download",
-    "import, classification or tagging on user data, production SourceConcept materialization, Entity truth promotion, or full-library work",
-    "Original database migration, apply, restore or any write.",
-    "Original app storage, source/iCloud or media/thumbnail filesystem reads and writes.",
-    "Provider network, provider credentials, metadata refresh, concurrent apply and multiple workers.",
-    "LLM/external model execution, original-database server startup and reuse of consumed PR #149 merge authority."
-  ],
-  "protected_evidence": {
-    "pr148_accepted_head": "bf8055af61c3a5d32155701ed7110db692047dba",
-    "pr148_accepted_tree": "507a223a9156ff2f9944524303419e85891812fa",
-    "pr148_merge_commit": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
-    "pr148_merge_tree": "507a223a9156ff2f9944524303419e85891812fa",
-    "pr148_merge_parents": [
-      "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
-      "bf8055af61c3a5d32155701ed7110db692047dba"
-    ],
-    "pr148_merge_time": "2026-09-02T15:06:43Z",
-    "pr148_merged": true,
-    "pr147_accepted_head": "15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a",
-    "pr147_accepted_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
-    "pr147_merge_commit": "5a8efdaf954ab95bd82f95464af31a7fd0873e5e",
-    "pr147_merge_tree": "480d6a548e6276afeccf49ec75a73d7389b995fe",
-    "pr147_merge_parents": [
-      "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
-      "15cbb0c71d4b4c6e5ea32c5eb99a1f56e561d65a"
-    ],
-    "pr147_merge_time": "2026-09-02T11:50:19Z",
-    "pr147_merged": true,
-    "pr147_post_merge_review_created_at": "2026-09-02T11:58:07Z",
-    "pr147_post_merge_review_finding_count": 7,
-    "pr147_post_merge_review_adjudication": {
-      "px3_real_input_due_count": 5,
-      "independent_replay_false_positive_count": 1,
-      "px2_consumer_boundary_closed_count": 1,
-      "replied_once_and_resolved_count": 7,
-      "remaining_unresolved_count": 1,
-      "remaining_unresolved_thread_id": "PRRT_kwDOSTBMB86chkPF",
-      "remaining_unresolved_gate": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE"
-    },
-    "px1_owner_accepted": true,
-    "px1_merged": true,
-    "px2_started": true,
-    "px2_implementation_completed": true,
-    "deterministic_clustering_verified": true,
-    "persistable_cluster_result_verified": true,
-    "px2_owner_accepted": true,
-    "px2_merged": true,
-    "px2_safe_to_merge": true,
-    "px2_merge_authorized": true,
-    "px3_started": true,
-    "px3_implementation_completed": true,
-    "product_integration_verified": true,
-    "px3_owner_accepted": true,
-    "px3_safe_to_merge": false,
-    "px3_merge_authorized": false,
-    "existing_db_or_app_storage_activity": 1,
-    "provider_network_activity": 0,
-    "real_source_activity": 0,
-    "llm_activity": 0,
-    "production_activity": 0,
-    "px2_implementation_evidence_head": "9ee1d96004daa843544b977ed3ae607c51299f9b",
-    "px2_implementation_evidence_tree": "743e63a6f7f2931393db860600bedd20ffaeae8e",
-    "px2_public_summary_fingerprint": "3f400c773ce11c1a108806798b3a36c15709d61ed7d8a8e645feed0f713fcf24",
-    "px2_public_summary_artifact_fingerprint": "17152ef889d465014a659a517830b65056be08bc98d47af56241e6a1cf6f9fb1",
-    "px2_business_projection_fingerprint": "6cc88ac815fa364f93afb58befe2212e002f6f67bada6d42389e10955614c06a",
-    "px2_aggregate_count": 14,
-    "px2_signal_bundle_count": 14,
-    "px2_signal_count": 40,
-    "px2_cluster_count": 20,
-    "px2_candidate_pair_count": 59,
-    "px2_must_link_count": 52,
-    "px2_cannot_link_count": 4,
-    "px2_deferred_nonblocking_count": 3,
-    "px2_ambiguous_ledger_record_count": 29,
-    "px2_acceptance_scenario_count": 15,
-    "px2_local_receipt_head": "9ee1d96004daa843544b977ed3ae607c51299f9b",
-    "px2_local_receipt_tree": "743e63a6f7f2931393db860600bedd20ffaeae8e",
-    "px2_local_receipt_command_fingerprint": "4f4adaa0908cc8e6f7d4ef800a340ef5820a6199f2cb9156ef5848f42ab72d40",
-    "px2_local_receipt_stdout_fingerprint": "22ab5565ac28b5dfb71ca86f965a0344c096849ac2cff6a6b15fd837970f0718",
-    "px2_local_receipt_focused_tests_passed": 576,
-    "px2_local_receipt_positive": true,
-    "px2_local_receipt_clean_before_after": true,
-    "px2_contract_passed": true,
-    "px2_contract_error_count": 0,
-    "px2_contract_warning_count": 0,
-    "px2_pre_final_full_non_e2e_diagnostic_result": {
-      "passed": 4277,
-      "skipped": 22,
-      "failed": 18,
-      "warnings": 15,
-      "duration_seconds": 502.45,
-      "stale_px1_documentation_assertions_closed": 15,
-      "caller_hostile_environment_false_failures_removed": 2,
-      "historical_private_evidence_failure": 1
-    },
-    "px2_final_full_non_e2e_result": {
-      "passed": 4296,
-      "skipped": 22,
-      "failed": 3,
-      "warnings": 15,
-      "duration_seconds": 463.11,
-      "exact_failure": "missing_original_ai_execution_evidence",
-      "pre_carry_forward_documentation_binding_failure_count": 2,
-      "documentation_binding_failures_closed_by_final_projection": true,
-      "px2_functional_regression_count": 0,
-      "accepted_historical_private_evidence_limitation": true
-    },
-    "px2_final_review_correction": {
-      "accepted_root_cause_count": 3,
-      "rejected_hardening_count": 1,
-      "review_thread_reply_count": 5,
-      "review_thread_resolved_count": 5,
-      "repository_px1_fixture_exact_comparison": true,
-      "coordinated_fingerprint_mutation_rejected": true,
-      "operation_receipt_actual_execution_path_counted": true,
-      "source_state_ledger_resolution_consistent": true,
-      "provider_neutral_alias_union_approval_enforced": true,
-      "strict_clean_isolated_worktree_receipt_preserved": true
-    },
-    "px2_pr_number": 148,
-    "pr146_accepted_head": "914d746c3548241a99333393daa88caefd8b2337",
-    "pr146_accepted_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
-    "pr146_merge_commit": "8a825bcdd12f76d1c2c396b7039bd9e326cd63dc",
-    "pr146_merge_tree": "9f7bfc76d0d405e2d5081bc8cd8d38d54e090b71",
-    "pr146_merged": true,
-    "pr146_final_owner_adjudication_review_id": 4963026941,
-    "pr146_final_review_id": 5031131564,
-    "pr146_final_reviewed_head": "914d746c3548241a99333393daa88caefd8b2337",
-    "pr146_final_review_finding_count": 10,
-    "pr146_final_review_resolved_count": 0,
-    "pr146_final_review_outdated_count": 0,
-    "pr146_final_review_deferred_findings": [
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezeV",
-        "comment_id": 3863329654,
-        "title": "Validate every listed member before suffix filtering",
-        "due_gate": "FL1_I2_LISTED_MEMBER_VALIDATION_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezeZ",
-        "comment_id": 3863329665,
-        "title": "Reject event timestamps before run start",
-        "due_gate": "FL1_I2_EVENT_TIME_LOWER_BOUND_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezef",
-        "comment_id": 3863329670,
-        "title": "Require bounded JPEG codec authority before content verification",
-        "due_gate": "FL1_I2_JPEG_CONTENT_AUTHORITY_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezel",
-        "comment_id": 3863329678,
-        "title": "Require bounded VP8 payload authority before content verification",
-        "due_gate": "FL1_I2_VP8_CONTENT_AUTHORITY_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezeq",
-        "comment_id": 3863329683,
-        "title": "Apply enumeration limits to the initial listing",
-        "due_gate": "FL1_I2_INITIAL_ENUMERATION_BUDGET_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezet",
-        "comment_id": 3863329688,
-        "title": "Enforce operation caps at admission",
-        "due_gate": "FL1_I2_OPERATION_ADMISSION_CAP_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezey",
-        "comment_id": 3863329695,
-        "title": "Bound evidence bytes before JSON parsing",
-        "due_gate": "FL1_I2_EVIDENCE_PREPARSE_BUDGET_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86ceze1",
-        "comment_id": 3863329699,
-        "title": "Re-derive maximum depth from evidence",
-        "due_gate": "FL1_I2_MAX_DEPTH_REDERIVATION_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86ceze9",
-        "comment_id": 3863329711,
-        "title": "Reject negative byte accounting",
-        "due_gate": "FL1_I2_NONNEGATIVE_BYTE_ACCOUNTING_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      },
-      {
-        "thread_id": "PRRT_kwDOSTBMB86cezfD",
-        "comment_id": 3863329720,
-        "title": "Prevent failed receipts from claiming completion",
-        "due_gate": "FL1_I2_FAILED_RECEIPT_COMPLETION_GATE",
-        "status": "deferred_exact_gate_not_closed_in_px1"
-      }
-    ],
-    "pr147_initial_codex_reviewed_head": "2fbc1ed395b8bd653437d46cd960977094c44cfe",
-    "pr147_initial_review_finding_count": 11,
-    "pr147_owner_required_correction_count": 10,
-    "pr147_deferred_workspace_confinement_count": 1,
-    "pr147_deferred_workspace_confinement_gate": "SCV2_PX3_UNTRUSTED_WORKSPACE_CONFINEMENT_GATE",
-    "pr147_final_reviewed_head": "557c6f26a85b708f9f386f975d0933be205c112c",
-    "pr147_final_review_accepted_finding_count": 4,
-    "pr147_final_review_rejected_finding_count": 1,
-    "pr147_final_correction_head": "782360c04da475cac98f928038f34c5a337c814f",
-    "pr147_final_correction_tree": "1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3",
-    "px1_fixture_fingerprint": "0ac84922e66c0bb61c0dd2265fc024d6473c559a3855354bfcf635fc438c3e48",
-    "px1_public_summary_fingerprint": "6a7b509b6f63215d59488b19fcd3718b1f53bbdae3d4a1a0f69e853e3c2de73d",
-    "px1_public_summary_artifact_fingerprint": "7db0ff7b246baf457da79777981cd08abfa750a6fa2391a310416e3d1b333138",
-    "px1_canonical_projection_fingerprint": "c4bf9f62b2e1bec544342717659dea0b697d530a021496f9c8eefdaf3e3bc9f1",
-    "px1_aggregate_artifact_fingerprint": "228dbf4e6888ec6ab69ac25ce6022f37463f54da500f67f4317c48fc09feb0de",
-    "px1_signal_bundle_artifact_fingerprint": "89b623188fd97c50e815d37d248222fd2b1fba576c7a85d90f2bd2bbc893a741",
-    "px1_operation_receipt_artifact_fingerprint": "7f5a4d30499c8b4e806d1bc77fb398b18e553a8bd230549be7c6fab7919213e2",
-    "px1_aggregate_count": 14,
-    "px1_signal_bundle_count": 14,
-    "px1_signal_count": 40,
-    "px1_strong_identity_anchor_count": 18,
-    "px1_name_only_identity_anchor_count": 0,
-    "px1_cross_context_union_count": 0,
-    "px1_local_receipt_head": "782360c04da475cac98f928038f34c5a337c814f",
-    "px1_local_receipt_tree": "1e2ee96bd7cdf40a689fd53bbe90519f5d8b95f3",
-    "px1_local_receipt_command_fingerprint": "18ab6d88d4ee9eae175d5df7f6642864aa373640689d76a7df16c875c2010190",
-    "px1_local_receipt_stdout_fingerprint": "44a06230c4162b2ff4f8f13781d602e60acd1094db7f59fcc5651041e8d89639",
-    "px1_local_receipt_positive": true,
-    "px1_local_receipt_clean_before_after": true,
-    "full_non_e2e_result": {
-      "passed": 4238,
-      "skipped": 22,
-      "failed": 4,
-      "warnings": 15,
-      "duration_seconds": 466.67,
-      "detached_validation_worktree_branch_identity_failures": 2,
-      "docs_only_historical_phrase_assertions_corrected": 1,
-      "targeted_final_correction_tests_passed": 433,
-      "exact_base_missing_original_ai_execution_evidence_failures": 1
-    },
-    "px3_pr_number": 149,
-    "px3_implementation_evidence_head": "ce5a11f75f13965652cb6f9179bbde45526c6e18",
-    "px3_implementation_evidence_tree": "81f961be8d86016afdfb7c7a25a9b87698dd43c6",
-    "px3_public_summary_artifact_fingerprint": "bec0a1b67f168491a7e8b7f55c40dbf02045faf15afa6feb7f4e4b45aa79fc1c",
-    "px3_public_summary_fingerprint": "0a5e4976ae6f65b3298c9445c18f5074686aaf59c59c340f625e36973dbdd902",
-    "px3_product_result_fingerprint": "f1ba10194cd72232b4b8bb2ee24e7fe421d0a18115ac3d4918dc1e8af72ce020",
-    "px3_persistence_proof_artifact_fingerprint": "2be6b016f49d87762bd896d572f74e6b2c2fb4e8ae49cea87cebb15e4986396c",
-    "px3_persistence_fingerprint": "7f4c36c3509646a72fd8bc314a14f1d820a7e869c6c717cbfdef8adb34bc7b24",
-    "px3_cluster_count": 20,
-    "px3_member_signal_count": 34,
-    "px3_candidate_disposition_count": 59,
-    "px3_must_link_count": 52,
-    "px3_cannot_link_count": 4,
-    "px3_deferred_nonblocking_count": 3,
-    "px3_ambiguity_record_count": 29,
-    "px3_local_receipt_head": "306cc811fb0b49a5450ffb419edf115562045515",
-    "px3_local_receipt_tree": "98e2df6decea7c5150b83e4fe3c65a8fd4dd5f27",
-    "px3_local_receipt_command_fingerprint": "b7723700731dac52e971393b577cb32586c189a89e6f8efe858ebe01212bdb82",
-    "px3_local_receipt_stdout_fingerprint": "e181e1a271391f1a8ee542e993cbcac378da373a2715584f2b793e1ce083e479",
-    "px3_local_receipt_positive": true,
-    "px3_local_receipt_clean_before_after": true,
-    "px3_contract_passed": true,
-    "px3_contract_error_count": 0,
-    "px3_contract_warning_count": 0,
-    "px3_focused_tests_passed": 852,
-    "px3_final_full_non_e2e_result": {
-      "passed": 4384,
-      "skipped": 22,
-      "failed": 11,
-      "warnings": 52,
-      "duration_seconds": 601.13,
-      "full_suite_run_count": 1,
-      "execution_code_head": "476d5c0b5a97447cc2ee12365f7e0c37b005ce0e",
-      "raw_environment_failures": 7,
-      "corrected_documentation_assertions": 3,
-      "targeted_standard_passed": 282,
-      "targeted_standard_skipped": 1,
-      "final_bounded_correction_targeted_passed": 70,
-      "residual_exact_failure": "missing_original_ai_execution_evidence",
-      "exact_base_reproduced": true,
-      "exact_base": "6db72c73397c17128bd2ce9be54f25233bc853f0",
-      "accepted_historical_private_evidence_limitation": true,
-      "full_suite_rerun": false
-    },
-    "px3_synthetic_browser_acceptance": {
-      "cluster_count": 20,
-      "candidate_disposition_count": 59,
-      "ambiguity_record_count": 29,
-      "cannot_link_filter_count": 4,
-      "context_conflict_filter_count": 1,
-      "dry_run_apply_detail_filter_rollback_reapply_verified": true,
-      "final_console_error_count": 0,
-      "actual_gallery_search_verified": true,
-      "media_detail_binding_verified": true,
-      "accepted_dry_run_apply_verified": true,
-      "rollback_immediate_revocation_verified": true,
-      "reapply_verified": true,
-      "admin_initial_full_detail_request_count": 0
-    },
-    "machine_verifiable_ci": false,
-    "external_data_plane_network_operation_count": 0,
-    "existing_database_access_operation_count": 0,
-    "real_source_operation_count": 0,
-    "media_download_operation_count": 0,
-    "production_operation_count": 0,
-    "primary_user_untracked_file_count_before": 378,
-    "primary_user_untracked_name_digest_before": "976193fefc88827a6f6f61709cdf949a80a3e7864f5eb34d6d2355e668e13995",
-    "px3_media_binding_proof_fingerprint": "15fd6605b5ce84c0db68efeaf0fcbff9e08cda41a5a4d804642d06ec9446ba64",
-    "px3_binding_count": 16,
-    "px3_binding_media_count": 4,
-    "px3_binding_source_record_count": 4,
-    "px3_expected_merge_base": "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
-    "px3_merged": true,
-    "px3_accepted_head": "496a5fa85bc5e02b6c90331cb19a29169db1d9d0",
-    "px3_accepted_tree": "f49a75b1ac2859919d4faae9e81dc437f8cddf89",
-    "px3_merge_commit": "6db72c73397c17128bd2ce9be54f25233bc853f0",
-    "px3_merge_tree": "f49a75b1ac2859919d4faae9e81dc437f8cddf89",
-    "px3_merge_parents": [
-      "421e2989d274e2dc4492d5bccc10720dcfbbaa4f",
-      "496a5fa85bc5e02b6c90331cb19a29169db1d9d0"
-    ],
-    "px3_review_disposition": {
-      "reviewed_head": "d979617b6e8e74afba11523ba82a415d454ffdaf",
-      "corrected_head": "496a5fa85bc5e02b6c90331cb19a29169db1d9d0",
-      "reply_count": 7,
-      "resolved_count": 6,
-      "deferred_count": 1,
-      "deferred_gate": "SCV2_PX3_MULTIWORKER_APPLY_GATE",
-      "new_review_requested": false
-    },
-    "pr149_historical_validation": {
-      "px3_local_receipt_head": "ce5a11f75f13965652cb6f9179bbde45526c6e18",
-      "px3_local_receipt_tree": "81f961be8d86016afdfb7c7a25a9b87698dd43c6",
-      "px3_local_receipt_command_fingerprint": "a018f3496ae0c8b1da960644ba79d4f283b674197699354bbfa3d222c3d1d0de",
-      "px3_local_receipt_stdout_fingerprint": "21c338c92293f6e889c6abd10460225257428a6864e8ae24ff2b6e0534e05d8e",
-      "px3_local_receipt_positive": true,
-      "px3_local_receipt_clean_before_after": true,
-      "px3_focused_tests_passed": 783,
-      "px3_final_full_non_e2e_result": {
-        "passed": 4355,
-        "skipped": 22,
-        "failed": 1,
-        "errors": 7,
-        "warnings": 15,
-        "duration_seconds": 528.71,
-        "exact_failure": "missing_original_ai_execution_evidence",
-        "exact_base_reproduced": true,
-        "accepted_historical_private_evidence_limitation": true,
-        "setup_errors_root_cause": "reloaded_database_module_empty_Base_in_late_loaded_proof",
-        "setup_errors_closed_by_mapped_model_metadata": true,
-        "ordered_regression_passed": 81,
-        "ordered_regression_skipped": 1,
-        "full_suite_run_count": 1,
-        "product_search_or_truth_regression_count": 0
-      }
-    }
-  },
-  "public_state_boundary": "public_safe_product_integration_no_real_data_private_paths_credentials_or_raw_payloads",
-  "next_required_checkpoint": "original_database_apply_approval",
+  "next_required_checkpoint": "推送本轮修正及文档后由项目负责人复审 PR151；项目所有者使用验收及合并分别按实际决定记录",
   "durable_links": [
     {
-      "label": "Current mainline roadmap",
-      "path": "docs/roadmap/current-mainline-roadmap.md"
+      "label": "A1 实施与迁移方案",
+      "path": "docs/plans/production-pixiv-a1.md"
     },
     {
-      "label": "Project roadmap entrypoint",
-      "path": "docs/project-roadmap.md"
-    },
-    {
-      "label": "Pixiv metadata ingestion and promotion policy",
-      "path": "docs/pixiv-metadata-ingestion-and-promotion-policy.md"
-    },
-    {
-      "label": "SourceConcept tag and search semantics",
-      "path": "docs/source-concept-tag-search-semantics.md"
-    },
-    {
-      "label": "Phase contracts",
-      "path": "docs/phase-contracts.md"
-    },
-    {
-      "label": "Detailed agent runbook",
+      "label": "执行 runbook",
       "path": "docs/development/agent-runbook.md"
     },
     {
-      "label": "Test workflow",
-      "path": "docs/test-workflow.md"
+      "label": "生产启动器",
+      "path": "docs/production-launcher.md"
+    },
+    {
+      "label": "来源搜索语义",
+      "path": "docs/source-concept-tag-search-semantics.md"
+    },
+    {
+      "label": "阶段契约",
+      "path": "docs/phase-contracts.md"
+    },
+    {
+      "label": "当前主线路线",
+      "path": "docs/roadmap/current-mainline-roadmap.md"
+    },
+    {
+      "label": "A1 交付报告",
+      "path": "docs/reports/production-pixiv-a1.md"
+    },
+    {
+      "label": "A1 脱敏契约结果",
+      "path": "docs/reports/production-pixiv-a1-summary.json"
     }
   ],
   "deferred_debt": [
@@ -845,134 +297,24 @@
       "requirements": [
         "prove cross-worker atomic apply admission before enabling concurrent execution"
       ]
-    },
+    }
+  ],
+  "updated_at": "2026-09-06T09:49:57.128471+00:00",
+  "candidate_head": "7dd8733ef0963458af6611a2d947fb040e4b5412",
+  "production_candidate_head": "7dd8733ef0963458af6611a2d947fb040e4b5412",
+  "result_path": "docs/reports/production-pixiv-a1-summary.json",
+  "resolved_debt": [
     {
       "id": "SCV2_PX3_METADATA_REFRESH_BINDING_GATE",
-      "owner": "owner",
-      "reason": "Current active binding predicate does not fully revalidate corrected business metadata or invalidate cached search; copy inputs are frozen and refresh is denied.",
-      "due_before": "Before metadata refresh or ongoing original-database use with active bindings",
-      "requirements": [
-        "Implement and regress the stated condition before crossing its due gate; do not mark it fixed by the copy rehearsal."
-      ]
+      "status": "resolved_by_PR151_bounded_fix",
+      "evidence": "候选 7dd8733：67 PostgreSQL passed，包含真实 existing-source 更新/删除后的正式 rollback、新计划 apply/replay、软别名及独立消费者；先前结论已明确修正",
+      "operator": "执行代理依据项目所有者授权完成"
     },
     {
       "id": "SCV2_PX3_POLICY_VERSION_CAPTURE_GATE",
-      "owner": "owner",
-      "reason": "Historical projection reconstruction uses current PX2 context and candidate policy constants.",
-      "due_before": "Before the next PX2 policy version change",
-      "requirements": [
-        "Implement and regress the stated condition before crossing its due gate; do not mark it fixed by the copy rehearsal."
-      ]
+      "status": "resolved_in_A1",
+      "evidence": "tests/test_production_pixiv_a1.py + 37 PostgreSQL passed",
+      "operator": "执行代理依据项目所有者授权完成"
     }
-  ],
-  "upcoming_route": [
-    {
-      "phase_id": "SCV2-PX1",
-      "scope": "Pixiv metadata consolidation and offline synthetic vertical slice",
-      "started": true,
-      "completed": true,
-      "merged": true
-    },
-    {
-      "phase_id": "SCV2-PX2",
-      "scope": "deterministic Pixiv SourceConcept clustering, candidate explanation, ambiguous ledger, and persistable cluster result",
-      "started": true,
-      "completed": true,
-      "merged": true
-    },
-    {
-      "phase_id": "SCV2-PX3",
-      "scope": "final Pixiv product persistence, API/UI, controlled execution boundaries, canary entrypoints, and owner acceptance checkpoint",
-      "started": true,
-      "completed": true
-    }
-  ],
-  "artifact_lifecycle": [
-    "frozen_px1_aggregate_and_signal_consumer",
-    "existing_px2_sourceconcept_resolution",
-    "versioned_product_integration_result",
-    "sourceconcept_owned_product_persistence",
-    "read_only_product_api_and_operable_admin_ui",
-    "controlled_canary_and_rollback_boundary"
-  ],
-  "updated_at": "2026-09-05",
-  "px3_target_met": true,
-  "conditional_expected_head_merge_authorized": false,
-  "px3_owner_accepted": true,
-  "px3_merged": true,
-  "three_phase_implementation_route_completed": true,
-  "controlled_canary_authorized": false,
-  "real_pixiv_network_execution_authorized": false,
-  "provider_credentials_authorized": false,
-  "existing_database_or_app_storage_access_authorized": true,
-  "real_source_or_icloud_access_authorized": false,
-  "user_data_import_authorized": false,
-  "production_authorized": false,
-  "full_library_import_authorized": false,
-  "closure_verification": {
-    "media_binding_contract_passed": true,
-    "accepted_plan_exact_match_passed": true,
-    "actual_search_and_detail_passed": true,
-    "rollback_ownership_and_cache_passed": true,
-    "synthetic_edge_browser_passed": true,
-    "backup_restore_before_normal_startup_stop_recorded": true,
-    "implementation_head": "306cc811fb0b49a5450ffb419edf115562045515"
-  },
-  "restored_canary": {
-    "original_database_readonly_backup_authorized": true,
-    "task_owned_database_create_restore_authorized": true,
-    "restored_sourceconcept_materialization_authorized": true,
-    "metadata_inputs_frozen": true,
-    "prior_pr149_merge_authority_consumed": true,
-    "backup_restore_verified": true,
-    "original_database_write_authorized": false,
-    "original_storage_write_authorized": false,
-    "provider_network_authorized": false,
-    "provider_credentials_authorized": false,
-    "original_media_read_authorized": false,
-    "user_data_import_authorized": false,
-    "production_authorized": false,
-    "multiworker_authorized": false,
-    "followup_merge_authorized": true,
-    "postgresql_migration_verified": true,
-    "fresh_session_accounting_verified": true,
-    "single_active_selection_verified": true,
-    "search_detail_verified": true,
-    "rollback_baseline_verified": true,
-    "replay_reapply_verified": true,
-    "browser_metadata_only_verified": true,
-    "work_percentage": 1,
-    "expected_base": "6db72c73397c17128bd2ce9be54f25233bc853f0",
-    "source_readonly_backup_operations": 1,
-    "original_database_write_operations": 0,
-    "private_evidence_uploaded": false,
-    "merge_permission_scope": "One follow-up PR only; automatically consumed when that PR is merged. Never reuse PR #149 permission.",
-    "sample_counts": {
-      "eligible_works": 465,
-      "selected_works": 5,
-      "pages": 5,
-      "media": 5,
-      "bindings": 51,
-      "clusters": 43,
-      "ambiguity": 56
-    },
-    "original_database_missing_px3_tables": true,
-    "incremental_copy_migrations": [
-      "migrate_add_source_concept_product_integration",
-      "migrate_add_source_concept_product_media_bindings",
-      "migrate_add_source_concept_fallback_search_index"
-    ],
-    "followup_pr": 150,
-    "copy_plan_acceptance": "owner_delegated_acceptance_for_task_copy_only",
-    "restored_contract_passed": true,
-    "restored_receipt_sha256": "1e5e568f95bd7aba596903eebb0066080a5ea99a9aaee8dfcd37b927de450bbe",
-    "final_active_run_count": 1,
-    "sourceconcept_binding_count": 51,
-    "original_table_snapshots_restored": 54,
-    "copy_server_stopped": true,
-    "selection_unchanged_by_unrelated_queue_verified": true,
-    "private_prior_rehearsal_preserved": true,
-    "normal_original_startup_authorized": false,
-    "copy_fingerprints_authorize_original_apply": false
-  }
+  ]
 }

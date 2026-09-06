@@ -90,8 +90,8 @@ async def product_status(
         "latest_run": runs[0] if runs else None,
         "owner_gates": {
             "controlled_provider_smoke": "not_authorized",
-            "existing_database_canary": "not_authorized",
-            "backup_restore": "not_authorized",
+            "existing_database_canary": "requires_current_task_authorization",
+            "backup_restore": "requires_current_task_authorization",
             "bounded_import_canary": "not_authorized",
         },
     }

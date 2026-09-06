@@ -3316,3 +3316,14 @@ def get_contract(contract_id: str) -> PhaseContract:
 
 def list_contracts() -> list[PhaseContract]:
     return [CONTRACTS[contract_id] for contract_id in sorted(CONTRACTS)]
+
+
+CONTRACTS['production_pixiv_a1_v1'] = PhaseContract(
+    contract_id='production_pixiv_a1_v1', contract_version='1', phase_kind='production_pixiv_a1',
+    required_summary_fields=('candidate_head','target_met','production','validation','safe_to_merge','route_approved'),
+    db_write_policy='已授权增量迁移和固定样本派生支持；按运行归属撤回',
+    provider_policy='禁止新 provider 请求', llm_policy='禁止 LLM 请求',
+    mutation_policy='原图、人工标签、相册和确认实体保留',
+    custom_checks=('production_pixiv_a1',),
+    description='从本次备份、恢复、实际 API 生命周期和启动器证据核对原库交付；不授予合并或阶段接受。',
+)

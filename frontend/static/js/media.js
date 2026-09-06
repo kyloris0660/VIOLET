@@ -689,7 +689,7 @@ class MediaViewer extends MediaViewerBase {
             if (!groups.has(key)) {
                 groups.set(key, {
                     label,
-                    searchValue: concept.search_value || label,
+                    searchValue: concept.search_value === null ? null : (concept.search_value || label),
                     statuses: [],
                     conceptIds: [],
                     aliases: [],
@@ -737,6 +737,9 @@ class MediaViewer extends MediaViewerBase {
 
     renderSourceConceptChip(group) {
         const label = group.label;
+        if (group.searchValue === null) {
+            return `<span class="tag source-chip source-concept-chip" aria-disabled="true">${this.escapeHtml(label)}</span>`;
+        }
         const statusLabel = this.sourceConceptStatusLabel(group);
         const statusClass = (group.statuses[0] || 'unknown').replace(/[^a-z0-9_-]/gi, '-');
         const href = this.buildGlobalTextSearchUrl(group.searchValue || label, false);

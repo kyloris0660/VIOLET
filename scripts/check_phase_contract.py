@@ -67,6 +67,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Confined task-owned temporary directory containing the fixed-name SCV2-PX3 evidence bundle.",
     )
     parser.add_argument("--list-contracts", action="store_true", help="List registered contracts as JSON and exit.")
+    parser.add_argument('--a1-evidence', help='本次 A1 本机操作证据目录。')
     parser.add_argument("--explain", action="store_true", help="Include contract metadata in output.")
     return parser
 
@@ -142,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
         or args.px1_evidence
         or args.px2_evidence
         or args.px3_evidence
+        or args.a1_evidence
     ):
         if not args.repo_root:
             parser.error("private evidence options require --repo-root")
@@ -215,6 +217,7 @@ def main(argv: list[str] | None = None) -> int:
             scv2_px1_evidence=scv2_px1_evidence,
             scv2_px2_evidence=scv2_px2_evidence,
             scv2_px3_evidence=scv2_px3_evidence,
+            production_pixiv_a1_evidence=Path(args.a1_evidence) if args.a1_evidence else None,
         )
 
     result = check_phase_contract(

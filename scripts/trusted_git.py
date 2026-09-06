@@ -954,6 +954,36 @@ def _classify_untracked(repo_root: Path, path: str, *, ignored: bool = False) ->
     return "uncertain"
 
 
+def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
+    """Local launcher and A1 evidence share the same candidate drift boundary."""
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(repo_root), *args],
+            text=True, encoding='utf-8', stderr=subprocess.DEVNULL, timeout=10).strip()
+    try:
+        if not re.fullmatch('[0-9a-f]{40}', candidate):
+            return False
+        if git('rev-parse', candidate+'^{commit}') != candidate or git('merge-base',candidate,'HEAD') != candidate:
+            return False
+        changed = git('diff', '--name-only', '-z', candidate).split('\0')
+        for path in filter(None, changed):
+            if path == 'AGENTS.md' or (path.startswith('docs/') and path.endswith('.md')):
+                continue
+            if path not in {'docs/state/current-phase.json', 'docs/reports/production-pixiv-a1-summary.json'}:
+                return False
+        for path in filter(None, git('ls-files','--others','--exclude-standard','-z').split('\0')):
+            if _classify_untracked(repo_root, path) != 'ordinary':
+                return False
+            # An otherwise ordinary artifact explicitly loaded by application
+            # code is behavior input, regardless of its docs/ placement.
+            referenced = subprocess.run(['git','-C',str(repo_root),'grep','-l','-F',path,'--',
+                'backend','frontend','scripts','run.py'], capture_output=True, timeout=10)
+            if referenced.returncode != 1:
+                return False
+        return True
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def inspect_worktree_drift(
     git: TrustedGitExecutable,
     repo_root: Path,

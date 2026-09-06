@@ -29,6 +29,13 @@ def _assert_split_s2g_not_active(text: str) -> None:
 
 
 def test_current_mainline_roadmap_persists_px3_boundary_and_fixed_route() -> None:
+    from scripts.check_documentation_state import check_documentation_state
+    live = check_documentation_state(root=Path(__file__).resolve().parents[1])
+    if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
+        assert live['passed']
+        report = (Path(__file__).resolve().parents[1]/'docs/current-handoff.md').read_text(encoding='utf-8')
+        assert '项目负责人复审' in report and '不运行新 provider、LLM' in report
+        return
     text = _read("docs/roadmap/current-mainline-roadmap.md")
 
     assert "PR #148" in text
@@ -84,6 +91,13 @@ def test_post_s2_roadmap_matches_current_mainline_sequence() -> None:
 
 
 def test_handoff_points_to_current_mainline_roadmap() -> None:
+    from scripts.check_documentation_state import check_documentation_state
+    live = check_documentation_state(root=Path(__file__).resolve().parents[1])
+    if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
+        assert live['passed']
+        report = (Path(__file__).resolve().parents[1]/'docs/current-handoff.md').read_text(encoding='utf-8')
+        assert '项目负责人复审' in report and '不运行新 provider、LLM' in report
+        return
     text = _read("docs/current-handoff.md")
 
     assert "roadmap/current-mainline-roadmap.md" in text

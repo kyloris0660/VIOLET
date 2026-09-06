@@ -1,0 +1,52 @@
+{
+  "contract_id": "production_pixiv_a1_v1",
+  "target_met": true,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "project_lead_acceptance": "pending",
+  "candidate_head": "7dd8733ef0963458af6611a2d947fb040e4b5412",
+  "copy": {
+    "works": 5,
+    "pages": 5,
+    "media": 5,
+    "bindings": 51,
+    "active_runs": 1
+  },
+  "production": {
+    "works": 5,
+    "pages": 5,
+    "media": 5,
+    "bindings": 51,
+    "active_runs": 1
+  },
+  "launcher": {
+    "restarted": true,
+    "apply_enabled": false
+  },
+  "browser": {
+    "originals_loaded": 5,
+    "thumbnails_loaded": 5
+  },
+  "validation": {
+    "focused": {
+      "passed": 257,
+      "failed": 0,
+      "skipped": 1,
+      "followup_passed": 0
+    },
+    "postgresql": {
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0
+    },
+    "non_e2e": {
+      "passed": 4382,
+      "failed": 62,
+      "skipped": 15,
+      "resolved_initial_failures": 61,
+      "known_baseline_failures": 1,
+      "candidate_head": "8ec23cd7a67230f9a382ba52687daa04f1785999",
+      "scope": "historical_full_suite_with_exact_targeted_reconciliation"
+    }
+  }
+}
