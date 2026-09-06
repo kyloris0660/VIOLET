@@ -2,95 +2,72 @@
 
 <!-- GENERATED: docs/state/current-phase.json -->
 
-本文件为当前状态的生成投影，不能替代当前任务授权。
+当前状态以 docs/state/current-phase.json 为准。
 
-## 当前任务
-
-- 阶段：`PRODUCTION-PIXIV-A1`。
-- 状态：`A1_PR151_BOUNDED_FIX_ENGINEERING_COMPLETE_PENDING_PROJECT_LEAD_REVIEW`。
-- 分支：`codex/production-pixiv-a1`。
-- PR：`151`。
-- 起点：`26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3`。
-- PR #150 已合并，历史恢复副本证据保留。
-- 目标完成：`True`。
-- 项目负责人复审：待完成。
-- 产品用户亲自浏览：未据此任务执行作出声明。
-
-## 实施顺序
-
-1. 修复搜索、绑定版本、历史策略和提交后文件清理。
-2. 新鲜备份、独立恢复、迁移与撤回排练。
-3. 固定样本原库落地、真实图片和 launcher 验收。
-
-## 证据边界
-
-- 工程验证不等于 PR 合并。
-- 执行代理浏览器验证不等于项目负责人接受或产品用户亲自验收。
-- 恢复副本成功不等于原库成功。
-- 当前确定性 resolver 不包含 A2 完整模型裁决。
-- 本地测试不等于 GitHub CI。
-- 所有真实操作保存在本机私有记录。
+- 阶段：`PRODUCTION-IMPORT-RECOVERY`。
+- 状态：`PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE`。
+- 分支：`codex/production-import-recovery`；PR：`152`。
+- 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
+- 工程目标完成：`True`；负责人复审：`pending_project_lead_review`。
+- 修复生产候选：`2b3c075dd4c0ceb7d55371763a9577049ec68d3e`。
 
 ## 当前检查点
 
-- 历史检查点（本轮修正前）：可信 origin/main 与已合并 PR #150 已核实。
-- 历史检查点（本轮修正前）：保留原目录，建立 A1 隔离分支。
-- 历史检查点（本轮修正前）：实施与增量迁移方案已记录；代码修复已完成。
-- 历史检查点（本轮修正前）：新鲜原库只读备份及独立 PostgreSQL 恢复完成，54 张表计数一致
-- 历史检查点（本轮修正前）：恢复副本四项增量迁移重复执行通过
-- 历史检查点（本轮修正前）：最终 1% 选择：5 作品、5 页面、5 Media；实际 API 生命周期、51 条绑定和按归属撤回已验证
-- 历史检查点（本轮修正前）：执行代理依据项目所有者授权完成副本操作；项目负责人复审仍待进行
-- 历史检查点（本轮修正前）：最终代码副本 fresh-session 搜索/详情复核通过，原有 51 条绑定保持一致
-- 历史检查点（本轮修正前）：PostgreSQL 回归 37 通过；focused 的状态文案断言已修正并补跑通过
-- 历史检查点（本轮修正前）：完整 non-E2E 原始结果 4382 通过、62 失败、15 跳过；失败已定位并针对性补跑，保留历史缺失 AI 证据失败
-- 历史检查点（本轮修正前）：240-query、720 次测量结果集保持一致；p50 6.51 ms、p95 33.377 ms、最大 72.985 ms
-- 历史检查点（本轮修正前）：执行代理依据项目所有者授权完成原库四项增量迁移，54 张既有表计数保持一致
-- 历史检查点（本轮修正前）：原有启动器经已保存的候选锚点启动生产；PID 8592、健康 OK、schema compatible
-- 历史检查点（本轮修正前）：原库实际 API dry-run/apply/replay/owned rollback/repeated rollback/reapply 通过；5 works/pages/Media、51 绑定、54 张既有表撤回后保持一致
-- 历史检查点（本轮修正前）：Computer Use 无法可靠识别当前浏览器 URL，真实页面验收未完成；执行代理关闭临时 apply 开关并通过现有控制器重启后复核搜索
-- 历史检查点（本轮修正前）：续接只读核对通过：既有候选和生产进程、1 active run、51 绑定、五样本新会话搜索一致；未重复原库写入
-- 历史检查点（本轮修正前）：独立有界面 Playwright Edge 完成五样本缩略图、详情、全屏及普通界面搜索；执行代理已实际查看截图
-- 历史检查点（本轮修正前）：最终失败项针对性补跑 70 passed / 1 historical failure；完整 non-E2E 原始记录保留
-- 历史检查点（本轮修正前）：注册 A1 本机证据投影通过，报告和完整操作恢复记录已形成；项目负责人接受仍 pending
-- 历史检查点（本轮修正前）：正常 PR #151 已创建，分支已推送；实际运行候选 8ec23cd，后继仅文档；未触发额外审查或合并
-- 项目负责人独立审计裁决已核对：PR #151 七项本轮修正，一项 squash 建议不适用；历史结论保留并补充修正
-- PR151 有界修正候选已通过隔离验证；执行代理依据项目所有者授权完成触发器增量更新和既有控制器重启，5 Media / 51 绑定保留、apply 关闭
-- 本轮刷新闭环补齐：隔离 PostgreSQL 的真实 existing-source API 正式 rollback、新计划 apply/replay 及软别名/事务/独立消费者验证通过；不倒填旧证据
-- 7dd8733 实测：PostgreSQL 67 passed；focused 257 passed / 1 Windows symlink skipped；原失败精确补跑 70 passed / 1 历史 AI 证据缺失
-- 原始 62 个失败 node 逐项对账：59 同 ID，3 个参数各映射 4 个 caller；61 项有精确 PASS，唯一历史失败保留
-- 7dd8733 部署重启后真实有界面 Edge 完成五样本三视图、19 次搜索及来源 chip；20 张生产关键截图实际查看，隔离禁用 chip 另行实查
-- 新候选 1 active run / 51 绑定 / 5 Media，读取开启、apply 关闭；隔离 UI 服务已停止，生产保持健康
-- A1 本机证据投影及注册契约通过；当前报告显式保留并修正审计前过早结论，实际运行与文档后继版本分开记录
+- 已通读28号任务并记录三个连续实施步骤；A1历史证据保持不变。
+- 可信fetch确认PR151已合并；main无本地独有提交，仅落后88提交，隔离main工作区以--ff-only安全同步，preflight_remote_sync=self_healed_by_fast_forward。
+- 保留旧规划目录和A1生产工作区；修复分支从已接受主线建立。
+- 现场profile/controller核实生产健康，仍运行A1候选，Pixiv读取开启、apply关闭。
+- 26号历史覆盖补查和27号接受记录尚未在已查本机位置找到；不推定补查结论。
+- 失败隔离、逐项诊断、跨cap公平轮转、历史真实尝试计数及私有恢复入口已实现；复用既有JSON账本，无新增schema。
+- 提交前预验证：受影响focused 327 passed / 2 skipped，隔离PostgreSQL 80 passed；后续界面复核修正仍需最终候选验证。
+- 独立有界面Edge已验证4个测试导入、1个版本排除及三个恢复动作；截图复核补上单项失败总览与下游待补做列表。
+- 314d028聚焦438 passed / 3 skipped、隔离PostgreSQL 83 passed；真实控制器文件入口发现包导入路径缺陷，旧生产已恢复，启动锚点尚未切换；补充独立子进程回归后冻结新候选。
+- b14417c最终聚焦439 passed / 3 skipped，隔离PostgreSQL83 passed；正常便携启动器界面启动和重启通过，原production8012运行修复候选，原库/存储/认证和5 Media / 51绑定核实，apply关闭。
+- 真实恢复#28完整处理493候选：40新增、263关联、190读取失败；原108和82全部实际尝试，下游42分类/36标签及本地化覆盖，无下游失败。
+- 精确关联修复#29完成四行；总计267关联修复，剩余1个来源缺失且无可靠哈希。最终界面与缺口观察已在隔离副本预验证，确认所有生产任务结束后进入最终候选维护窗口。
+- 最终行为候选1888b82：441 focused passed / 3 skipped、85 PostgreSQL passed；原日常启动器实际启动/重启成功，原production8012健康，5 Media / 51绑定保持。
+- 最终独立有界面Edge：原5样本、19普通搜索、本轮2个新增Media详情/全屏通过，30截图，0页面脚本错误；启动器已无调试参数重新打开。
+- #30正常cap=5续接完成，5次读取超时按实际历史进入暂缓；最终498项对账为40新增、267关联、174可重试、16暂缓、1来源缺失未执行。
+- 最终现场分页验证发现263个已完成关联仍列入计划观察；补齐skipped_existing_media/skipped_duplicate过滤并扩展同类回归，所有生产任务结束后冻结文档后续之前的最终行为候选。
+- 现场缺失来源与计划观察分页已核实；补齐隐藏/空文件策略排除显示的同类回归，另将当前额外四个stat缺失身份作为元数据附件单列，旧诊断未保存身份，不能推定一一对应。该次修正不执行新来源重试。
+- 最终候选2b3c075：441 focused passed / 3 skipped、85 PostgreSQL passed；原日常入口实际启动/重启通过，默认195个读取或缺失来源与189条计划观察核实，隐藏/空文件策略正确分流。
+- production_import_recovery_v1注册契约通过，0错误/0警告；最终498项恢复账本及额外4个历史stat缺失、173策略观察私有附件已核实，等待正常PR负责人复审合并。
+- 正常修复PR #152已创建，非Draft；工程候选已在原production运行，负责人接受/合并及合并后最终主线对齐仍待完成。
 
-## 运行状态
+## 执行顺序
 
-- 生产候选：`7dd8733ef0963458af6611a2d947fb040e4b5412`。
-- 下一检查点：推送本轮修正及文档后由项目负责人复审 PR151；项目所有者使用验收及合并分别按实际决定记录。
+1. 单文件失败有界尝试并继续其他候选。
+2. 记录私有原异常、逐项归宿和未执行身份。
+3. 公平轮转到期旧重试，新项和队尾均可推进。
+4. 隔离证明后部署候选，刷新现场清单并真实恢复。
 
-## 授权和保全
+## 生产保全
 
-- 执行代理依据项目所有者授权自动传递真实 dry-run 校验值。
-- 必要增量迁移与可撤销样本 apply 已授权。
-- 原图、人工标签、相册、确认实体保留。
-- 不覆盖恢复原库，不清理无关工作区。
-- 不运行新 provider、LLM 或全库导入。
-- 不 merge、不推送 main、不额外触发 reviewer。
-- A2 和 A3 未执行。
+- 原数据库、存储、认证和日常 launcher 不迁移位置。
+- 切换前核对运行任务；不终止用户导入。
+- 旧运行目录和已适用备份作为恢复材料保留。
+- 原图、私有路径和凭据不进入公开 PR。
+
+## 验证范围
+
+- focused、必要 PostgreSQL、相关契约及文档检查。
+- 正常入口、新会话、有界面系统 Edge 验证。
+- 不重复完整 non-E2E，不补造历史 AI 证据。
+
+## 授权与交付边界
+
+三个连续步骤：失败隔离与诊断；公平候选与历史补漏；隔离验证、生产部署与实际恢复。
+原库/存储和正常 launcher 保持身份一致。源读取、正常水合/导入及本轮必要下游已授权；不修改源文件。
+自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
+执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
+
+下一检查点：负责人复审并合并正常PR #152；收到合并结果后按28号原授权核对接受main、实际行为和日常启动锚点，保持原库/存储并完成最后版本对齐。
 
 ## 持久入口
 
-- [A1 实施与迁移方案](../docs/plans/production-pixiv-a1.md)
-- [执行 runbook](../docs/development/agent-runbook.md)
+- [实施与恢复方案](../docs/plans/production-import-recovery.md)
+- [工程与恢复报告](../docs/reports/production-import-recovery.md)
+- [执行runbook](../docs/development/agent-runbook.md)
 - [生产启动器](../docs/production-launcher.md)
-- [来源搜索语义](../docs/source-concept-tag-search-semantics.md)
 - [阶段契约](../docs/phase-contracts.md)
 - [当前主线路线](../docs/roadmap/current-mainline-roadmap.md)
-- [A1 交付报告](../docs/reports/production-pixiv-a1.md)
-- [A1 脱敏契约结果](../docs/reports/production-pixiv-a1-summary.json)
-
-## 后续边界
-
-- A2 补齐缺失 metadata、兼容 judgments 与全量选择所有权。
-- A3 接通持续同步与队列。
-- 工作区对抗、多 worker 和远程证据能力不在本轮扩展。
-- 更新：`2026-09-06T09:49:57.128471+00:00`。

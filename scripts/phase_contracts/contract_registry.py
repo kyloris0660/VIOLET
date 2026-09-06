@@ -3327,3 +3327,13 @@ CONTRACTS['production_pixiv_a1_v1'] = PhaseContract(
     custom_checks=('production_pixiv_a1',),
     description='从本次备份、恢复、实际 API 生命周期和启动器证据核对原库交付；不授予合并或阶段接受。',
 )
+
+CONTRACTS['production_import_recovery_v1'] = PhaseContract(
+    contract_id='production_import_recovery_v1', contract_version='1', phase_kind='production_import_recovery',
+    required_summary_fields=('candidate_head','target_met','recovery','validation','safe_to_merge','route_approved'),
+    db_write_policy='限本轮来源账本、实际导入和必要待补做；保留原数据',
+    provider_policy='禁止新增 provider 请求', llm_policy='仅既有配置下本轮必要本地化',
+    mutation_policy='原图不修改；去重保护人工整理和 A1 支持',
+    custom_checks=('production_import_recovery',),
+    description='核对本次实际恢复、隔离回归、日常启动器及原五样本；不授予接受或合并。',
+)

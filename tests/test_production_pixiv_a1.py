@@ -463,7 +463,8 @@ def test_import_commit_boundary_preserves_durable_files(real_api, monkeypatch, t
     thumbs = tmp_path/'thumbnails'
     original.mkdir(); thumbs.mkdir()
     image = (original if caller=='direct' else tmp_path)/'sample.png'
-    image.write_bytes(b'one-off-test-input')
+    from PIL import Image
+    Image.new('RGB', (10, 10), (20, 30, 40)).save(image)
     monkeypatch.setattr(settings,'ORIGINAL_DIR',original)
     monkeypatch.setattr(settings,'THUMBNAIL_DIR',thumbs)
     monkeypatch.setattr(settings,'storage_relative_path',lambda p: str(p.relative_to(tmp_path)))

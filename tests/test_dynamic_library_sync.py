@@ -954,7 +954,7 @@ def test_manual_sync_dry_run_image_verify_timeout_is_retry_source_work(db, tmp_p
     assert plan["counts"]["failure_reasons"]["read_timeout"] == 1
 
 
-def test_manual_sync_dry_run_does_not_abort_healthy_progress_after_600s(db, tmp_path, monkeypatch):
+def test_manual_sync_dry_run_bounds_initial_enumeration_even_with_healthy_progress(db, tmp_path, monkeypatch):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     for index in range(80):
@@ -983,12 +983,12 @@ def test_manual_sync_dry_run_does_not_abort_healthy_progress_after_600s(db, tmp_
         progress_callback=progress_events.append,
     )
 
-    assert monotonic_value["value"] > 600
+    assert monotonic_value["value"] >= 300
     assert plan["limits"]["global_elapsed_timeout_enabled"] is False
     assert plan["limits"]["plan_timeout"] is False
     assert plan["limits"]["plan_no_progress_timeout"] is False
-    assert plan["counts"]["partial_scan"] is False
-    assert plan["counts"]["state_counts"]["import_planned"] == 80
+    assert plan["counts"]["partial_scan"] is True
+    assert plan["counts"]["failure_reasons"]["source_walk_error"] >= 1
     assert plan["counts"]["failure_reasons"].get("plan_timeout", 0) == 0
     assert plan["counts"]["failure_reasons"].get("plan_no_progress_timeout", 0) == 0
 
@@ -1004,7 +1004,7 @@ def test_manual_sync_dry_run_no_progress_watchdog_stops_safely(db, tmp_path, mon
         monotonic_value["value"] += 1.0
         return monotonic_value["value"]
 
-    def slow_iter(_resolved, *, walk_errors):
+    def slow_iter(_resolved, *, walk_errors, dispositions=None):
         monotonic_value["value"] += service.MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS + 5
         yield source_root / "new.png"
 
@@ -1673,7 +1673,7 @@ def test_manual_sync_dry_run_discovers_unseen_old_mtime_file_under_watermark(db,
     assert "copied_icloud_old_capture.png" not in str(plan)
 
 
-def test_manual_sync_dry_run_treats_unchanged_duplicate_ledger_rows_as_stable_skip(db, tmp_path):
+def test_manual_sync_dry_run_reconciles_unlinked_duplicate_ledger_rows(db, tmp_path):
     source_root = tmp_path / "manual_source"
     source_root.mkdir()
     duplicate_path = source_root / "duplicate.png"
@@ -1712,7 +1712,8 @@ def test_manual_sync_dry_run_treats_unchanged_duplicate_ledger_rows_as_stable_sk
 
     assert plan["counts"]["state_counts"]["import_planned"] == 1
     assert plan["counts"]["plan_items"] == 1
-    assert plan["limits"]["fast_skipped_from_ledger"] == 1
+    assert plan["limits"]["fast_skipped_from_ledger"] == 0
+    assert plan["limits"]["candidate_pool_count"] == 2
     assert "duplicate.png" not in str(plan)
     assert "fresh.png" not in str(plan)
 
@@ -2423,7 +2424,7 @@ def test_manual_sync_dry_run_keeps_app_media_followup_when_filesystem_walk_error
     )
     db.commit()
 
-    def walk_with_error(_root_path, *, walk_errors):
+    def walk_with_error(_root_path, *, walk_errors, dispositions=None):
         walk_errors.append("permission denied")
         return iter(())
 
@@ -3074,12 +3075,12 @@ def test_walk_error_skips_missing_reconciliation_for_unseen_descendants(db, tmp_
     root = service.register_source_root(db, path=source_root, label="fixture")
     service.run_update_check(db, root_ids=[root.id])
 
-    def fake_walk(path, onerror=None):
-        yield str(path), ["subtree"], ["root.jpg"]
-        if onerror is not None:
-            onerror(OSError("permission denied"))
+    def fake_walk(path, *, walk_errors=None, dispositions=None):
+        yield path / "root.jpg"
+        if walk_errors is not None:
+            walk_errors.append({"path": str(path / "subtree"), "reason": "permission_denied", "coverage": "unknown"})
 
-    monkeypatch.setattr(service.os, "walk", fake_walk)
+    monkeypatch.setattr(service, "_iter_source_files", fake_walk)
 
     result = service.run_update_check(db, root_ids=[root.id])
     root_summary = result["summary"]["root_summaries"][0]

@@ -1,15 +1,10 @@
 # V.I.O.L.E.T. Project Roadmap
 
-<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A1 -->
+<!-- CURRENT_PHASE: PRODUCTION-IMPORT-RECOVERY -->
 
-当前阶段为 **PRODUCTION-PIXIV-A1**：执行代理依据项目所有者授权完成生产 Pixiv
-接入与原库验收；PR #150 已合并。历史 PX 的限制和证据仅描述其原阶段。
-A1 方案见 `docs/plans/production-pixiv-a1.md`；项目负责人复审尚未完成。
-本阶段不执行 A2/A3，不授权 merge、main push 或额外 reviewer。
-
-
-当前路线只以 `docs/state/current-phase.json` 为准。本次 A1 复用既有链路，
-完成后由项目负责人复审；A2 补齐 metadata 与完整裁决，A3 接通日常同步。
+当前路线为生产导入可靠性修复与实际恢复，依据28号任务执行。PR #151 已接受并合并；A1报告与契约为历史工程证据。
+三个连续步骤和授权见 `docs/plans/production-import-recovery.md`。当前状态只以 `docs/state/current-phase.json` 为准。
+负责人复审与合并、候选部署和长期启动入口分别核实；执行代理不合并、不推 main、不追加 reviewer。不启动 Pixiv A2/A3。
 
 ## 历史 PX3 基线记录
 

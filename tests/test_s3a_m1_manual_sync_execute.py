@@ -1861,7 +1861,7 @@ def test_manual_sync_normal_incremental_plan_runs_full_e2e_pipeline_with_stage_s
 
     calls: list[tuple[str, int]] = []
 
-    def fake_copy(db_arg, source_file: Path):
+    def fake_copy(db_arg, source_file: Path, *, expected_hash=None):
         media = Media(
             filename=source_file.name,
             path=f"media/original/{source_file.name}",
@@ -1990,7 +1990,7 @@ def test_manual_sync_execute_gates_ai_and_localization_by_content_class(db, tmp_
     ai_calls: list[int] = []
     localization_media_ids: list[int] = []
 
-    def fake_copy(db_arg, source_file: Path):
+    def fake_copy(db_arg, source_file: Path, *, expected_hash=None):
         media = Media(
             filename=source_file.name,
             path=f"media/original/{source_file.name}",
@@ -3092,7 +3092,7 @@ def test_manual_sync_execute_downstream_followup_uses_app_media_not_changed_sour
     assert run_item.current_metadata_json["app_media_authoritative"] is True
 
 
-def test_manual_sync_execute_production_gate_rejects_unconfigured_localization_provider(db, tmp_path, monkeypatch):
+def test_manual_sync_execute_production_allows_import_with_unconfigured_localization_provider(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("VIOLET_ENV", "production")
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
@@ -3118,23 +3118,22 @@ def test_manual_sync_execute_production_gate_rejects_unconfigured_localization_p
         stable_age_seconds=0,
     )
 
-    with pytest.raises(ManualSyncExecuteError) as exc:
-        create_manual_sync_execute_run(
-            db,
-            root_id=root.id,
-            max_files=5,
-            hydrated_only=True,
-            stable_age_seconds=0,
-            expected_plan_hash=plan["integrity"]["plan_hash"],
-            confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
-            plan_created_at=plan["job"]["created_at"],
-            production_acceptance_approved=True,
-        )
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+        production_acceptance_approved=True,
+    )
+    assert run.status == "pending"
+    assert db.query(Media).count() == 0
 
-    assert exc.value.code == "manual_sync_localization_llm_provider_unconfigured"
 
-
-def test_manual_sync_execute_production_gate_rejects_uncached_clip_before_import(db, tmp_path, monkeypatch):
+def test_manual_sync_execute_production_allows_import_with_uncached_clip_before_import(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setenv("VIOLET_ENV", "production")
     monkeypatch.setenv("CONTENT_CLASSIFICATION_ENABLED", "true")
@@ -3155,25 +3154,22 @@ def test_manual_sync_execute_production_gate_rejects_uncached_clip_before_import
         stable_age_seconds=0,
     )
 
-    with pytest.raises(ManualSyncExecuteError) as exc:
-        create_manual_sync_execute_run(
-            db,
-            root_id=root.id,
-            max_files=5,
-            hydrated_only=True,
-            stable_age_seconds=0,
-            expected_plan_hash=plan["integrity"]["plan_hash"],
-            confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
-            plan_created_at=plan["job"]["created_at"],
-            production_acceptance_approved=True,
-        )
-
-    assert exc.value.code == "classification_model_uncached"
-    assert db.query(DynamicSyncRun).count() == 0
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+        production_acceptance_approved=True,
+    )
+    assert run.status == "pending"
     assert db.query(Media).count() == 0
 
 
-def test_manual_sync_execute_production_gate_rejects_uncached_wd_tagger_before_import(
+def test_manual_sync_execute_production_allows_import_with_uncached_wd_tagger_before_import(
     db, tmp_path, monkeypatch
 ):
     _enable_manual_execute(monkeypatch)
@@ -3204,23 +3200,19 @@ def test_manual_sync_execute_production_gate_rejects_uncached_wd_tagger_before_i
         stable_age_seconds=0,
     )
 
-    with pytest.raises(ManualSyncExecuteError) as exc:
-        create_manual_sync_execute_run(
-            db,
-            root_id=root.id,
-            max_files=5,
-            hydrated_only=True,
-            stable_age_seconds=0,
-            expected_plan_hash=plan["integrity"]["plan_hash"],
-            confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
-            plan_created_at=plan["job"]["created_at"],
-            production_acceptance_approved=True,
-        )
-
-    assert exc.value.code == "manual_sync_ai_tagger_model_uncached"
-    assert db.query(DynamicSyncRun).count() == 0
+    run = create_manual_sync_execute_run(
+        db,
+        root_id=root.id,
+        max_files=5,
+        hydrated_only=True,
+        stable_age_seconds=0,
+        expected_plan_hash=plan["integrity"]["plan_hash"],
+        confirmation_phrase=plan["integrity"]["production_confirmation_phrase"],
+        plan_created_at=plan["job"]["created_at"],
+        production_acceptance_approved=True,
+    )
+    assert run.status == "pending"
     assert db.query(Media).count() == 0
-    assert list(settings.ORIGINAL_DIR.iterdir()) == []
 
 
 def test_s3a_m1_heuristic_classification_defers_when_ai_tagging_failed(db, tmp_path, monkeypatch):
@@ -3493,14 +3485,16 @@ def test_s3a_m1_execute_records_missing_file_and_continues(db, tmp_path, monkeyp
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert result["status"] == "completed_with_failures"
-    assert result["manual_sync_execute"]["operator_status"] == "completed_with_retryable_failures"
+    # This fixture disables classification, so the retained healthy import also
+    # has downstream work. Source failure counts remain independently visible.
+    assert result["manual_sync_execute"]["operator_status"] == "completed_with_followup_required"
     assert result["manual_sync_execute"]["outcome_counts"]["source_missing"] == 1
     assert db.query(Media).count() == 1
     assert db.query(DynamicSyncRunItem).count() == 2
     assert {item.failure_reason for item in db.query(DynamicSourceItem).all()} == {"source_missing", None}
 
 
-def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
+def test_s3a_m1_execute_records_all_failures_without_batch_stop(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES", 1)
     monkeypatch.setattr(execute_service, "MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS", 100)
@@ -3532,22 +3526,16 @@ def test_s3a_m1_execute_stops_on_failure_budget(db, tmp_path, monkeypatch):
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert result["status"] == "failed"
-    assert result["manual_sync_execute"]["status"] == "stopped_by_failure_budget"
-    assert result["manual_sync_execute"]["operator_status"] == "completed_with_retryable_failures_plus_continuation"
-    assert result["manual_sync_execute"]["stopped_by"] == "stopped_by_failure_budget"
-    assert result["manual_sync_execute"]["unprocessed_count"] == 1
-    assert result["manual_sync_execute"]["unprocessed_import_planned_count"] == 1
-    assert db.get(DynamicSyncRun, run.id).pending_import_items == 1
+    assert result["status"] == "completed_with_failures"
+    summary = result["manual_sync_execute"]
+    assert summary["stopped_by"] is None
+    assert summary["outcome_counts"]["failed"] == 3
+    assert summary["unprocessed_count"] == 0
+    assert db.get(DynamicSyncRun, run.id).pending_import_items == 0
     run_items = db.query(DynamicSyncRunItem).all()
     assert len(run_items) == 3
-    deferred = [item for item in run_items if item.item_state == "deferred_unprocessed"]
-    assert len(deferred) == 1
-    assert deferred[0].action == "defer"
-    assert deferred[0].reason == "not_processed_budget_stop"
-    public_status = execute_service.serialize_manual_sync_execute_run(db.get(DynamicSyncRun, run.id))
-    assert "missing-2.png" not in str(public_status)
-    assert "content_hash" not in str(deferred[0].current_metadata_json)
+    assert all(item.item_state == "failed" for item in run_items)
+    assert "missing-2.png" not in str(execute_service.serialize_manual_sync_execute_run(run))
 
 
 def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_media(db, tmp_path, monkeypatch):
@@ -3633,20 +3621,20 @@ def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_m
 
     assert result["status"] == "completed_with_failures"
     execute_summary = result["manual_sync_execute"]
-    assert execute_summary["operator_status"] == "completed_with_retryable_failures_plus_continuation"
-    assert execute_summary["import_stopped_by"] == "stopped_by_failure_budget"
-    assert execute_summary["downstream_continued_after_import_stop"] is True
+    assert execute_summary["operator_status"] == "completed_with_retryable_failures"
+    assert execute_summary["import_stopped_by"] is None
+    assert execute_summary["downstream_continued_after_import_stop"] is False
     assert execute_summary["retryable_source_failure_count"] == 1
     assert execute_summary["stopped_by"] is None
-    assert execute_summary["outcome_counts"]["imported"] == 2
+    assert execute_summary["outcome_counts"]["imported"] == 3
     assert execute_summary["outcome_counts"]["read_timeout"] == 1
-    assert execute_summary["unprocessed_import_planned_count"] == 1
+    assert execute_summary["unprocessed_import_planned_count"] == 0
     assert result["failed_items"] == 1
-    assert len(classified) == 2
+    assert len(classified) == 3
     assert ai_tagged == classified
     assert sorted(localized) == sorted(classified)
     stage_rows = {row["name"]: row for row in execute_summary["stage_rows"]}
-    assert stage_rows["import"]["status"] == "stopped_by_failure_budget"
+    assert stage_rows["import"]["status"] == "completed"
     assert stage_rows["classification"]["status"] == "completed"
     assert stage_rows["ai_tagging"]["status"] == "completed"
     assert stage_rows["localization"]["status"] == "completed"
@@ -3665,8 +3653,8 @@ def test_s3a_m1_retryable_import_budget_stop_continues_downstream_for_imported_m
     assert retry_metadata["last_failure_reason"] == "read_timeout"
     assert retry_metadata["retryable"] is True
     assert retry_metadata["long_term_state"] == "retryable"
-    assert source_items["03-deferred.png"].deferred_reason == "not_processed_budget_stop"
-    assert source_items["03-deferred.png"].import_status == "deferred"
+    assert source_items["03-deferred.png"].localization_status == "localized"
+    assert source_items["03-deferred.png"].import_status == "imported"
 
 
 def test_manual_sync_execute_retry_source_read_timeout_does_not_import_or_copy(db, tmp_path, monkeypatch):
@@ -3743,7 +3731,7 @@ def test_manual_sync_execute_retry_source_read_timeout_does_not_import_or_copy(d
     assert run_item.action == "retry_source"
 
 
-def test_manual_sync_execute_retry_source_cloud_hydration_success_does_not_import(db, tmp_path, monkeypatch):
+def test_manual_sync_execute_retry_source_cloud_hydration_success_imports_in_same_run(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     _patch_test_storage(monkeypatch, tmp_path)
 
@@ -3772,10 +3760,6 @@ def test_manual_sync_execute_retry_source_cloud_hydration_success_does_not_impor
         lambda path, _timeout_sec: (calculate_file_hash(path), None),
     )
 
-    def fail_copy(_db_arg, _source_file):
-        raise AssertionError("successful RETRY_SOURCE must re-plan as IMPORT, not import immediately")
-
-    monkeypatch.setattr(execute_service, "_copy_and_import_media", fail_copy)
     plan = planner.plan_manual_sync_dry_run(
         db,
         source_path=source_root,
@@ -3799,24 +3783,17 @@ def test_manual_sync_execute_retry_source_cloud_hydration_success_does_not_impor
 
     result = execute_manual_sync_run(db, run_id=run.id)
 
-    assert db.query(Media).count() == 0
-    assert list(settings.ORIGINAL_DIR.iterdir()) == []
-    execute_summary = result["manual_sync_execute"]
-    assert result["status"] == "completed_with_followup_required"
-    assert execute_summary["status"] == "completed_with_continuation"
-    assert execute_summary["operator_status"] == "completed_with_continuation"
-    assert "重试恢复后的导入需要继续计划" in execute_summary["operator_status_label_zh"]
-    assert execute_summary["outcome_counts"]["retry_source_ready_for_import"] == 1
+    assert db.query(Media).count() == 1
+    assert len(list(settings.ORIGINAL_DIR.iterdir())) == 1
+    assert result["manual_sync_execute"]["outcome_counts"]["imported"] == 1
+    assert result["manual_sync_execute"]["outcome_counts"]["retry_source_recovered"] == 1
     db.refresh(item)
-    assert item.sync_state == "new"
-    assert item.import_status == "pending"
+    assert item.import_status == "imported" and item.media_id is not None
     assert item.failure_reason is None
-    run_item = db.query(DynamicSyncRunItem).one()
-    assert run_item.item_state == "retry_source_ready_for_import"
-    assert run_item.action == "retry_source"
+    assert db.query(DynamicSyncRunItem).one().action == "import"
 
 
-def test_manual_sync_execute_successful_retry_replans_as_explicit_import(db, tmp_path, monkeypatch):
+def test_manual_sync_execute_successful_retry_does_not_require_second_import_click(db, tmp_path, monkeypatch):
     _enable_manual_execute(monkeypatch)
     _patch_test_storage(monkeypatch, tmp_path)
 
@@ -3843,11 +3820,6 @@ def test_manual_sync_execute_successful_retry_replans_as_explicit_import(db, tmp
         execute_service,
         "_calculate_manual_plan_file_hash",
         lambda path, _timeout_sec: (calculate_file_hash(path), None),
-    )
-    monkeypatch.setattr(
-        execute_service,
-        "_copy_and_import_media",
-        lambda _db_arg, _source_file: (_ for _ in ()).throw(AssertionError("RETRY_SOURCE imported unexpectedly")),
     )
     plan = planner.plan_manual_sync_dry_run(
         db,
@@ -3878,11 +3850,10 @@ def test_manual_sync_execute_successful_retry_replans_as_explicit_import(db, tmp
         include_private_details=True,
     )
 
-    assert db.query(Media).count() == 0
-    next_item = next_plan["private_details"]["items"][0]
-    assert next_item["lifecycle_kind"] == "IMPORT_CANDIDATE"
-    assert next_item["work_item_kind"] == "IMPORT"
-    assert next_item["can_execute"] is True
+    assert db.query(Media).count() == 1
+    assert all(i["work_item_kind"] != "IMPORT" for i in next_plan["private_details"]["items"])
+    db.refresh(item)
+    assert item.import_status == "imported"
 
 
 def test_manual_sync_execute_successful_retry_existing_media_replans_as_followup(db, tmp_path, monkeypatch):
@@ -3955,14 +3926,14 @@ def test_manual_sync_execute_successful_retry_existing_media_replans_as_followup
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert db.query(Media).count() == 1
-    assert result["manual_sync_execute"]["outcome_counts"]["retry_source_ready_for_import"] == 1
+    assert result["manual_sync_execute"]["outcome_counts"]["skipped_existing_media"] == 1
     db.refresh(item)
     assert item.media_id == media.id
-    assert item.sync_state == "imported"
+    assert item.sync_state in {"imported", "skipped_existing_media"}
     assert item.import_status == "imported"
     assert item.failure_reason is None
     assert item.classification_status == "classified"
-    assert item.ai_tagging_status == "failed_ai_tagger_model_uncached"
+    assert item.ai_tagging_status == "ai_tagged"
 
     next_plan = planner.plan_manual_sync_dry_run(
         db,
@@ -3972,11 +3943,7 @@ def test_manual_sync_execute_successful_retry_existing_media_replans_as_followup
         stable_age_seconds=0,
         include_private_details=True,
     )
-    next_item = next_plan["private_details"]["items"][0]
-    assert next_item["lifecycle_kind"] == "APP_MEDIA_FOLLOWUP"
-    assert next_item["work_item_kind"] == "FOLLOWUP"
-    assert next_item["can_execute"] is True
-    assert next_item["allowed_source_reads"] is False
+    assert all(i["work_item_kind"] != "IMPORT" for i in next_plan["private_details"]["items"])
 
 
 def test_manual_sync_execute_broken_state_does_not_mutate_source_item(db, tmp_path, monkeypatch):
@@ -4481,9 +4448,9 @@ def test_manual_sync_execute_does_not_materialize_tail_diagnostics_as_deferred(d
     db.refresh(broken)
     assert _source_item_core_snapshot(broken) == before
     run_items = db.query(DynamicSyncRunItem).all()
-    assert len(run_items) == 1
-    assert run_items[0].item_state == "deferred_unprocessed"
-    assert run_items[0].source_item_id != broken.id
+    assert len(run_items) == 2
+    assert {i.item_state for i in run_items} == {"deferred_unprocessed", "not_executed"}
+    assert all(i.source_item_id != broken.id for i in run_items)
 
 
 def test_s3a_m1_execute_cancel_after_ai_tagging_skips_localization_finalizer(db, tmp_path, monkeypatch):

@@ -95,7 +95,8 @@ def _hash_file_in_subprocess(file_path: str, conn):
                 hash_md5.update(chunk)
         conn.send(("ok", hash_md5.hexdigest()))
     except Exception as e:
-        conn.send(("error", str(e)))
+        from .source_read_diagnostics import exception_detail
+        conn.send(("error", exception_detail(e, stage="source_hash")))
     finally:
         conn.close()
 
@@ -110,13 +111,24 @@ def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tupl
     Returns ("ok", hash_str) on success, ("timeout", msg) on timeout,
     or ("error", msg) on read error.
     """
+    import time
+    from .source_read_diagnostics import worker_detail
+    started = time.monotonic()
     parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
     proc = multiprocessing.Process(
         target=_hash_file_in_subprocess,
         args=(str(file_path), child_conn),
         daemon=True,
     )
-    proc.start()
+    try:
+        proc.start()
+    except Exception as exc:
+        from .source_read_diagnostics import exception_detail
+        parent_conn.close()
+        child_conn.close()
+        return ("error", worker_detail({**exception_detail(exc, stage="hash_worker_start"),
+            "shared_dependency": "source_worker_start"}, stage="hash_worker_start", status="start_failed",
+            started=started, timeout=timeout_sec, exitcode=None))
     child_conn.close()
 
     proc.join(timeout=timeout_sec)
@@ -128,19 +140,21 @@ def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tupl
             proc.kill()
             proc.join(timeout=2)
         parent_conn.close()
-        return ("timeout", f"hash timed out after {timeout_sec}s")
+        return ("timeout", worker_detail(None, stage="source_hash", status="timeout", started=started, timeout=timeout_sec, exitcode=proc.exitcode))
 
     try:
         if parent_conn.poll(timeout=2.0):
             status, value = parent_conn.recv()
             parent_conn.close()
+            if status != "ok":
+                value = worker_detail(value, stage="source_hash", status=status, started=started, timeout=timeout_sec, exitcode=proc.exitcode)
             return (status, value)
         else:
             parent_conn.close()
-            return ("error", f"subprocess exited but sent no result (code={proc.exitcode})")
+            return ("error", worker_detail(None, stage="source_hash", status="no_result", started=started, timeout=timeout_sec, exitcode=proc.exitcode))
     except (EOFError, OSError):
         parent_conn.close()
-        return ("error", f"subprocess exited unexpectedly (code={proc.exitcode})")
+        return ("error", worker_detail(None, stage="source_hash", status="no_result", started=started, timeout=timeout_sec, exitcode=proc.exitcode))
 
 
 def _is_cloud_only(file_path: Path) -> bool:

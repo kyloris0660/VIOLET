@@ -92,6 +92,9 @@ MANUAL_SYNC_PLAN_NO_PROGRESS_TIMEOUT_SECONDS = 5 * 60
 MANUAL_SYNC_NORMAL_PLAN_MODE = "incremental"
 MANUAL_SYNC_ADVANCED_FULL_RESCAN_MODE = "advanced_full_rescan"
 MANUAL_SYNC_RETRYABLE_SOURCE_FAILURE_REASONS = {
+    "import_failed",
+    "stat_error",
+    "corrupted_image",
     "cloud_hydration_failed",
     "cloud_network_unavailable",
     "content_changed_after_plan",
@@ -377,8 +380,9 @@ def _verify_supported_image_file(path: Path) -> Optional[str]:
 
         with Image.open(path) as img:
             img.verify()
-    except Exception:
-        return "corrupted_image"
+    except Exception as exc:
+        from ..utils.source_read_diagnostics import SourceReadReason, exception_detail
+        return SourceReadReason("corrupted_image", exception_detail(exc, stage="image_verify"))
     return None
 
 
@@ -386,9 +390,10 @@ def _verify_supported_image_file_worker(path: str, conn) -> None:
     try:
         reason = _verify_supported_image_file(Path(path))
         conn.send(("ok", reason))
-    except Exception:  # noqa: BLE001 - child process returns only public-safe codes.
+    except Exception as exc:
         try:
-            conn.send(("error", "corrupted_image"))
+            from ..utils.source_read_diagnostics import SourceReadReason, exception_detail
+            conn.send(("error", SourceReadReason("corrupted_image", exception_detail(exc, stage="image_verify"))))
         except Exception:
             pass
     finally:
@@ -399,6 +404,8 @@ def _verify_supported_image_file_worker(path: str, conn) -> None:
 
 
 def _verify_supported_image_file_with_timeout(path: Path, timeout_sec: int) -> Optional[str]:
+    from ..utils.source_read_diagnostics import SourceReadReason, exception_detail, worker_detail
+    started = time.monotonic()
     timeout_sec = max(1, int(timeout_sec))
     parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
     process = multiprocessing.Process(
@@ -415,17 +422,22 @@ def _verify_supported_image_file_with_timeout(path: Path, timeout_sec: int) -> O
             if process.is_alive():
                 process.terminate()
                 process.join(timeout=1)
-            if status == "ok":
-                return _manual_public_reason_code(payload)
-            return _manual_public_reason_code(payload) or "corrupted_image"
+            if status == "ok" and payload is None:
+                return None
+            reason = _manual_public_reason_code(payload) or "corrupted_image"
+            return SourceReadReason(reason, worker_detail(getattr(payload, "diagnostic", None),
+                stage="image_verify", status="error", started=started, timeout=timeout_sec,
+                exitcode=process.exitcode))
         process.terminate()
         process.join(timeout=1)
         if process.is_alive():
             process.kill()
             process.join(timeout=1)
-        return "read_timeout"
-    except Exception:
-        return "read_error"
+        return SourceReadReason("read_timeout", worker_detail(None, stage="image_verify", status="timeout",
+            started=started, timeout=timeout_sec, exitcode=process.exitcode))
+    except Exception as exc:
+        return SourceReadReason("read_error", worker_detail(exception_detail(exc, stage="image_verify"),
+            stage="image_verify", status="no_result", started=started, timeout=timeout_sec, exitcode=process.exitcode))
     finally:
         try:
             parent_conn.close()
@@ -441,12 +453,12 @@ def _verify_supported_image_file_with_timeout(path: Path, timeout_sec: int) -> O
 
 
 def _calculate_manual_plan_file_hash(path: Path, timeout_sec: int) -> tuple[Optional[str], Optional[str]]:
+    from ..utils.source_read_diagnostics import SourceReadReason
     status, payload = _calculate_file_hash_with_timeout(path, max(1, int(timeout_sec)))
     if status == "ok":
         return str(payload), None
-    if status == "timeout":
-        return None, "read_timeout"
-    return None, "read_error"
+    detail = dict(payload) if isinstance(payload, dict) else {"message": str(payload)[:1024], "exception_type": None, "errno": None, "winerror": None}
+    return None, SourceReadReason("read_timeout" if status == "timeout" else "read_error", detail)
 
 
 def _query_existing_media_by_hashes(db: Session, content_hashes: Iterable[str]) -> Dict[str, int]:
@@ -708,7 +720,7 @@ def _manual_plan_integrity_payload(
 
 
 def _redact_private_sync_payload(value: Any) -> Any:
-    private_keys = {"private_plan_items", "private_details", "relative_path", "content_hash"}
+    private_keys = {"private_plan_items", "private_details", "relative_path", "content_hash", "private_diagnostic", "private_discovery"}
     if isinstance(value, dict):
         return {
             key: _redact_private_sync_payload(item)
@@ -820,6 +832,10 @@ def _plan_manual_sync_incremental_dry_run(
     public_items: List[Dict[str, Any]] = []
     private_items: List[Dict[str, Any]] = []
     candidate_pool: List[Dict[str, Any]] = []
+    private_dispositions: List[Dict[str, Any]] = []
+    directory_dispositions: List[Dict[str, Any]] = []
+    from .manual_sync_recovery import disposition, last_attempt, fair_order, persisted_cursor
+    scheduler_cursor = persisted_cursor(db, source_record_id) if source_record_id else 0
     candidate_records: List[Dict[str, Any]] = []
     integrity_items: List[Dict[str, Any]] = []
     walk_errors: List[str] = []
@@ -970,6 +986,12 @@ def _plan_manual_sync_incremental_dry_run(
 
     _prime_media_evidence(item.media_id for item in app_media_followup_items)
     for followup_index, known_item in enumerate(app_media_followup_items, start=1):
+        current_disposition = disposition(known_item, now=created_at)
+        if current_disposition in {"ignored", "deferred_diagnosis", "terminal", "waiting_retry"}:
+            private_dispositions.append(dict(relative_path=known_item.relative_path,
+                source_item_id=known_item.id, reason=current_disposition, stage="app_media_followup"))
+            reason_counts[current_disposition] += 1
+            continue
         media_row, app_exists = _media_evidence(known_item.media_id)
         lifecycle_decision = classify_source_item(
             known_item,
@@ -1010,6 +1032,7 @@ def _plan_manual_sync_incremental_dry_run(
                 "lifecycle_decision": lifecycle_decision.to_public_dict(),
                 "candidate_priority": _manual_plan_media_followup_candidate_priority(known_item),
                 "candidate_mtime_ns": known_item.mtime_ns,
+                "last_attempt_at": last_attempt(known_item),
                 "known_source_item": True,
                 "source_item_id": int(known_item.id) if known_item.id is not None else None,
             }
@@ -1043,7 +1066,7 @@ def _plan_manual_sync_incremental_dry_run(
         if priority_source_files:
             filesystem_walk_after_priority_workset = True
         _progress("filesystem_metadata_walk")
-        for walked_path in _iter_source_files(resolved, walk_errors=walk_errors):
+        for walked_path in _iter_source_files(resolved, walk_errors=walk_errors, dispositions=directory_dispositions):
             path_identity = _normalized_path_identity(walked_path)
             if path_identity in processed_path_identities:
                 continue
@@ -1083,8 +1106,17 @@ def _plan_manual_sync_incremental_dry_run(
         try:
             metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
             stat_required_count += 1
-        except OSError:
+        except OSError as exc:
+            from ..utils.source_read_diagnostics import exception_detail
             reason = "stat_error"
+            metadata["private_diagnostic"] = exception_detail(exc, stage="plan_stat")
+
+        recovery_disposition = disposition(known_item, metadata, now=created_at) if known_item is not None else "retryable"
+        if recovery_disposition in {"deferred_diagnosis", "terminal", "ignored", "waiting_retry"}:
+            private_dispositions.append(dict(relative_path=rel, source_item_id=known_item.id,
+                reason=recovery_disposition, metadata=metadata, stage="candidate_discovery"))
+            reason_counts[recovery_disposition] += 1
+            continue
 
         if reason is None and effective_stable_age > 0:
             mtime = metadata.get("mtime")
@@ -1170,6 +1202,10 @@ def _plan_manual_sync_incremental_dry_run(
             unchanged_ledger_skips += 1
             continue
 
+        if reason is not None and reason != "downstream_followup":
+            private_dispositions.append(dict(relative_path=rel,
+                source_item_id=known_item.id if known_item is not None else None,
+                reason=reason, metadata=metadata, stage="candidate_discovery"))
         if reason in {"unsupported_extension", "icloud_placeholder", "file_still_changing"} and scan_source == "mtime_window_metadata":
             state = _manual_state_for_reason(reason)
             state_counts[state] += 1
@@ -1274,6 +1310,7 @@ def _plan_manual_sync_incremental_dry_run(
             "lifecycle_decision": lifecycle_decision.to_public_dict(),
             "candidate_priority": candidate_priority,
             "candidate_mtime_ns": mtime_ns,
+            "last_attempt_at": last_attempt(known_item) if known_item is not None else "",
             "known_source_item": known_item is not None,
             "source_item_id": int(known_item.id) if known_item is not None and known_item.id is not None else None,
         }
@@ -1291,13 +1328,7 @@ def _plan_manual_sync_incremental_dry_run(
     walk_error_import_candidates_blocked = 0
     source_walk_error_followup_only_batch = False
     if not (plan_cancelled or plan_no_progress_timeout):
-        candidate_pool.sort(
-            key=lambda record: (
-                int(record.get("candidate_priority") if record.get("candidate_priority") is not None else 100),
-                -int(record.get("candidate_mtime_ns") or 0),
-                str(record.get("relative_path_hash_full") or ""),
-            )
-        )
+        candidate_pool = fair_order(candidate_pool, cursor=scheduler_cursor)
         selection_pool = list(candidate_pool)
 
         def _record_consumes_actionable_cap(record: Dict[str, Any]) -> bool:
@@ -1427,6 +1458,7 @@ def _plan_manual_sync_incremental_dry_run(
             private_item = {
                 **item,
                 "relative_path": record["relative_path"],
+                "scheduler_cursor_after": record.get("scheduler_cursor_after"),
                 "content_hash": record.get("content_hash") if state == "downstream_followup_planned" else None,
                 "mtime_ns": metadata.get("mtime_ns"),
                 "cloud_placeholder_before_hydration": False,
@@ -1444,8 +1476,8 @@ def _plan_manual_sync_incremental_dry_run(
     import_count = int(work_item_counts.get("IMPORT", 0))
     downstream_followup_count = int(work_item_counts.get("FOLLOWUP", 0))
     retry_source_count = int(work_item_counts.get("RETRY_SOURCE", 0))
-    downstream_stage_count = import_count + downstream_followup_count
-    executable_work_count = downstream_stage_count + retry_source_count
+    downstream_stage_count = import_count + downstream_followup_count + retry_source_count
+    executable_work_count = downstream_stage_count
     source_walk_error_followup_only_batch = bool(
         source_walk_error_followup_only_batch
         and import_count == 0
@@ -1768,6 +1800,9 @@ def _plan_manual_sync_incremental_dry_run(
         plan["private_details"] = {
             "not_for_public_reports": True,
             "items": private_items,
+            "metadata_dispositions": private_dispositions,
+            "directory_errors": walk_errors,
+            "directory_dispositions": directory_dispositions,
         }
     return plan
 
@@ -2489,15 +2524,9 @@ def plan_manual_sync_dry_run(
     return plan
 
 
-def _iter_source_files(root_path: Path, *, walk_errors: Optional[List[str]] = None) -> Iterable[Path]:
-    def _on_walk_error(exc: OSError) -> None:
-        if walk_errors is not None:
-            walk_errors.append(type(exc).__name__ or "OSError")
-
-    for dirpath, dirnames, filenames in os.walk(root_path, onerror=_on_walk_error):
-        dirnames[:] = sorted(d for d in dirnames if d not in {".git", "__pycache__", "venv"})
-        for filename in sorted(filenames):
-            yield Path(dirpath) / filename
+def _iter_source_files(root_path: Path, *, walk_errors=None, dispositions=None) -> Iterable[Path]:
+    from ..utils.bounded_source_walk import source_files
+    yield from source_files(root_path, errors=walk_errors, dispositions=dispositions)
 
 
 def _source_item_file_path(root_path: Path, item: DynamicSourceItem) -> Optional[Path]:
@@ -2525,6 +2554,10 @@ def _manual_plan_priority_for_known_item(
     lifecycle = classify_source_item(item)
     if lifecycle.kind == LifecycleKind.APP_MEDIA_FOLLOWUP:
         return _manual_plan_media_followup_candidate_priority(item)
+    if item.media_id is None and sync_state in {'skipped_existing_media', 'skipped_duplicate', 'unchanged'}:
+        # An old unlinked no-op remains a known gap even when its path is absent
+        # from today's directory listing. Stat it once and retain its identity.
+        return 32
     if lifecycle.kind == LifecycleKind.STABLE_NOOP:
         return None
     if _manual_plan_media_backed_pending_noop(item):
@@ -2660,6 +2693,7 @@ def _manual_plan_existing_requires_lifecycle_work(item: Optional[DynamicSourceIt
     reason = str(item.deferred_reason or item.failure_reason or "")
     lifecycle = classify_source_item(item)
     if lifecycle.kind in {
+        LifecycleKind.IMPORT_CANDIDATE,
         LifecycleKind.APP_MEDIA_FOLLOWUP,
         LifecycleKind.CONTINUATION,
         LifecycleKind.RETRYABLE_SOURCE_FAILURE,
@@ -3484,6 +3518,8 @@ def get_production_readiness(db: Session) -> Dict[str, Any]:
         "pending_summary": pending,
         "ai_localization_readiness": ai_localization,
         "manual_sync_operator_readiness": {
+            "import_execute_ready": (bool(roots) and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED
+                and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_EXECUTE_ENABLED),
             "manual_execute_ready": (
                 bool(roots)
                 and settings.DYNAMIC_LIBRARY_MANUAL_SYNC_ENABLED
