@@ -32,3 +32,14 @@
 详情和撤回，提交前后文件异常，PostgreSQL 恢复与 replay/rollback/reapply，
 Edge 浏览器与真实图片、launcher 新进程，focused、完整 non-E2E 一次及契约检查。
 不执行 A2/A3、新 provider/LLM、全库导入/打标签、merge、main push 或 reviewer。
+# PR #151 有界修正续接（2026-09-06）
+
+项目所有者明确授权执行代理落实项目负责人本轮裁决；保持同一 A1 和 PR。
+审查者为 chatgpt-codex-connector[bot]。核对远端及本机 HEAD 为
+`9d66aa66587104e8803f4176d58d916ad17096c8`，生产仍运行 `8ec23cd…`。
+
+1. 在既有 rollback guard 中保存数据库触发器造成的受控撤回前后值，正式撤回时仅还原这些已核对变化后验证原 ownership fingerprint；独立消费者与未知漂移继续拒绝。补齐注册表软别名同事务撤回及无有效名称的 chip。增量迁移只更新触发器/函数，在隔离 PostgreSQL 验证后部署。
+2. 提交后异常通过持久 Media 身份核对恢复登记，复用 manual-sync/scanner 原下游流程；提交前仍清理，提交后不重新导入。
+3. 共用现有未跟踪文件分类，逐 node 对账补跑证据，绑定状态/测试/浏览器/运行候选及真实 Git 后继关系。
+
+先完成受影响测试及隔离故障验证，再提交新运行候选、必要增量迁移、受控重启和真实 Edge 五样本复验；复用既有备份、恢复、全套 non-E2E 原始结果与规模证据。不执行来源破坏性生产测试，不扩大选择，不触发审查或合并。此前刷新闭环的 resolved 结论在本轮重新打开，完成后据新增证据更新。

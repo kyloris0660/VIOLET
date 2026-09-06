@@ -11,8 +11,8 @@
   "previous_phase_pr_number": 150,
   "previous_phase_merge_commit": "26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3",
   "previous_phase_status": "merged_restored_copy_verified",
-  "current_status": "A1_ENGINEERING_COMPLETE_PENDING_PROJECT_LEAD_REVIEW",
-  "target_met": true,
+  "current_status": "A1_PR151_BOUNDED_FIX_IN_PROGRESS",
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "planning_authorized": true,
@@ -20,7 +20,7 @@
   "planning_approved": true,
   "manual_acceptance_status": "pending_project_lead_review",
   "next_phase_started": false,
-  "route_scope": "执行代理依据项目所有者 A1 授权完成修复、备份恢复、样本原库操作和候选启动验收；等待项目负责人复审。",
+  "route_scope": "执行代理依据项目所有者授权落实项目负责人对 PR #151 的一轮有界修正，待新增验证及复审。",
   "authorities": {
     "production": true,
     "additive_migration": true,
@@ -52,9 +52,10 @@
     "独立有界面 Playwright Edge 完成五样本缩略图、详情、全屏及普通界面搜索；执行代理已实际查看截图",
     "最终失败项针对性补跑 70 passed / 1 historical failure；完整 non-E2E 原始记录保留",
     "注册 A1 本机证据投影通过，报告和完整操作恢复记录已形成；项目负责人接受仍 pending",
-    "正常 PR #151 已创建，分支已推送；实际运行候选 8ec23cd，后继仅文档；未触发额外审查或合并"
+    "正常 PR #151 已创建，分支已推送；实际运行候选 8ec23cd，后继仅文档；未触发额外审查或合并",
+    "项目负责人独立审计裁决已核对：PR #151 七项本轮修正，一项 squash 建议不适用；历史结论保留并补充修正"
   ],
-  "next_required_checkpoint": "项目负责人复审正常 PR #151 的工程结果、历史测试限制和 A2 输入；合并、项目所有者使用验收及下一阶段按后续有效决定分别记录",
+  "next_required_checkpoint": "完成来源刷新撤回、提交后导入登记和精确证据修正，隔离验证后部署新候选并复验",
   "durable_links": [
     {
       "label": "A1 实施与迁移方案",
@@ -291,15 +292,15 @@
       ]
     }
   ],
-  "updated_at": "2026-09-06T04:10:15.594924+00:00",
+  "updated_at": "2026-09-06T09:01:52.2652359+00:00",
   "candidate_head": "8ec23cd7a67230f9a382ba52687daa04f1785999",
   "production_candidate_head": "8ec23cd7a67230f9a382ba52687daa04f1785999",
   "result_path": "docs/reports/production-pixiv-a1-summary.json",
   "resolved_debt": [
     {
       "id": "SCV2_PX3_METADATA_REFRESH_BINDING_GATE",
-      "status": "resolved_in_A1",
-      "evidence": "tests/test_production_pixiv_a1.py + 37 PostgreSQL passed",
+      "status": "reopened_by_project_lead_audit",
+      "evidence": "原 37 项验证未覆盖刷新后的正式撤回及重新 apply；本轮补齐",
       "operator": "执行代理依据项目所有者授权完成"
     },
     {

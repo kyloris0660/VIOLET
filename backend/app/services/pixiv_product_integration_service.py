@@ -1054,7 +1054,7 @@ def apply_pixiv_product_plan(
     return applied
 
 
-def _rollback_ownership_fingerprint(session, product_run):
+def _rollback_ownership_fingerprint(session, product_run, *, allow_source_withdrawal=False):
     """Bind all owned core rows and references, including later consumers."""
     run_id = product_run.resolver_run_id
     signals = session.query(SourceConceptSignal.id).filter_by(created_by_run_id=run_id)
@@ -1078,12 +1078,44 @@ def _rollback_ownership_fingerprint(session, product_run):
                 SourceConceptEvidence.concept_id.in_(concepts) | SourceConceptEvidence.signal_id.in_(signals)))),
     ]
     payload = []
+    table_names = []
     for query in queries:
+        table_names.append(query.column_descriptions[0]['entity'].__tablename__)
         rows = []
         for item in query.all():
             rows.append({column.name: getattr(item, column.name) for column in item.__table__.columns
                          if column.name not in {'created_at', 'updated_at', 'started_at', 'finished_at'}})
         payload.append(sorted(rows, key=lambda item: item['id']))
+    if allow_source_withdrawal:
+        for change in reversed((product_run.rollback_guard_json or {}).get('source_invalidations', [])):
+            before, after = change['before'], change['after']
+            from sqlalchemy import Float
+            # PostgreSQL to_jsonb(float8) writes integral values as JSON ints;
+            # restore the ORM column type before comparing canonical payloads.
+            for value in (before, after):
+                if value is not None:
+                    value_types = Base.metadata.tables[change['table']].columns
+                    for column in value_types:
+                        if isinstance(column.type, Float) and value.get(column.name) is not None:
+                            value[column.name] = float(value[column.name])
+            matched = False
+            for table, rows in zip(table_names, payload):
+                if table != change['table']:
+                    continue
+                actual = next((item for item in rows if item['id'] == before['id']), None)
+                # Signals occur in two ownership projections. A row that was
+                # never in this projection must not be injected into it.
+                if actual is None and after is not None:
+                    continue
+                if canonical_fingerprint(actual) != canonical_fingerprint(after):
+                    raise PixivProductIntegrationError('px3_rollback_source_withdrawal_drift')
+                if actual is not None:
+                    rows.remove(actual)
+                rows.append(before)
+                rows.sort(key=lambda item: item['id'])
+                matched = True
+            if not matched:
+                raise PixivProductIntegrationError('px3_rollback_source_withdrawal_missing')
     return canonical_fingerprint(payload)
 
 
@@ -1105,7 +1137,7 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
         "preexisting_core_business_row_count"
     ) != 0 or guard.get('resolution_run_created') is not True:
         raise PixivProductIntegrationError("px3_rollback_guard_not_satisfied")
-    if guard.get('ownership_fingerprint') != _rollback_ownership_fingerprint(session, row):
+    if guard.get('ownership_fingerprint') != _rollback_ownership_fingerprint(session, row, allow_source_withdrawal=True):
         raise PixivProductIntegrationError('px3_rollback_core_or_binding_drift')
     if session.query(SourceConceptProductRun).filter(
         SourceConceptProductRun.id != row.id,
@@ -1173,6 +1205,7 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
         **dict(row.operation_receipt_json or {}),
         "mode": "rollback",
         "deleted_core_rows": deleted,
+        "source_withdrawal_reconciled_count": len(guard.get('source_invalidations', [])),
         "forbidden_truth_table_write_count": 0,
     }
     session.commit()
@@ -1237,6 +1270,7 @@ def get_pixiv_product_run(
             'captured_at_apply' if (row.summary_json or {}).get('policy_versions')
             else 'legacy_implementation_verified_by_result_fingerprint'
         ),
+        "source_withdrawal_count": len((row.rollback_guard_json or {}).get('source_invalidations', [])),
         "clusters": projection["clusters"],
         "candidate_dispositions": projection["candidate_dispositions"],
         "ambiguity_records": projection["ambiguity_records"],

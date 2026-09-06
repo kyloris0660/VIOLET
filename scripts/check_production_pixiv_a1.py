@@ -78,6 +78,44 @@ def lifecycle(root, label):
         media=len(final['bound_media_ids']),bindings=final['bindings'],active_runs=final['active_runs'])
 
 
+KNOWN_HISTORICAL_NODE = 'tests/test_phase45_scv2_sv1_controlled_scale_promotion_readiness.py::test_ai_accounting_keeps_original_and_current_invocation_separate'
+
+
+def reconcile_failures(private, validation):
+    initial_log=(private/validation['non_e2e']['log']).read_text(encoding='utf-8')
+    initial=set(re.findall(r'^FAILED (\S+)',initial_log,re.MULTILINE))
+    known=set(validation['known_baseline_failures'])
+    resolved=set(validation['resolved_initial_failures'])
+    require(known == {KNOWN_HISTORICAL_NODE}, 'known_failure_scope')
+    require(initial==known|resolved and not known&resolved, 'unresolved_test_failures')
+    require(validation['non_e2e']['failed']==len(initial), 'initial_failure_accounting')
+    passed=set()
+    for record in validation['remediation']:
+        log=(private/record['log']).read_text(encoding='utf-8')
+        command=read(private,record['command'])
+        if validation.get('candidate_head'):
+            require(command.get('source_head')==validation['candidate_head']
+                and command.get('behavior_carry_forward') is True, 'remediation_candidate')
+        require(command['argv'][1:3] == ['-m','pytest'], 'remediation_command')
+        selected=command['tests']
+        require(all(node in command['argv'] for node in selected), 'remediation_selected_command')
+        actual=set(re.findall(r'^(\S+::\S+) PASSED(?:\s|$)',log,re.MULTILINE))
+        require(actual and all(any(node==choice or node.startswith(choice+'[') or node.startswith(choice+'::') for choice in selected) for node in actual), 'remediation_executed_selection')
+        failed=set(re.findall(r'^FAILED (\S+)',log,re.MULTILINE))
+        require(failed<=known, 'remediation_failure')
+        if failed:
+            require('missing_original_ai_execution_evidence' in log, 'historical_failure_reason')
+        passed.update(actual)
+    mappings=validation.get('node_mappings',{})
+    require(set(mappings)<=resolved, 'remediation_mapping_scope')
+    for case in resolved:
+        mapping=mappings.get(case)
+        targets=mapping['nodes'] if mapping else [case]
+        require(targets and (not mapping or mapping.get('reason')), 'remediation_mapping_reason')
+        require(set(targets)<=passed, 'remediation_exact_node_coverage')
+    return known, resolved
+
+
 def derive_result(private, repo=ROOT):
     backup,restore=read(private,'backup-private.json'),read(private,'restore-private.json')
     require(backup['backup_exit_code']==0 and restore['exit_code']==0, 'backup_restore_exit')
@@ -87,13 +125,15 @@ def derive_result(private, repo=ROOT):
     require(dump.stat().st_size==backup['backup_bytes']>0, 'backup_size')
     require(hashlib.sha256(dump.read_bytes()).hexdigest()==backup['backup_sha256']==restore['backup_sha256'], 'backup_digest')
     copy,production=lifecycle(private,'copy'),lifecycle(private,'production')
-    launch=read(private,'launcher-verification-private.json')
-    browser=read(private,'browser-verification-private.json')
-    validation=read(private,'validation-private.json')
+    launch=read(private,'bounded-launcher-verification-private.json')
+    browser=read(private,'bounded-browser-verification-private.json')
+    validation=read(private,'bounded-validation-private.json')
     head=launch['candidate_head']
     require(re.fullmatch('[0-9a-f]{40}',head), 'candidate_head')
-    require(git(repo,'merge-base',head,'HEAD')==head, 'candidate_ancestry')
-    require(not git(repo,'diff',head,'--','.',':!docs/**',':!AGENTS.md'), 'behavior_carry_forward')
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    require(candidate_behavior_carry_forward(repo, head), 'behavior_carry_forward')
+    state = read(repo, 'docs/state/current-phase.json')
+    require(state.get('candidate_head') == state.get('production_candidate_head') == head, 'state_candidate')
     require(launch['before_pid'] != launch['after_pid'] and launch['before_pid']>0 and launch['after_pid']>0, 'process_restart')
     identity=dict(name=backup['identity'][0],user=backup['identity'][1],server_system_identifier=backup['identity'][5])
     require(launch['database_identity']==identity and launch['healthy'] and launch['fresh_session_search'], 'runtime_identity')
@@ -102,6 +142,12 @@ def derive_result(private, repo=ROOT):
         screenshot=private / item
         require(screenshot.is_file() and screenshot.stat().st_size>1000, 'screenshot')
     require(validation['candidate_head']==head, 'validation_candidate')
+    for gate in ('focused', 'postgresql'):
+        command=read(private,validation[gate]['command'])
+        require(command['source_head']==head and command.get('behavior_carry_forward') is True, 'tested_behavior_candidate')
+    historical_head=validation['non_e2e']['candidate_head']
+    require(git(repo,'rev-parse',historical_head+'^{commit}')==historical_head
+        and git(repo,'merge-base',historical_head,head)==historical_head, 'historical_suite_candidate')
     for gate in ('focused','postgresql','non_e2e'):
         text=(private/validation[gate]['log']).read_text(encoding='utf-8')
         for key in ('passed','failed','skipped'):
@@ -117,18 +163,7 @@ def derive_result(private, repo=ROOT):
         followup_log=(private/followup['log']).read_text(encoding='utf-8')
         require(set(followup['tests'])==focused_failed and not re.findall(r'^FAILED ',followup_log,re.MULTILINE), 'focused_followup')
         require(re.search(r'\b'+str(len(focused_failed))+r' passed\b',followup_log), 'focused_followup_count')
-    initial_log=(private/validation['non_e2e']['log']).read_text(encoding='utf-8')
-    initial=set(re.findall(r'^FAILED (\S+)',initial_log,re.MULTILINE))
-    known=set(validation['known_baseline_failures'])
-    resolved=set(validation['resolved_initial_failures'])
-    require(initial==known|resolved and not known&resolved, 'unresolved_test_failures')
-    require(validation['non_e2e']['failed']==len(initial), 'initial_failure_accounting')
-    for record in validation['remediation']:
-        log=(private/record['log']).read_text(encoding='utf-8')
-        require(re.search(r'\b'+str(record['passed'])+r' passed\b',log), 'remediation_log')
-        require(set(re.findall(r'^FAILED (\S+)',log,re.MULTILINE))<=known, 'remediation_failure')
-    for case in resolved:
-        require(any(case.split('::')[0] in record['files'] for record in validation['remediation']), 'remediation_coverage')
+    known, resolved = reconcile_failures(private, validation)
     result=dict(contract_id=CONTRACT,target_met=True,safe_to_merge=False,route_approved=False,
         project_lead_acceptance='pending',candidate_head=head,copy=copy,production=production,
         launcher=dict(restarted=True,apply_enabled=launch['apply_enabled']),
@@ -137,6 +172,8 @@ def derive_result(private, repo=ROOT):
     result['validation']['focused']['followup_passed']=len(focused_failed)
     result['validation']['non_e2e']['resolved_initial_failures']=len(resolved)
     result['validation']['non_e2e']['known_baseline_failures']=len(known)
+    result['validation']['non_e2e']['candidate_head']=historical_head
+    result['validation']['non_e2e']['scope']='historical_full_suite_with_exact_targeted_reconciliation'
     check_public_result(result)
     return result
 

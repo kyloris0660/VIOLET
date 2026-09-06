@@ -1272,6 +1272,8 @@ def persist_source_registry_bundle(
     metadata_by_key: dict[str, SourceMetadataRecord] = {}
     # 数据库触发器先撤回旧支持；保存刷新前身份，以保留原有撤回计数与索引整理。
     previous_live = {model: set() for model in (SourceTagObservation, SourceNameObservation, SourceSearchableNameAssertion)}
+    previous_alias_ids = {value for value, in session.query(SourceNameAliasCandidate.id).filter(
+        SourceNameAliasCandidate.status != 'superseded').all()}
     for draft in bundle.metadata_records:
         row = (
             session.query(SourceMetadataRecord)
@@ -1443,7 +1445,7 @@ def persist_source_registry_bundle(
             summary["updated"]["SourceNameAliasCandidate"] += 1
     for row in (
         session.query(SourceNameAliasCandidate)
-        .filter(SourceNameAliasCandidate.status != "superseded")
+        .filter(SourceNameAliasCandidate.id.in_(previous_alias_ids))
         .all()
     ):
         key = (row.source_name_key, row.target_name_key, row.relation_type, row.evidence_source)

@@ -33,7 +33,11 @@ def validate(state, root):
         from scripts.check_production_pixiv_a1 import check_public_result
         require(state.get('result_path') == 'docs/reports/production-pixiv-a1-summary.json', 'result_path')
         try:
-            check_public_result(json.loads((root / state['result_path']).read_text(encoding='utf-8')))
+            result = json.loads((root / state['result_path']).read_text(encoding='utf-8'))
+            check_public_result(result)
+            require(state.get('candidate_head') == state.get('production_candidate_head') == result['candidate_head'], 'candidate_evidence_mismatch')
+            from scripts.trusted_git import candidate_behavior_carry_forward
+            require(candidate_behavior_carry_forward(root, result['candidate_head']), 'candidate_git_or_behavior')
         except (ValueError, OSError, KeyError, TypeError):
             require(False, 'result_evidence')
 

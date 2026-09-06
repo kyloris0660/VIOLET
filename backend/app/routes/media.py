@@ -18,7 +18,7 @@ from ..utils.request_helpers import safe_error_detail
 from ..database import get_db
 from ..models import (Album, Media, Tag, User, blombooru_album_media,
                       blombooru_media_tags)
-from ..services.media_commit_boundary import MediaCommittedError
+from ..services.media_commit_boundary import MediaCommittedError, committed_media_response
 from ..services.tag_service import (
     add_manual_tags_to_media,
     get_media_tag_provenance,
@@ -232,7 +232,7 @@ def process_and_save_media(
         db.refresh(media)
     except Exception as exc:
         if committed:
-            raise MediaCommittedError(committed_media_id) from exc
+            raise MediaCommittedError(committed_media_id, file_hash=file_hash, path=str(relative_path)) from exc
         db.rollback()
         # --- Clean up only thumbnails created by THIS call ---
         if thumbnail_generated and not thumbnail_existed_before:
@@ -264,7 +264,7 @@ def process_and_save_media(
 
         return MediaResponse.model_validate(media)
     except Exception as exc:
-        raise MediaCommittedError(committed_media_id) from exc
+        raise MediaCommittedError(committed_media_id, file_hash=file_hash, path=str(relative_path)) from exc
 
 @router.get("/")
 @router.get("")
@@ -499,6 +499,8 @@ async def upload_media(
                 source=source,
                 category_hints=category_hints,
             )
+        except MediaCommittedError as e:
+            return committed_media_response(db, e, expected_hash=file_hash)
         except HTTPException as e:
             if e.status_code == 409:
                 # Duplicate: clean up only if it was a fresh upload (not a scan)
@@ -1151,6 +1153,8 @@ async def finalize_chunked_upload(
                 source=source,
                 category_hints=category_hints,
             )
+        except MediaCommittedError as e:
+            return committed_media_response(db, e)
         except HTTPException as e:
             if e.status_code == 409:
                 file_path.unlink(missing_ok=True)

@@ -967,13 +967,15 @@ class Uploader {
         let successCount = 0;
         let failCount = 0;
         let duplicateCount = 0;
+        let recoveryCount = 0;
 
         for (let i = 0; i < this.uploadedFiles.length; i++) {
             const fileData = this.uploadedFiles[i];
             submitBtn.textContent = window.i18n.t('upload.progress.uploading_progress', { current: i + 1, total: this.uploadedFiles.length });
 
             try {
-                await this.uploadFile(fileData);
+                const result = await this.uploadFile(fileData);
+                if (result.status === 'imported_recovery_pending') recoveryCount++;
                 successCount++;
             } catch (error) {
                 console.error('Upload error:', error);
@@ -994,6 +996,9 @@ class Uploader {
         }
         if (failCount > 0) {
             message += ` ${window.i18n.t('upload.progress.failed', { count: failCount })}`;
+        }
+        if (recoveryCount > 0) {
+            message += ` ${recoveryCount} 项已保存，后续处理待恢复；请打开详情，勿重新上传。`;
         }
 
         app.showNotification(message, 'success');

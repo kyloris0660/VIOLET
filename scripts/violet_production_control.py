@@ -2112,12 +2112,8 @@ def _pinned_candidate_worktree(config: RuntimeConfig) -> bool:
         return subprocess.check_output(['git','-C',str(config.repo_root),*args],
             text=True,encoding='utf-8',stderr=subprocess.DEVNULL,timeout=10).strip()
     try:
-        if git('merge-base',head,'HEAD') != head:
-            return False
-        if git('diff',head,'--','.',':!docs/**',':!AGENTS.md'):
-            return False
-        untracked=git('ls-files','--others','--exclude-standard').splitlines()
-        return all(path.startswith('docs/') and path.endswith('.md') for path in untracked)
+        from scripts.trusted_git import candidate_behavior_carry_forward
+        return candidate_behavior_carry_forward(config.repo_root, head)
     except (OSError,subprocess.SubprocessError):
         return False
 

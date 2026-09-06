@@ -4,7 +4,7 @@ No payload parsing or content hashing is performed by search. Revisions are
 advanced by the database when an input changes; bindings capture that revision.
 """
 
-from sqlalchemy import inspect, text
+from sqlalchemy import JSON, Boolean, inspect, text
 
 SOURCE = 'blombooru_source_metadata_records'
 BINDING = 'blombooru_source_concept_product_media_bindings'
@@ -22,6 +22,57 @@ CHILDREN = (
     'blombooru_source_concept_evidence',
     'blombooru_source_concept_signals',
 )
+
+
+def _journal_withdrawal(connection, tables, *, deleting):
+    """Record only trigger-owned changes in the existing guard, never re-sign it."""
+    runs = 'blombooru_source_concept_product_runs'
+    if runs not in tables:
+        return ''
+    pg = connection.dialect.name == 'postgresql'
+    entries = []
+    for table, owner in (
+        ('blombooru_source_concept_signals', 'created_by_run_id'),
+        ('blombooru_source_concept_evidence', 'run_id'),
+        (BINDING, 'product_run_id'),
+    ):
+        if table not in tables or (table == BINDING and not deleting):
+            continue
+        definitions = inspect(connection).get_columns(table)
+        columns = [c['name'] for c in definitions
+                   if c['name'] not in {'created_at', 'updated_at', 'started_at', 'finished_at'}]
+        before, after = [], []
+        for column in columns:
+            value = f'c.{column}'
+            kind = next(c['type'] for c in definitions if c['name'] == column)
+            if not pg and isinstance(kind, JSON):
+                value = f'json({value})'
+            if not pg and isinstance(kind, Boolean):
+                value = f"json(CASE WHEN {value} THEN 'true' ELSE 'false' END)"
+            before.extend((f"'{column}'", value))
+            if column == 'source_metadata_record_id' and deleting:
+                value = 'NULL'
+            elif column == 'status':
+                value = "CASE WHEN c.status IN ('rejected','superseded','invalid') THEN c.status ELSE 'superseded' END"
+            after.extend((f"'{column}'", value))
+        obj = 'jsonb_build_object' if pg else 'json_object'
+        previous = f"{obj}({','.join(before)})"
+        following = 'NULL' if table == BINDING else f"{obj}({','.join(after)})"
+        item = f"{obj}('table','{table}','before',{previous},'after',{following})"
+        owned = 'p.id' if table == BINDING else 'p.resolver_run_id'
+        condition = '' if deleting else " AND c.status NOT IN ('rejected','superseded','invalid')"
+        entries.append(f'SELECT {item} AS item FROM {table} c WHERE c.source_metadata_record_id=OLD.id AND c.{owner}={owned}{condition}')
+    if not entries:
+        return ''
+    union = ' UNION ALL '.join(entries)
+    if pg:
+        merged = f"COALESCE(p.rollback_guard_json::jsonb->'source_invalidations','[]'::jsonb) || (SELECT jsonb_agg(item) FROM ({union}) changes)"
+        value = f"jsonb_set(p.rollback_guard_json::jsonb,'{{source_invalidations}}',({merged}))"
+    else:
+        merged = f"SELECT value FROM json_each(COALESCE(json_extract(p.rollback_guard_json,'$.source_invalidations'),'[]')) UNION ALL SELECT item FROM ({union})"
+        value = f"json_set(p.rollback_guard_json,'$.source_invalidations',json((SELECT json_group_array(json(value)) FROM ({merged}))))"
+    statement = f"UPDATE {runs} AS p SET rollback_guard_json={value} WHERE p.status='active' AND EXISTS(SELECT 1 FROM ({union}) changes);"
+    return statement if pg else statement.replace(f'{runs} AS p', runs).replace('p.', runs + '.')
 
 
 def install_source_revision_triggers(connection):
@@ -50,6 +101,12 @@ def install_source_revision_triggers(connection):
         legacy_reuse = "json_extract(provenance, '$.source_metadata_record_id')=OLD.id"
     invalidate += f"\nUPDATE {SOURCE} SET status='superseded' WHERE id<>OLD.id " + \
         f"AND provider=OLD.provider AND ({reuse_key}=OLD.provider_record_key OR {legacy_reuse}) AND status<>'superseded';"
+    aliases = 'blombooru_source_name_alias_candidates'
+    if aliases in tables:
+        key = "evidence_payload->>'provider_record_key'" if connection.dialect.name == 'postgresql' else "json_extract(evidence_payload,'$.provider_record_key')"
+        invalidate += f"\nUPDATE {aliases} SET status='superseded' WHERE {key}=OLD.provider_record_key AND (evidence_source=OLD.provider || '_provider_canonical' OR (OLD.provider='pixiv' AND evidence_source='pixiv_parenthetical_pattern')) AND status<>'superseded';"
+    on_update = _journal_withdrawal(connection, tables, deleting=False) + invalidate
+    on_delete = _journal_withdrawal(connection, tables, deleting=True) + invalidate
     if connection.dialect.name == 'postgresql':
         changed = ' OR '.join(
             f'NEW.{column}::text IS DISTINCT FROM OLD.{column}::text'
@@ -64,12 +121,12 @@ def install_source_revision_triggers(connection):
                     RETURN NEW;
                 END IF;
                 IF TG_OP = 'DELETE' THEN
-                    {invalidate}
+                    {on_delete}
                     RETURN OLD;
                 END IF;
                 IF {changed} THEN
                     NEW.binding_revision := OLD.binding_revision + 1;
-                    {invalidate}
+                    {on_update}
                 ELSE
                     NEW.binding_revision := OLD.binding_revision;
                 END IF;
@@ -91,14 +148,14 @@ def install_source_revision_triggers(connection):
             WHEN {changed}
             BEGIN
                 UPDATE {SOURCE} SET binding_revision = OLD.binding_revision + 1 WHERE id = NEW.id;
-                {invalidate}
+                {on_update}
             END
         """))
         connection.execute(text('DROP TRIGGER IF EXISTS violet_source_binding_delete'))
         connection.execute(text(f"""
             CREATE TRIGGER violet_source_binding_delete BEFORE DELETE ON {SOURCE}
             BEGIN
-                {invalidate}
+                {on_delete}
             END
         """))
 

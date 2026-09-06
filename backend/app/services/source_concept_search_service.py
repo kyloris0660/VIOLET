@@ -854,7 +854,9 @@ def _concept_summary(
     search_label = next((alias["display_name"] for alias in aliases if alias.get("display_name") and not alias.get("redacted")), display_name)
     if (not any(alias.display_name == concept.primary_display_name for alias in alias_rows)
         and db.query(SourceConceptProductRun.id).filter_by(resolver_run_id=concept.created_by_run_id).first()):
-        display_name = search_label if aliases else f'SourceConcept {concept.id}'
+        search_label = next((alias['display_name'] for alias in aliases
+                             if alias.get('display_name') and not alias.get('redacted')), None)
+        display_name = search_label or '当前来源名称已撤回'
     providers = _safe_list((row[0] for row in all_evidence_rows), limit=12)
     signal_origins = _safe_list((row[1] for row in all_evidence_rows), limit=12)
     trust_tiers = _safe_list((row[2] for row in all_evidence_rows), limit=12)
@@ -889,7 +891,7 @@ def _concept_summary(
         "search_label": search_label,
         "search_param": "q",
         "search_value": search_label,
-        "search_url": _build_search_url(search_label, include_needs_review=concept.status == "needs_review"),
+        "search_url": _build_search_url(search_label, include_needs_review=concept.status == "needs_review") if search_label else None,
         "manual_promotion": {
             "preview_only": True,
             "disabled": True,
