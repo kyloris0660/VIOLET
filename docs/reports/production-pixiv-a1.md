@@ -7,6 +7,7 @@
 A1 的代码、恢复排练、原库样本生命周期和真实界面验证已完成。产品用户通过原有生产启动器可查看五个已有 Media 的来源概念、按有效来源及原标签搜索，并打开真实图片。候选仍待项目负责人复审；未合并、未推送 main、未触发额外审查。
 
 - 分支：`codex/production-pixiv-a1`。
+- 正常 PR：[151](https://github.com/kyloris0660/VIOLET/pull/151)，等待项目负责人复审。
 - 起点：已合并 PR #150 的 `26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3`。
 - 实际运行与本次浏览器验证提交：`8ec23cd7a67230f9a382ba52687daa04f1785999`。
 - 后续提交仅整理 AGENTS、runbook、报告及当前状态；执行契约检查相对运行提交的非文档差异必须为空。最终 PR HEAD 记录于 PR 正文和本机交付身份记录，避免文档提交自引用其自身哈希。
@@ -107,7 +108,7 @@ A1 的代码、恢复排练、原库样本生命周期和真实界面验证已�
 
 完整套件实际使用 `-m pytest tests/ --ignore=tests/e2e --basetemp=…/full-suite-temp -q`；完整绝对参数和原日志位置写入本机操作记录。PostgreSQL 使用本机 `run_pg_tests.py`（内部调用本仓库 `tests/test_production_pixiv_a1.py`）；本次补跑脚本按原日志提取失败测试，不重跑整个套件。日志索引及验证计数由 `validation-private.json` 绑定。
 
-交付门禁：`check_production_pixiv_a1.py`、注册 `check_phase_contract.py --contract production_pixiv_a1_v1`（附本机 evidence）、`check_documentation_state.py --check`、JSON/UTF-8/脱敏核对及 Git diff 检查。本地结果不等于 GitHub CI，不赋予合并权限。
+交付门禁：`check_production_pixiv_a1.py`、注册 `check_phase_contract.py --contract production_pixiv_a1_v1`（附本机 evidence）、`check_documentation_state.py --check`、JSON/UTF-8/脱敏核对及 Git diff 检查通过；真实投影正向通过，伪造绑定数、浏览器计数、合并权限和候选身份的四项变体均拒绝。本地结果不等于 GitHub CI，不赋予合并权限。
 
 ## 当前规模
 

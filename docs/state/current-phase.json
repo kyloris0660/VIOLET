@@ -4,14 +4,14 @@
   "phase_title": "生产 Pixiv A1 接入与原库验收",
   "repository": "kyloris0660/VIOLET",
   "branch": "codex/production-pixiv-a1",
-  "pr_number": null,
+  "pr_number": 151,
   "draft": false,
   "accepted_mainline_base": "26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3",
   "previous_phase": "SCV2-PX3",
   "previous_phase_pr_number": 150,
   "previous_phase_merge_commit": "26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3",
   "previous_phase_status": "merged_restored_copy_verified",
-  "current_status": "A1_ENGINEERING_VERIFIED_PREPARING_PR",
+  "current_status": "A1_ENGINEERING_COMPLETE_PENDING_PROJECT_LEAD_REVIEW",
   "target_met": true,
   "safe_to_merge": false,
   "route_approved": false,
@@ -51,9 +51,10 @@
     "续接只读核对通过：既有候选和生产进程、1 active run、51 绑定、五样本新会话搜索一致；未重复原库写入",
     "独立有界面 Playwright Edge 完成五样本缩略图、详情、全屏及普通界面搜索；执行代理已实际查看截图",
     "最终失败项针对性补跑 70 passed / 1 historical failure；完整 non-E2E 原始记录保留",
-    "注册 A1 本机证据投影通过，报告和完整操作恢复记录已形成；项目负责人接受仍 pending"
+    "注册 A1 本机证据投影通过，报告和完整操作恢复记录已形成；项目负责人接受仍 pending",
+    "正常 PR #151 已创建，分支已推送；实际运行候选 8ec23cd，后继仅文档；未触发额外审查或合并"
   ],
-  "next_required_checkpoint": "完成同一正常 PR 的提交与推送，等待项目负责人复审；未授权合并或 A2",
+  "next_required_checkpoint": "项目负责人复审正常 PR #151 的工程结果、历史测试限制和 A2 输入；合并、项目所有者使用验收及下一阶段按后续有效决定分别记录",
   "durable_links": [
     {
       "label": "A1 实施与迁移方案",
@@ -290,7 +291,7 @@
       ]
     }
   ],
-  "updated_at": "2026-09-06T04:06:37.364968+00:00",
+  "updated_at": "2026-09-06T04:10:15.594924+00:00",
   "candidate_head": "8ec23cd7a67230f9a382ba52687daa04f1785999",
   "production_candidate_head": "8ec23cd7a67230f9a382ba52687daa04f1785999",
   "result_path": "docs/reports/production-pixiv-a1-summary.json",
