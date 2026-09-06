@@ -5,11 +5,11 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`EXECUTING_PRODUCTION_IMPORT_RECOVERY`。
+- 状态：`PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE`。
 - 分支：`codex/production-import-recovery`；PR：`None`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
-- 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
-- 修复生产候选：`1888b82defb42cbd56ba0c5f4fb9a6640b72b163`。
+- 工程目标完成：`True`；负责人复审：`pending_project_lead_review`。
+- 修复生产候选：`2b3c075dd4c0ceb7d55371763a9577049ec68d3e`。
 
 ## 当前检查点
 
@@ -29,7 +29,9 @@
 - 最终独立有界面Edge：原5样本、19普通搜索、本轮2个新增Media详情/全屏通过，30截图，0页面脚本错误；启动器已无调试参数重新打开。
 - #30正常cap=5续接完成，5次读取超时按实际历史进入暂缓；最终498项对账为40新增、267关联、174可重试、16暂缓、1来源缺失未执行。
 - 最终现场分页验证发现263个已完成关联仍列入计划观察；补齐skipped_existing_media/skipped_duplicate过滤并扩展同类回归，所有生产任务结束后冻结文档后续之前的最终行为候选。
-- 现场缺失来源与计划观察分页已核实；补齐隐藏/空文件策略排除显示的同类回归，另将原四个stat缺失身份作为元数据附件单列。该次修正不执行新来源重试。
+- 现场缺失来源与计划观察分页已核实；补齐隐藏/空文件策略排除显示的同类回归，另将当前额外四个stat缺失身份作为元数据附件单列，旧诊断未保存身份，不能推定一一对应。该次修正不执行新来源重试。
+- 最终候选2b3c075：441 focused passed / 3 skipped、85 PostgreSQL passed；原日常入口实际启动/重启通过，默认195个读取或缺失来源与189条计划观察核实，隐藏/空文件策略正确分流。
+- production_import_recovery_v1注册契约通过，0错误/0警告；最终498项恢复账本及额外4个历史stat缺失、173策略观察私有附件已核实，等待正常PR负责人复审合并。
 
 ## 执行顺序
 
@@ -58,7 +60,7 @@
 自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
 执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
 
-下一检查点：冻结并验证最终候选，经正常启动器部署和实际浏览复验，逐项对账后提交正常PR，待负责人复审合并。
+下一检查点：提交正常修复PR并由负责人复审合并；收到合并结果后按28号原授权核对接受main、实际行为和日常启动锚点，保持原库/存储并完成最后版本对齐。
 
 ## 持久入口
 

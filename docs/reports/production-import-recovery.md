@@ -1,6 +1,6 @@
 # 生产导入可靠性修复与实际恢复
 
-最终行为候选 `1888b82defb42cbd56ba0c5f4fb9a6640b72b163` 已通过日常启动器部署到原 production。真实恢复 #28 和精确关联修复 #29 已完成，最后一次 cap=5 的正常界面续接验证正在落账。负责人接受与 PR 合并尚未发生；工程验证、接受、合并和长期启动对齐分别记账。
+最终行为候选 `2b3c075dd4c0ceb7d55371763a9577049ec68d3e` 已通过日常启动器部署到原 production。真实恢复 #28、精确关联修复 #29 和 cap=5 正常续接 #30 均已完成，工程交付待负责人复审/合并。负责人接受与 PR 合并尚未发生；工程验证、接受、合并和长期启动对齐分别记账。
 
 ## 基线与根因
 
@@ -26,16 +26,18 @@
 
 ## 验证与现场状态
 
-最终候选 `1888b82`：聚焦测试 **441 passed / 3 skipped**，251.59 秒；隔离 PostgreSQL **85 passed**，196.52 秒。聚焦有 3 个既有 Pydantic 配置弃用警告；跳过为两个 Windows 符号链接权限用例及一个不适用于 SQLite 的 PostgreSQL 正则用例。这是本地验证，不代称 GitHub CI、负责人接受或项目所有者亲自使用。
+最终候选 `2b3c075`：聚焦测试 **441 passed / 3 skipped**，244.64 秒；隔离 PostgreSQL **85 passed**，192.13 秒。聚焦有 3 个既有 Pydantic 配置弃用警告；跳过为两个 Windows 符号链接权限用例及一个不适用于 SQLite 的 PostgreSQL 正则用例。这是本地验证，不代称 GitHub CI、负责人接受或项目所有者亲自使用。
 
 使用指定 venv、Python 身份预检及标准测试环境，测试存储和临时源位于任务专用本机临时目录。实际 focused 命令覆盖：
 
 ```text
 python scripts/check_python_env.py --expected-python <指定venv Python>
 python -m pytest tests/test_production_import_recovery.py tests/test_s3a_m1_manual_sync_execute.py tests/test_manual_sync_lifecycle.py tests/test_dynamic_library_sync.py tests/test_scanner_icloud.py tests/test_production_pixiv_a1.py tests/test_production_pixiv_a1_contract.py tests/test_production_launcher_control.py tests/test_trusted_git.py -q --basetemp=<本机专用临时目录> --junitxml=.local_manifests/import-recovery/focused-final.xml
-python .local_manifests/import-recovery/run_pg_checks.py pg-final
+python .local_manifests/import-recovery/run_pg_checks.py pg-policy-final
 python scripts/check_documentation_state.py --check
 ```
+
+本次注册契约 `production_import_recovery_v1` 已通过（0 errors / 0 warnings），结果为 [production-import-recovery-summary.json](production-import-recovery-summary.json)。通过 `python -m scripts.check_production_import_recovery` 从私有证据生成结果，再用 `scripts/check_phase_contract.py --contract production_import_recovery_v1 --summary docs/reports/production-import-recovery-summary.json --repo-root <可信绝对工作区> --expected-python <指定venv Python> --import-recovery-evidence <私有证据目录>` 复核。新结果文件尚未加入 Git 跟踪时的一次保护拒绝单独保留，纳入本次文档交付后复验通过；未放松保护规则。
 
 PostgreSQL 命令限定到已隔离的测试数据库和角色，运行修复及 A1 两个测试文件。三个首/中/尾失败注入用例均超过旧阈值并验证后续健康候选，真实 cap=1 多轮用例验证旧队尾可到达；版本恢复、临时来源重新可用、取消/时限和提交前/后恢复均有回归。未重跑完整 non-E2E，未付费补造缺失的历史 AI 证据。
 
@@ -46,9 +48,9 @@ PostgreSQL 命令限定到已隔离的测试数据库和角色，运行修复及
 独立有界面 Edge 在测试数据库验证了四张真实测试图入库、一个不支持版本记账、恢复入口和普通图片浏览。
 最终候选的正式生产独立有界面 Edge 已验证原 5 样本缩略图、详情原图、全屏原图、19 次普通搜索与来源标签跳转，并复验本轮 2 个新增 Media 的详情和全屏；30 张截图、0 页面脚本错误。浏览器导航释放响应体的一次早期验证工具错误单独保留；成功验证包含真实页面结果和普通 API 交叉核对。
 
-正常便携启动器真实界面启动和重启成功，先后 PID 5252、42504；原 production 8012、原数据库与存储、认证、安全启动保持。5 个受保护 Media、51 个绑定和 1 个 active run 核实，Pixiv 产品读取开启、apply 关闭。验证后正常关闭调试启动器并以原 EXE 无参数重开，调试监听端口已关闭。PID 仅为当时证据，后续操作必须刷新身份。
+正常便携启动器真实界面启动和重启成功，先后 PID 68552、8576；原 production 8012、原数据库与存储、认证、安全启动保持。5 个受保护 Media、51 个绑定和 1 个 active run 核实，Pixiv 产品读取开启、apply 关闭。验证后正常关闭调试启动器并以原 EXE 无参数重开，调试监听端口已关闭。PID 仅为当时证据，后续操作必须刷新身份。
 
-生产基线原诊断的 108 未尝试和 82 失败身份已读取；当前只读账本另有 258 个可按存储哈希关联现有 Media 的来源，以及 10 个无已存哈希的关联缺口。
+生产基线原诊断的 108 未尝试和 82 失败身份已读取；开工时只读账本另有 258 个可按存储哈希关联现有 Media 的来源，以及 10 个无已存哈希的关联缺口。
 258 包含原诊断的 199，不能相加计算。26 号全历史覆盖补查尚未找到回传文件，不能宣称来源全量无遗漏。
 
 ## 真实恢复与覆盖限制
@@ -61,7 +63,21 @@ PostgreSQL 命令限定到已隔离的测试数据库和角色，运行修复及
 
 40 个新增观察和历史缺口分开记账。40 新增及 267 关联项均检查应用原文件存在、实际大小与 Media 账本一致、下游状态完整。剩余来源保留私有逐项版本、真实尝试 run/item、异常类型与已有系统码、worker 状态、耗时/阈值以及重新进入条件。未知 errno/winerror 等为 null，不猜 iCloud 原因；生产没有替所有者选择主动忽略。
 
-最终候选重新计划观察 43,340 个元数据成员，多出的已知缺失来源已获得明确 stat 身份；179 到期重试中选取 5 项进行正常 cap 续接，11 个暂缓项目未被重新盲试。该次最终结果与逐项附件将在运行结束后登记。
+在候选 1888b82 上，#30 重新计划观察 43,340 个元数据成员，多出的已知缺失来源已获得明确 stat 身份；179 到期重试中选取 5 项进行正常 cap 续接，11 个暂缓项目未被重新盲试。五项均发生新的读取超时，并依据同一版本真实失败历史进入暂缓；无新导入、无下游目标和下游失败。
+
+原 498 项最终逐项归宿如下，数值互斥且可复核：
+
+| 归宿 | 项数 |
+| --- | ---: |
+| 观察后新增，已实际入库且下游完整 | 40 |
+| 历史关联缺口，已关联既有 Media 且下游完整 | 267 |
+| 仍不可读，保留冷却和正常重试入口 | 174 |
+| 同版本反复失败，暂缓待诊断并可恢复 | 16 |
+| 来源缺失、无可靠哈希，尚未执行内容读取 | 1 |
+
+元数据附件另列当前 5 个 FileNotFoundError 项：其中 1 个与上述 498 项重合，另 4 个为此前已登记的历史来源，不是观察后新增。五项都没有可用来源路径或可靠已存哈希，保留路径恢复后的正常续接。旧诊断的 4 个 stat 错误没有保存身份，不能推定与本次额外四项一一对应。173 个当前格式策略排除观察也逐项保留；未把数据库行全集当作来源全覆盖证明。
+
+最终候选只读现场复验：默认恢复列表为 195 项（190 个实际读取问题及 5 个缺失来源），计划观察 189 条、每页最多 100 条；已完成的 263 个关联观察不再混入，隐藏/空文件策略排除与普通读取失败分别显示，历史策略记录可通过复选框查看。缺失来源在第二页可达，具体 stat 原因和 run 关联可展开。
 
 ## 安全恢复与交付边界
 

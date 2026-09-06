@@ -1,0 +1,42 @@
+{
+  "contract_id": "production_import_recovery_v1",
+  "target_met": true,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "project_lead_acceptance": "pending",
+  "candidate_head": "2b3c075dd4c0ceb7d55371763a9577049ec68d3e",
+  "validation": {
+    "focused": {
+      "passed": 441,
+      "skipped": 3
+    },
+    "postgresql": {
+      "passed": 85,
+      "skipped": 0
+    }
+  },
+  "recovery": {
+    "original_unattempted": 108,
+    "original_failed": 82,
+    "verified_gaps": 268,
+    "observed_new": 40,
+    "outcomes": {
+      "retryable": 174,
+      "deferred_diagnosis": 16,
+      "existing_media": 267,
+      "unexecuted": 1,
+      "imported": 40
+    }
+  },
+  "browser": {
+    "samples": 5,
+    "bindings": 51,
+    "headed": true
+  },
+  "launcher": {
+    "restarted": true,
+    "product_enabled": true,
+    "apply_enabled": false,
+    "main_merge_pending": true
+  }
+}
