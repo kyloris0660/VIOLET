@@ -6,7 +6,7 @@
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
 - 状态：`PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE`。
-- 分支：`codex/production-import-recovery`；PR：`None`。
+- 分支：`codex/production-import-recovery`；PR：`152`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
 - 工程目标完成：`True`；负责人复审：`pending_project_lead_review`。
 - 修复生产候选：`2b3c075dd4c0ceb7d55371763a9577049ec68d3e`。
@@ -32,6 +32,7 @@
 - 现场缺失来源与计划观察分页已核实；补齐隐藏/空文件策略排除显示的同类回归，另将当前额外四个stat缺失身份作为元数据附件单列，旧诊断未保存身份，不能推定一一对应。该次修正不执行新来源重试。
 - 最终候选2b3c075：441 focused passed / 3 skipped、85 PostgreSQL passed；原日常入口实际启动/重启通过，默认195个读取或缺失来源与189条计划观察核实，隐藏/空文件策略正确分流。
 - production_import_recovery_v1注册契约通过，0错误/0警告；最终498项恢复账本及额外4个历史stat缺失、173策略观察私有附件已核实，等待正常PR负责人复审合并。
+- 正常修复PR #152已创建，非Draft；工程候选已在原production运行，负责人接受/合并及合并后最终主线对齐仍待完成。
 
 ## 执行顺序
 
@@ -60,7 +61,7 @@
 自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
 执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
 
-下一检查点：提交正常修复PR并由负责人复审合并；收到合并结果后按28号原授权核对接受main、实际行为和日常启动锚点，保持原库/存储并完成最后版本对齐。
+下一检查点：负责人复审并合并正常PR #152；收到合并结果后按28号原授权核对接受main、实际行为和日常启动锚点，保持原库/存储并完成最后版本对齐。
 
 ## 持久入口
 
