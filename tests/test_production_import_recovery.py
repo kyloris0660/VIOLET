@@ -270,7 +270,10 @@ def test_private_recovery_bounds_large_discovery_and_keeps_missing_link_identity
         sync_state='skipped_existing_media', import_status='deferred', deferred_reason='existing_media_hash')
     excluded = DynamicSourceItem(source_root_id=root.id, relative_path='old.heic', relative_path_hash='excluded',
         sync_state='deferred', import_status='deferred', deferred_reason='unsupported_extension')
-    db.add_all([gap, excluded])
+    policy_rows = [DynamicSourceItem(source_root_id=root.id, relative_path=f'policy-{reason}.png',
+        relative_path_hash=reason, sync_state='failed', import_status='deferred', failure_reason=reason)
+        for reason in ('hidden', 'zero_byte', 'zero_byte_file')]
+    db.add_all([gap, excluded, *policy_rows])
     db.flush()
     settled_reasons = ('unchanged', 'skipped_existing_media', 'skipped_duplicate')
     stable = [dict(relative_path=f'stable-{i}.png', reason=settled_reasons[i % 3]) for i in range(40000)]
@@ -308,6 +311,8 @@ def test_private_recovery_bounds_large_discovery_and_keeps_missing_link_identity
     assert len({row['relative_path'] for row in seen}) == 205
     assert len(page['directory_errors']) == 3 and page['next_discovery_offset'] is None
     assert next(item for item in page['items'] if item['source_item_id'] == excluded.id)['disposition'] == 'policy_excluded'
+    assert all(next(item for item in page['items'] if item['source_item_id'] == row.id)['disposition'] == 'policy_excluded'
+        for row in policy_rows)
     assert client.get(url, params={'root_id': root.id, 'limit': 201}).status_code == 422
 
 

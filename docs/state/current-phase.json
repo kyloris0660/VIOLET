@@ -268,9 +268,10 @@
     "最终行为候选1888b82：441 focused passed / 3 skipped、85 PostgreSQL passed；原日常启动器实际启动/重启成功，原production8012健康，5 Media / 51绑定保持。",
     "最终独立有界面Edge：原5样本、19普通搜索、本轮2个新增Media详情/全屏通过，30截图，0页面脚本错误；启动器已无调试参数重新打开。",
     "#30正常cap=5续接完成，5次读取超时按实际历史进入暂缓；最终498项对账为40新增、267关联、174可重试、16暂缓、1来源缺失未执行。",
-    "最终现场分页验证发现263个已完成关联仍列入计划观察；补齐skipped_existing_media/skipped_duplicate过滤并扩展同类回归，所有生产任务结束后冻结文档后续之前的最终行为候选。"
+    "最终现场分页验证发现263个已完成关联仍列入计划观察；补齐skipped_existing_media/skipped_duplicate过滤并扩展同类回归，所有生产任务结束后冻结文档后续之前的最终行为候选。",
+    "现场缺失来源与计划观察分页已核实；补齐隐藏/空文件策略排除显示的同类回归，另将原四个stat缺失身份作为元数据附件单列。该次修正不执行新来源重试。"
   ],
-  "candidate_head": "1888b82defb42cbd56ba0c5f4fb9a6640b72b163",
+  "candidate_head": "dc289378a3d90f14895d115746697a8a9a21e832",
   "production_candidate_head": "1888b82defb42cbd56ba0c5f4fb9a6640b72b163",
   "next_required_checkpoint": "冻结并验证最终候选，经正常启动器部署和实际浏览复验，逐项对账后提交正常PR，待负责人复审合并。",
   "durable_links": [
@@ -299,5 +300,5 @@
       "path": "docs/roadmap/current-mainline-roadmap.md"
     }
   ],
-  "updated_at": "2026-09-06T13:38:26.1973392Z"
+  "updated_at": "2026-09-06T13:49:15.4207128Z"
 }

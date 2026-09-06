@@ -3227,12 +3227,12 @@ class AdminPanel {
             document.getElementById('dynamic-sync-job-status')?.after(panel);
         }
         panel.textContent = '正在读取来源账本…';
-        const labels = {retryable: '可尝试', complete: '已处理', followup_pending: '已入库，下游待补做', waiting_retry: '等待重试时间', waiting_source: '等待来源重新可用', deferred_diagnosis: '暂缓待诊断', terminal: '当前版本策略排除', policy_excluded: '当前格式不支持', ignored: '主动忽略'};
-        const reasons = {read_timeout: '读取超时', read_error: '读取失败', import_failed: '复制、解码或导入失败', stat_error: '文件属性读取失败', source_missing: '来源暂时不可见', content_changed_after_plan: '生成计划后文件发生变化', not_processed_budget_stop: '尚未执行，保留在续接队列', not_processed_cancelled: '取消时尚未执行', unsupported_extension: '当前格式不支持'};
+        const labels = {retryable: '可尝试', complete: '已处理', followup_pending: '已入库，下游待补做', waiting_retry: '等待重试时间', waiting_source: '等待来源重新可用', deferred_diagnosis: '暂缓待诊断', terminal: '当前版本策略排除', policy_excluded: '当前策略排除', ignored: '主动忽略'};
+        const reasons = {read_timeout: '读取超时', read_error: '读取失败', import_failed: '复制、解码或导入失败', stat_error: '文件属性读取失败', source_missing: '来源暂时不可见', content_changed_after_plan: '生成计划后文件发生变化', not_processed_budget_stop: '尚未执行，保留在续接队列', not_processed_cancelled: '取消时尚未执行', unsupported_extension: '当前格式不支持', hidden: '隐藏文件策略排除', zero_byte: '空文件，等待内容变化', zero_byte_file: '空文件，等待内容变化'};
         try {
             const data = await app.apiCall(`/api/admin/dynamic-library-sync/recovery-items?root_id=${rootId}&after_id=${afterId}&discovery_offset=${discoveryOffset}&include_policy_excluded=${includePolicyExcluded}`, {method: 'GET'});
             panel.innerHTML = `<div class="mb-2">当前待处理账本 ${data.total} 项。暂缓和策略排除可在条件变化后恢复；读取失败不代表文件损坏。</div>` +
-                `<label class="block mb-2"><input type="checkbox" data-recovery-policy ${includePolicyExcluded ? 'checked' : ''}> 包含历史不支持格式记录</label>` +
+                `<label class="block mb-2"><input type="checkbox" data-recovery-policy ${includePolicyExcluded ? 'checked' : ''}> 包含历史策略排除记录</label>` +
                 data.items.map(item => `<div class="border-t py-2">
                     <div>${this.escapeHtml(item.relative_path)} <span class="text-secondary">#${item.source_item_id}</span></div>
                     <div>${item.unexecuted ? '未执行' : this.escapeHtml(labels[item.disposition] || item.disposition)} · ${this.escapeHtml(reasons[item.reason] || item.reason || '等待补处理')}</div>

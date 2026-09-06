@@ -23,6 +23,7 @@ _SETTLED_DISCOVERY_REASONS = frozenset({
     'unchanged', 'imported', 'existing_media_hash', 'downstream_followup_planned',
     'non_target_content_class', 'skipped_existing_media', 'skipped_duplicate',
 })
+_POLICY_EXCLUDED_REASONS = frozenset({'unsupported_extension', 'hidden', 'zero_byte', 'zero_byte_file'})
 
 
 def _discovery_page(discovery, offset, limit):
@@ -57,8 +58,8 @@ def recovery_items(response: Response, root_id: int, after_id: int = 0,
                     func.coalesce(DynamicSourceItem.ai_tagging_status,'').notin_(AI_TAGGING_COMPLETE_STATUSES),
                     func.coalesce(DynamicSourceItem.localization_status,'').notin_(LOCALIZATION_COMPLETE_STATUSES)))))
     if not include_policy_excluded:
-        query = query.filter(func.coalesce(DynamicSourceItem.deferred_reason, '') != 'unsupported_extension',
-            func.coalesce(DynamicSourceItem.failure_reason, '') != 'unsupported_extension')
+        query = query.filter(func.coalesce(DynamicSourceItem.deferred_reason, '').notin_(_POLICY_EXCLUDED_REASONS),
+            func.coalesce(DynamicSourceItem.failure_reason, '').notin_(_POLICY_EXCLUDED_REASONS))
     total = query.count()
     items = query.filter(DynamicSourceItem.id > after_id).order_by(DynamicSourceItem.id).limit(limit + 1).all()
     latest = db.query(DynamicSyncRun).filter(DynamicSyncRun.run_type == 'manual_sync_execute',
@@ -76,7 +77,7 @@ def recovery_items(response: Response, root_id: int, after_id: int = 0,
         detail = dict(attempt.current_metadata_json or {}) if attempt else {}
         current_disposition = disposition(item)
         current_reason = item.failure_reason or item.deferred_reason
-        if current_disposition != 'ignored' and (item.failure_reason or item.deferred_reason) == 'unsupported_extension':
+        if current_disposition != 'ignored' and current_reason in _POLICY_EXCLUDED_REASONS:
             current_disposition = 'policy_excluded'
         if (item.media_id is None and current_disposition in {'retryable', 'waiting_retry', 'complete'}
                 and (metadata_errors.get(item.id) or {}).get('exception_type') == 'FileNotFoundError'):
