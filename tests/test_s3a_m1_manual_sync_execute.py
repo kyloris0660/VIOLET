@@ -3485,7 +3485,9 @@ def test_s3a_m1_execute_records_missing_file_and_continues(db, tmp_path, monkeyp
     result = execute_manual_sync_run(db, run_id=run.id)
 
     assert result["status"] == "completed_with_failures"
-    assert result["manual_sync_execute"]["operator_status"] == "completed_with_retryable_failures"
+    # This fixture disables classification, so the retained healthy import also
+    # has downstream work. Source failure counts remain independently visible.
+    assert result["manual_sync_execute"]["operator_status"] == "completed_with_followup_required"
     assert result["manual_sync_execute"]["outcome_counts"]["source_missing"] == 1
     assert db.query(Media).count() == 1
     assert db.query(DynamicSyncRunItem).count() == 2

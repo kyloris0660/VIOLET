@@ -229,7 +229,7 @@
   "previous_phase_final_head": "c08c84d77535d7b54494729526210c1bc11e694d",
   "previous_phase_final_tree": "f1ed086101b46b1d657e8939985fa2eda7246dfe",
   "previous_phase_status": "owner_accepted_and_merged",
-  "current_status": "IMPLEMENTING_PRODUCTION_IMPORT_RECOVERY",
+  "current_status": "VALIDATING_PRODUCTION_IMPORT_RECOVERY_CANDIDATE",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -262,7 +262,7 @@
     "提交前预验证：受影响focused 327 passed / 2 skipped，隔离PostgreSQL 80 passed；后续界面复核修正仍需最终候选验证。",
     "独立有界面Edge已验证4个测试导入、1个版本排除及三个恢复动作；截图复核补上单项失败总览与下游待补做列表。"
   ],
-  "candidate_head": null,
+  "candidate_head": "65b3094b71c154cfa48c01587bb2f4cd74fd8f7c",
   "production_candidate_head": null,
   "next_required_checkpoint": "冻结修复候选并完成该HEAD验证，再部署日常生产入口和执行真实恢复。",
   "durable_links": [
@@ -291,5 +291,5 @@
       "path": "docs/roadmap/current-mainline-roadmap.md"
     }
   ],
-  "updated_at": "2026-09-06T11:28:49.296239+00:00"
+  "updated_at": "2026-09-06T11:31:20.814277+00:00"
 }

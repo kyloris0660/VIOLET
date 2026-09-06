@@ -5,7 +5,7 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`IMPLEMENTING_PRODUCTION_IMPORT_RECOVERY`。
+- 状态：`VALIDATING_PRODUCTION_IMPORT_RECOVERY_CANDIDATE`。
 - 分支：`codex/production-import-recovery`；PR：`None`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
 - 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
