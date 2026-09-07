@@ -229,8 +229,8 @@
   "previous_phase_final_head": "c08c84d77535d7b54494729526210c1bc11e694d",
   "previous_phase_final_tree": "f1ed086101b46b1d657e8939985fa2eda7246dfe",
   "previous_phase_status": "owner_accepted_and_merged",
-  "current_status": "PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE",
-  "target_met": true,
+  "current_status": "PRODUCTION_IMPORT_RECOVERY_PR152_BOUNDED_FIX_IN_PROGRESS",
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "planning_authorized": true,
@@ -238,7 +238,7 @@
   "planning_approved": true,
   "next_phase_started": false,
   "manual_acceptance_status": "pending_project_lead_review",
-  "route_scope": "28号任务：限定生产导入修复、必要增量迁移、正常入口部署及实际恢复；合并由负责人执行。",
+  "route_scope": "30号续接：同一PR152完成R1至R5、全历史覆盖和完整下游契约、受控生产复验；保留已完成恢复，负责人复审合并。",
   "authorities": {
     "production": true,
     "additive_migration": true,
@@ -253,6 +253,7 @@
     "original_file_mutation": false
   },
   "completed_checkpoints": [
+    "30号续接已授权；可信fetch核实PR152仍OPEN，受审HEAD eca27fa与远端一致、main仍ea4bdd7。独立工作目录修正，不修改当前运行的生产行为；旧target_met为历史弱契约结果，本轮重新验证。",
     "已通读28号任务并记录三个连续实施步骤；A1历史证据保持不变。",
     "可信fetch确认PR151已合并；main无本地独有提交，仅落后88提交，隔离main工作区以--ff-only安全同步，preflight_remote_sync=self_healed_by_fast_forward。",
     "保留旧规划目录和A1生产工作区；修复分支从已接受主线建立。",
@@ -276,7 +277,7 @@
   ],
   "candidate_head": "2b3c075dd4c0ceb7d55371763a9577049ec68d3e",
   "production_candidate_head": "2b3c075dd4c0ceb7d55371763a9577049ec68d3e",
-  "next_required_checkpoint": "负责人复审并合并正常PR #152；收到合并结果后按28号原授权核对接受main、实际行为和日常启动锚点，保持原库/存储并完成最后版本对齐。",
+  "next_required_checkpoint": "完成30号有界修正、独立全集及下游契约、必要历史补查、同候选测试和原生产CDP复验后，更新同一PR152交负责人复审。",
   "durable_links": [
     {
       "label": "实施与恢复方案",

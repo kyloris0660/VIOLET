@@ -15,13 +15,20 @@ class SourceCopyError(OSError):
 
 
 def _copy_worker(source, destination, conn):
-    stage = "source_copy"
+    stage = "source_stat"
     try:
         digest = hashlib.md5()
+        before = Path(source).stat()
+        stage = "source_copy"
         with open(source, "rb") as src, open(destination, "wb") as dst:
             for chunk in iter(lambda: src.read(1024 * 1024), b""):
                 dst.write(chunk)
                 digest.update(chunk)
+        stage = "source_stat"
+        after = Path(source).stat()
+        if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
+            conn.send(("error", {"stage": stage, "reason": "content_changed_after_plan"}))
+            return
         stage = "copied_image_decode"
         from PIL import Image
         with Image.open(destination) as image:
@@ -45,7 +52,6 @@ def copy_source(source: Path, destination: Path, *, timeout_seconds: int, expect
     parent, child = multiprocessing.Pipe(duplex=False)
     process = multiprocessing.Process(target=_copy_worker, args=(str(source), str(destination), child), daemon=True)
     try:
-        before = source.stat()
         try:
             process.start()
         except Exception as exc:
@@ -66,10 +72,8 @@ def copy_source(source: Path, destination: Path, *, timeout_seconds: int, expect
             status, result = parent.recv() if parent.poll(1) else ("error", None)
         except EOFError:
             status, result = "error", None
-        after = source.stat()
         observed_hash = result if status == "ok" else (result or {}).get("copied_content_hash")
-        if ((before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns)
-                or (expected_hash and observed_hash and expected_hash != observed_hash)):
+        if expected_hash and observed_hash and expected_hash != observed_hash:
             raise SourceCopyError({"stage": "source_copy", "reason": "content_changed_after_plan",
                                    "exception_type": None, "errno": None, "winerror": None})
         if status != "ok":

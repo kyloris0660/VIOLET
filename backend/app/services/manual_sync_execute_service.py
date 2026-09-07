@@ -40,6 +40,7 @@ from ..utils.logger import logger
 from ..utils.local_library_scanner import _is_scannable_file
 from ..utils.media_helpers import get_unique_filename
 from ..utils.source_read_diagnostics import exception_detail
+from ..utils.bounded_source_io import source_io, source_resolve, with_source_io
 from .manual_sync_recovery import start_attempt, record_failure, finish_attempt, set_recovery
 from .dynamic_library_sync_service import (
     MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
@@ -351,9 +352,8 @@ def _plan_partial_scan_allows_execute(plan: Dict[str, Any]) -> bool:
         partial_reason == "source_walk_error"
         and not unsafe_partial
         and batch_executable
-        and int(counts.get("estimated_import_count") or 0) == 0
-        and int(counts.get("estimated_downstream_followup_count") or 0) > 0
-        and bool(limits.get("source_walk_error_followup_only_batch"))
+        and bool(limits.get("source_walk_error_confirmed_candidates_batch")
+                 or limits.get("source_walk_error_followup_only_batch"))
     ):
         return True
     return bool(
@@ -1140,9 +1140,9 @@ def _find_active_manual_sync_execute_run(db: Session) -> Optional[DynamicSyncRun
 
 
 def _safe_source_file(root_path: Path, relative_path: str) -> Path:
-    candidate = (root_path / relative_path).resolve()
+    candidate = source_resolve(root_path / relative_path)
     try:
-        candidate.relative_to(root_path.resolve())
+        candidate.relative_to(source_resolve(root_path))
     except ValueError as exc:
         raise ManualSyncExecuteError("source_path_escape", "Source item escaped the registered root.") from exc
     return candidate
@@ -1192,7 +1192,29 @@ def _get_or_create_source_item(
         "suffix": metadata.get("suffix"),
         "content_hash_computed": bool(content_hash),
     }
+    if content_hash:
+        _remember_content_hash(item, content_hash, metadata)
     return item
+
+
+def _remember_content_hash(item, content_hash, metadata):
+    item.content_hash = str(content_hash)
+    version = {key: metadata.get(key) for key in ("file_size", "mtime_ns")}
+    if all(type(value) is int and value >= 0 for value in version.values()):
+        item.metadata_json = {**(item.metadata_json or {}),
+            "content_hash_version": {**version, "content_hash": str(content_hash)}}
+
+
+def _stored_hash_for_version(item, metadata):
+    if item is None or not item.content_hash:
+        return None
+    evidence = (item.metadata_json or {}).get("content_hash_version") or {}
+    if (evidence.get("content_hash") == item.content_hash
+            and all(type(evidence.get(key)) is int and evidence[key] >= 0
+                    and evidence[key] == metadata.get(key) for key in ("file_size", "mtime_ns"))):
+        return str(item.content_hash)
+    # Legacy hashes without a bound version need ordinary per-file validation.
+    return None
 
 
 def _record_run_item(
@@ -2025,6 +2047,7 @@ def _manual_sync_skipped_localization_result(
     }
 
 
+@with_source_io
 def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
     global _active_execute_run_id
 
@@ -2272,22 +2295,6 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     next_plan_index=processed_plan_items, admitted_source_item_id=planned_source_item.id)
                 db.commit()
 
-            if (planned_source_item is not None and planned_source_item.media_id is None
-                    and planned_source_item.content_hash
-                    and planned_source_item.file_size == plan_item.get("file_size")
-                    and planned_source_item.mtime_ns == plan_item.get("mtime_ns")):
-                linked = db.query(Media).filter(Media.hash == planned_source_item.content_hash).first()
-                if linked is not None and lifecycle_app_media_exists(linked, storage_root=settings.STORAGE_ROOT):
-                    _bind_existing_media(db, run=run, item=planned_source_item, media=linked,
-                        metadata={"safe_label": plan_item.get("safe_label"), "stored_hash_version_verified": True})
-                    if not source_item_downstream_complete(planned_source_item):
-                        _append_downstream_target(linked.id, planned_source_item.id)
-                    counts["skipped_existing_media"] += 1
-                    processed_items += 1
-                    processed_plan_items += 1
-                    db.commit()
-                    continue
-
             if is_followup_work_item:
                 metadata = {
                     "file_size": plan_item.get("file_size"),
@@ -2310,7 +2317,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 try:
                     source_file = _safe_source_file(root_path, relative_path)
                     rel, preflight_reason = _relative_identity_and_preflight_reason(root_path, source_file)
-                    if not source_file.exists() or not source_file.is_file():
+                    if not source_io("is_file", str(source_file)):
                         item_failure_reason = "source_missing"
                     else:
                         metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
@@ -2341,6 +2348,21 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                             except (TypeError, ValueError):
                                 item_failure_reason = "content_changed_after_plan"
                         should_verify_content = is_import_work_item or is_retry_source_work_item or bool(expected_hash)
+                        stored_hash = _stored_hash_for_version(planned_source_item, metadata)
+                        if (item_failure_reason is None and stored_hash
+                                and planned_source_item.media_id is None):
+                            linked = db.query(Media).filter(Media.hash == stored_hash).first()
+                            if linked is not None and lifecycle_app_media_exists(linked, storage_root=settings.STORAGE_ROOT):
+                                _bind_existing_media(db, run=run, item=planned_source_item, media=linked,
+                                    metadata={**metadata, "safe_label": plan_item.get("safe_label"),
+                                        "stored_hash_version_verified": True})
+                                if not source_item_downstream_complete(planned_source_item):
+                                    _append_downstream_target(linked.id, planned_source_item.id)
+                                counts["skipped_existing_media"] += 1
+                                processed_items += 1
+                                processed_plan_items += 1
+                                db.commit()
+                                continue
                         if item_failure_reason is None and should_verify_content:
                             current_hash, hash_reason = _calculate_manual_plan_file_hash(
                                 source_file,
@@ -2357,7 +2379,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     item_failure_reason = _manual_public_reason_code(exc.code)
                 except OSError as exc:
                     item_failure_reason = "read_error"
-                    metadata["private_diagnostic"] = exception_detail(exc, stage="source_metadata")
+                    metadata["private_diagnostic"] = getattr(exc, "diagnostic", None) or exception_detail(exc, stage="source_metadata")
+                    item_failure_reason = metadata["private_diagnostic"].get("reason") or item_failure_reason
                 except Exception as exc:
                     item_failure_reason = "read_error"
                     metadata["private_diagnostic"] = exception_detail(exc, stage="source_validation")
@@ -2385,8 +2408,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
 
             if planned_source_item is not None:
                 item = planned_source_item
-                if current_content_hash and not item.content_hash:
-                    item.content_hash = str(current_content_hash)
+                if current_content_hash and not item_failure_reason and not is_followup_work_item:
+                    _remember_content_hash(item, current_content_hash, metadata)
             else:
                 item = _get_or_create_source_item(
                     db,
@@ -2631,6 +2654,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     _mark_item_failed(db, run=run, item=item,
                         reason=item.failure_reason or "import_failed", metadata=failure_metadata)
                 counts[item.sync_state] += 1
+                if not duplicate:
+                    counts[item.failure_reason or "import_failed"] += 1
                 if duplicate:
                     processed_items += 1
                     processed_plan_items += 1
@@ -2663,7 +2688,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 if copy_diagnostic:
                     metadata["private_diagnostic"] = dict(copy_diagnostic)
                 item.failure_reason = (copy_diagnostic or {}).get("reason") or (
-                    "read_timeout" if (copy_diagnostic or {}).get("worker_status") == "timeout" else "import_failed")
+                    "read_timeout" if (copy_diagnostic or {}).get("worker_status") == "timeout" else
+                    "read_error" if (copy_diagnostic or {}).get("stage") in {"source_copy", "source_stat"} else "import_failed")
                 record_failure(item, run_id=run.id, reason=item.failure_reason, metadata=metadata, now=_utcnow())
                 _record_run_item(
                     db,
@@ -2676,6 +2702,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     current_metadata={**metadata, "safe_label": plan_item.get("safe_label"), "error_code": exc.__class__.__name__, "private_diagnostic": copy_diagnostic or exception_detail(exc, stage="copy_import")},
                 )
                 counts["failed"] += 1
+                counts[item.failure_reason] += 1
                 item_failure_count += 1
                 consecutive_failures += 1
                 processed_items += 1

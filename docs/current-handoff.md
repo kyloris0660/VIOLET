@@ -5,14 +5,15 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE`。
+- 状态：`PRODUCTION_IMPORT_RECOVERY_PR152_BOUNDED_FIX_IN_PROGRESS`。
 - 分支：`codex/production-import-recovery`；PR：`152`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
-- 工程目标完成：`True`；负责人复审：`pending_project_lead_review`。
+- 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
 - 修复生产候选：`2b3c075dd4c0ceb7d55371763a9577049ec68d3e`。
 
 ## 当前检查点
 
+- 30号续接已授权；可信fetch核实PR152仍OPEN，受审HEAD eca27fa与远端一致、main仍ea4bdd7。独立工作目录修正，不修改当前运行的生产行为；旧target_met为历史弱契约结果，本轮重新验证。
 - 已通读28号任务并记录三个连续实施步骤；A1历史证据保持不变。
 - 可信fetch确认PR151已合并；main无本地独有提交，仅落后88提交，隔离main工作区以--ff-only安全同步，preflight_remote_sync=self_healed_by_fast_forward。
 - 保留旧规划目录和A1生产工作区；修复分支从已接受主线建立。
@@ -61,7 +62,7 @@
 自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
 执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
 
-下一检查点：负责人复审并合并正常PR #152；收到合并结果后按28号原授权核对接受main、实际行为和日常启动锚点，保持原库/存储并完成最后版本对齐。
+下一检查点：完成30号有界修正、独立全集及下游契约、必要历史补查、同候选测试和原生产CDP复验后，更新同一PR152交负责人复审。
 
 ## 持久入口
 

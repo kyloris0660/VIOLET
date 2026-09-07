@@ -169,11 +169,9 @@ def test_initial_enumeration_is_bounded_and_directory_error_has_identity(tmp_pat
     errors = []
     assert len(list(source_files(tmp_path, errors=errors, max_entries=2))) == 2
     assert errors[0]['path'] == str(tmp_path) and errors[0]['coverage'] == 'unknown'
-    def denied(path):
-        raise PermissionError(errno.EACCES, 'test access denied', str(path))
-    monkeypatch.setattr('app.utils.bounded_source_walk.os.scandir', denied)
+    from tests.source_io_worker_fixture import filesystem_worker
     errors = []
-    assert list(source_files(tmp_path, errors=errors)) == []
+    assert list(source_files(tmp_path/'denied', errors=errors, _worker_target=filesystem_worker)) == []
     assert errors[0]['exception_type'] == 'PermissionError'
     assert errors[0]['errno'] == errno.EACCES
 

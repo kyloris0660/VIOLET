@@ -48,6 +48,7 @@ from ..utils.local_library_scanner import (
     validate_scan_paths,
 )
 from ..utils.logger import logger
+from ..utils.bounded_source_io import source_io, source_resolve, with_source_io
 
 PROPER_NOUN_CATEGORIES = {"character", "copyright", "artist"}
 GENERAL_LOCALIZATION_CATEGORIES = {"general", "meta"}
@@ -183,8 +184,9 @@ def _stable_json_hash(payload: Dict[str, Any]) -> str:
 
 
 def _normalized_path_identity(path: Path) -> str:
-    resolved = path.resolve()
-    normalized = os.path.normcase(str(resolved))
+    # Deduplication is lexical; source confinement is checked separately under
+    # a hard I/O deadline. Never resolve a cloud path just to name a candidate.
+    normalized = os.path.normcase(os.path.abspath(str(path)))
     return normalized.replace("\\", "/").rstrip("/")
 
 
@@ -194,8 +196,8 @@ def _normalize_relative_path(path: Path) -> str:
 
 def _path_overlaps(left: Path, right: Path) -> bool:
     try:
-        l_resolved = left.resolve()
-        r_resolved = right.resolve()
+        l_resolved = source_resolve(left)
+        r_resolved = source_resolve(right)
     except OSError:
         return False
     try:
@@ -211,13 +213,14 @@ def _path_overlaps(left: Path, right: Path) -> bool:
 
 
 def _is_root_like(path: Path) -> bool:
-    resolved = path.resolve()
+    resolved = source_resolve(path)
     if resolved.parent == resolved:
         return True
     anchor = Path(resolved.anchor) if resolved.anchor else None
     return bool(anchor and resolved == anchor)
 
 
+@with_source_io
 def validate_source_root_path(path: str | Path) -> Path:
     """Validate a source root for metadata-only sync tracking."""
     if not str(path).strip():
@@ -225,12 +228,12 @@ def validate_source_root_path(path: str | Path) -> Path:
     candidate = Path(path).expanduser()
     if not candidate.is_absolute():
         raise ValueError("source root path must be absolute")
-    resolved = candidate.resolve()
+    resolved = source_resolve(candidate)
     if _is_root_like(resolved):
         raise ValueError("source root must not be a filesystem root")
-    if not resolved.exists():
+    if not source_io("exists", str(resolved)):
         raise ValueError("source root does not exist")
-    if not resolved.is_dir():
+    if not source_io("is_dir", str(resolved)):
         raise ValueError("source root must be a directory")
 
     scan_error = validate_scan_paths([resolved])
@@ -1017,7 +1020,7 @@ def _plan_manual_sync_incremental_dry_run(
         }
         candidate_pool.append(
             {
-                "safe_label": f"followup-{followup_index:05d}",
+                "safe_label": f"followup-{rel_hash_full[:16]}",
                 "relative_path": rel,
                 "relative_path_hash": rel_hash_full[:16],
                 "relative_path_hash_full": rel_hash_full,
@@ -1091,7 +1094,7 @@ def _plan_manual_sync_incremental_dry_run(
         metadata_entries_seen = index
         if scan_source == "source_ledger_followup":
             priority_workset_processed += 1
-        safe_label = f"file-{index:05d}"
+        safe_label = "file-" + _hash_text(_normalize_relative_path(file_path.relative_to(resolved)))[:16]
         _progress("metadata_candidate_scan", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
 
         rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
@@ -1109,7 +1112,7 @@ def _plan_manual_sync_incremental_dry_run(
         except OSError as exc:
             from ..utils.source_read_diagnostics import exception_detail
             reason = "stat_error"
-            metadata["private_diagnostic"] = exception_detail(exc, stage="plan_stat")
+            metadata["private_diagnostic"] = getattr(exc, "diagnostic", None) or exception_detail(exc, stage="plan_stat")
 
         recovery_disposition = disposition(known_item, metadata, now=created_at) if known_item is not None else "retryable"
         if recovery_disposition in {"deferred_diagnosis", "terminal", "ignored", "waiting_retry"}:
@@ -1343,17 +1346,9 @@ def _plan_manual_sync_incremental_dry_run(
                 return str(lifecycle.get("work_item_kind") or "")
             return ""
 
-        if walk_errors:
-            walk_error_import_candidates_blocked = sum(
-                1 for record in selection_pool if _record_work_item_kind(record) == "IMPORT"
-            )
-            selection_pool = [
-                record
-                for record in selection_pool
-                if _record_work_item_kind(record) == "FOLLOWUP"
-                or not _record_consumes_actionable_cap(record)
-            ]
-            source_walk_error_followup_only_batch = bool(selection_pool)
+        # Unknown subtree coverage never invalidates independently validated
+        # siblings or app-media followups. Only common dependencies stop them.
+        source_walk_error_followup_only_batch = bool(walk_errors and selection_pool)
         actionable_records = [record for record in selection_pool if _record_consumes_actionable_cap(record)]
         diagnostic_records = [record for record in selection_pool if not _record_consumes_actionable_cap(record)]
         candidate_records = actionable_records[:effective_max_files] + diagnostic_records
@@ -1486,7 +1481,7 @@ def _plan_manual_sync_incremental_dry_run(
     unsafe_partial_scan = bool(
         plan_cancelled
         or plan_no_progress_timeout
-        or (walk_errors and not source_walk_error_followup_only_batch)
+        or any(isinstance(error, dict) and error.get("shared_dependency") for error in walk_errors)
         or (
             partial_scan
             and partial_scan_reason not in {None, "cap_limited_actionable_batch", "source_walk_error"}
@@ -1494,7 +1489,7 @@ def _plan_manual_sync_incremental_dry_run(
     )
     cap_limited_batch = bool(partial_scan and partial_scan_reason == "cap_limited_actionable_batch")
     batch_executable = bool(executable_work_count > 0 and not unsafe_partial_scan)
-    more_batches_remain = bool(cap_limited_batch)
+    more_batches_remain = bool(cap_limited_batch or walk_errors)
     estimated_runtime_seconds = _estimate_manual_sync_runtime_seconds(
         import_count=import_count,
         ai_profile=profile,
@@ -1585,6 +1580,7 @@ def _plan_manual_sync_incremental_dry_run(
         "unsafe_partial_scan": unsafe_partial_scan,
         "partial_scan_reason": partial_scan_reason,
         "source_walk_error_count": len(walk_errors),
+        "source_walk_error_confirmed_candidates_batch": bool(walk_errors and batch_executable),
         "source_walk_error_followup_only_batch": source_walk_error_followup_only_batch,
         "walk_error_import_candidates_blocked": walk_error_import_candidates_blocked,
         "plan_elapsed_seconds": elapsed_seconds,
@@ -1807,6 +1803,7 @@ def _plan_manual_sync_incremental_dry_run(
     return plan
 
 
+@with_source_io
 def plan_manual_sync_dry_run(
     db: Session,
     *,
@@ -2007,7 +2004,7 @@ def plan_manual_sync_dry_run(
         if scan_source == "source_delta_priority_workset":
             priority_workset_processed += 1
 
-        safe_label = f"file-{index:05d}"
+        safe_label = "file-" + _hash_text(_normalize_relative_path(file_path.relative_to(resolved)))[:16]
         _progress("scanning", current_item_index=index, current_item_label=safe_label, scan_source=scan_source)
         rel, preflight_reason = _relative_identity_and_preflight_reason(resolved, file_path)
         rel_hash_full = _hash_text(rel)
@@ -2647,11 +2644,9 @@ def _manual_plan_app_media_followup_source_items(
 
 
 def _metadata_for_path(path: Path, *, follow_symlinks: bool = True) -> Dict[str, Any]:
-    stat = path.stat() if follow_symlinks else path.lstat()
+    metadata = source_io("stat", str(path), follow_symlinks)
     return {
-        "file_size": stat.st_size,
-        "mtime": stat.st_mtime,
-        "mtime_ns": getattr(stat, "st_mtime_ns", int(stat.st_mtime * 1_000_000_000)),
+        **metadata,
         "suffix": path.suffix.lower(),
     }
 
@@ -2663,12 +2658,11 @@ def _relative_identity_and_preflight_reason(root_path: Path, file_path: Path) ->
         rel = file_path.name
         return rel, "path_escape"
 
-    if file_path.is_symlink():
-        return rel, "symlink"
-
     try:
-        root_resolved = root_path.resolve()
-        file_resolved = file_path.resolve()
+        if source_io("is_symlink", str(file_path)):
+            return rel, "symlink"
+        root_resolved = source_resolve(root_path)
+        file_resolved = source_resolve(file_path)
         file_resolved.relative_to(root_resolved)
     except ValueError:
         return rel, "path_escape"
@@ -2962,6 +2956,7 @@ def _mark_missing_items(db: Session, *, root: DynamicSourceRoot, run: DynamicSyn
     return len(missing_items)
 
 
+@with_source_io
 def run_update_check(
     db: Session,
     *,

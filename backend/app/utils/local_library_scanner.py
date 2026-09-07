@@ -158,6 +158,13 @@ def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tupl
 
 
 def _is_cloud_only(file_path: Path) -> bool:
+    from .bounded_source_io import _local, source_io
+    if getattr(_local, "worker", None) is not None:
+        return source_io("cloud_only", str(file_path))
+    return _is_cloud_only_unbounded(file_path)
+
+
+def _is_cloud_only_unbounded(file_path: Path) -> bool:
     """Check if a file is cloud-only (not locally hydrated) on Windows.
 
     Uses the shared Source Ingestion Gate, which delegates to Cloud Files
@@ -194,7 +201,8 @@ def validate_scan_paths(paths: List[Path]) -> Optional[str]:
 
     for p in paths:
         try:
-            resolved = p.resolve()
+            from .bounded_source_io import source_resolve
+            resolved = source_resolve(p)
         except OSError:
             continue
         for b in blocked:
@@ -207,6 +215,13 @@ def validate_scan_paths(paths: List[Path]) -> Optional[str]:
 
 
 def _is_scannable_file(file_path: Path, *, hydrated_only: bool = True) -> str | None:
+    from .bounded_source_io import _local, source_io
+    if getattr(_local, "worker", None) is not None:
+        return source_io("scannable", str(file_path), hydrated_only, settings.SCAN_MAX_FILE_SIZE_MB * 1024 * 1024)
+    return _is_scannable_file_unbounded(file_path, hydrated_only=hydrated_only)
+
+
+def _is_scannable_file_unbounded(file_path: Path, *, hydrated_only: bool = True, max_bytes=None) -> str | None:
     """Return None if the file is scannable, or a skip-reason string."""
     if file_path.is_symlink():
         return "symlink"
@@ -234,7 +249,7 @@ def _is_scannable_file(file_path: Path, *, hydrated_only: bool = True) -> str | 
     if size == 0:
         return "zero_byte_file"
 
-    max_bytes = settings.SCAN_MAX_FILE_SIZE_MB * 1024 * 1024
+    max_bytes = settings.SCAN_MAX_FILE_SIZE_MB * 1024 * 1024 if max_bytes is None else max_bytes
     if size > max_bytes:
         return "too_large"
 
