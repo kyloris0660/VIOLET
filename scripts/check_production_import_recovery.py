@@ -113,8 +113,13 @@ def reconstruct_recovery(before, original, snapshot, accounting, metadata, downs
             require(path.is_file() and path.stat().st_size == observed["file_size"], "app_file_missing_or_changed")
             require(source.get("app_media_exists") is True and row.get("app_media_exists") is True, "app_file_observation_mismatch")
             require(source.get("content_hash") == observed["hash"], "media_hash_identity")
+            confidence = observed.get("content_class_confidence")
+            completed_unknown = (observed.get("content_class") == "unknown"
+                and observed.get("content_class_source") == "clip"
+                and bool(observed.get("content_class_model"))
+                and type(confidence) in {int, float} and 0 <= confidence <= 1)
             require(source.get("classification_status") in {"classified", "classified_reused"}
-                and observed.get("content_class") not in {None, "", "unknown", "uncertain", "unclassified"},
+                and (observed.get("content_class") in {"anime", "non_anime"} or completed_unknown),
                 "classification_pending_normal_followup_required")
             non_target = observed["content_class"] == "non_anime"
             if non_target:

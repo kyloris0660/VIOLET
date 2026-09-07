@@ -72,6 +72,22 @@ def test_independent_inventory_gap_cannot_disappear_with_current_rows(evidence):
         reconstruct_recovery(**evidence)
 
 
+def test_completed_clip_unknown_is_not_an_unexecuted_classification(evidence):
+    evidence['downstream']['media'][-1].update(content_class='unknown',
+        content_class_source='clip',content_class_model='clip-vit-base-patch32',content_class_confidence=0.304)
+    assert reconstruct_recovery(**evidence)['downstream_complete'] == 307
+
+
+@pytest.mark.parametrize('missing', ['content_class_source','content_class_model','content_class_confidence'])
+def test_unknown_without_actual_classification_provenance_is_pending(evidence, missing):
+    media=evidence['downstream']['media'][-1]
+    media.update(content_class='unknown',content_class_source='clip',
+        content_class_model='clip-vit-base-patch32',content_class_confidence=0.304)
+    media.pop(missing)
+    with pytest.raises(ValueError,match='classification_pending_normal_followup_required'):
+        reconstruct_recovery(**evidence)
+
+
 @pytest.mark.parametrize('mutation', ['drop_gaps','drop_new','drop_one','replace_one','duplicate_one',
     'drop_source_and_accounting','omit_downstream','classification_pending','tagging_deferred','localization_pending',
     'missing_translation','missing_app_file','summary_mismatch','missing_metadata','duplicate_policy'])
