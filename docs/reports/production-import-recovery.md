@@ -1,89 +1,127 @@
 # 生产导入可靠性修复与实际恢复
 
-最终行为候选 `2b3c075dd4c0ceb7d55371763a9577049ec68d3e` 已通过日常启动器部署到原 production。真实恢复 #28、精确关联修复 #29 和 cap=5 正常续接 #30 均已完成，工程交付待负责人复审/合并。负责人接受与 PR 合并尚未发生；工程验证、接受、合并和长期启动对齐分别记账。
+PR [#152](https://github.com/kyloris0660/VIOLET/pull/152) 的 30 号续接已完成本轮工程修正、实际恢复及原 production 复验，等待负责人复审/合并。行为候选为 `83d5eda5a9de4622066617206a4b07e86e1bf2a8`，tree `37257541fb95279a374409a0a2c8a0d86876b1ea`；分支为 `codex/production-import-recovery`。PR 最终文档提交及实时 HEAD 另由 GitHub 回读写入当前 PR 正文和本机交付回执，行为结论始终绑定上述候选。
 
-## 基线与根因
+原 main / A1 接受基线仍为 `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。本轮没有合并、推 main、追加 reviewer 或启动下一阶段。`target_met=true` 是注册契约重建出的工程结果，`safe_to_merge=false`、`route_approved=false`，负责人接受及所有者亲自验收均未发生。
 
-基线为已接受并合并的 PR #151，主线 `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
-修复分支为 `codex/production-import-recovery`。A1 原报告和结果保留为历史证据。
-正常修复 PR 为 [#152](https://github.com/kyloris0660/VIOLET/pull/152)，当前为 Open、非 Draft，待负责人复审/合并；最终 PR HEAD 以该 PR 的实时提交为准。行为候选之后只允许本次文档/结果后继，已由同一行为一致性检查核实。
+## 修正与审查意见
 
-既有执行器把独立单文件读取失败纳入连续、数量和比例停机阈值；第 11 个连续失败会截断其他候选。
-旧重试选择与运行完成记账没有提供可跨小 cap 重启的稳定份额，部分去重来源未关联已有 Media。
-此外，哈希子进程返回的原异常被降为原因码，计划 stat 异常缺少逐项身份，单个解码错误又被总览误判为系统故障。
+| 意见 | 根因与本轮处置 |
+| --- | --- |
+| R1 / 3944187453 | 旧枚举只在阻塞调用前后检查时间，无法中止 scandir/next。现由可终止工作进程执行目录打开、取项和必要源端元数据操作；超时 terminate/join，必要时 kill/join，并确认进程退出。条目、深度、时间、路径内存限制保留。坏子目录记 coverage unknown，保留已确认的健康兄弟候选和应用 Media 下游；共同依赖不可用仍可停止，未知覆盖不会标空或用于缺失调和，保留新计划续接。 |
+| R2 / 3944187454 | safe_label 不再依赖枚举序号，改为稳定相对来源身份的摘要。真实公开计划、私有复算与 execute 顺序变化回归通过；版本校验、持久轮转、cap 份额及未尝试优先没有删去。 |
+| R5 / 负责人裁决 | stored-hash 关联在当前有界源元数据和计划版本核对之后执行，并要求 hash 绑定版本证据。计划后替换不能关联旧 Media；历史证据不足走普通逐文件读取校验，不做全库 hash。此前 #29 四行关联只保留为历史已有内容关联，未重新应用，也不证明当前来源或新版本可读。 |
+| R3 / 3944187455 | 哈希后复制、解码、保存及非重复 HTTPException 的规范化原因与 failed 总数在真实异常分支同步累计，每项一次。回归核实后续正常文件继续；保留 A1 MediaCommittedError 的提交后恢复和唯一 Media 保护。 |
+| R4 / 3944187458 | 现有 production_import_recovery_v1 从独立 before 清单、原实际 run-item 和后续实际 run-item 重建身份/cohort/结果；核实全部原 498、原 5 缺失和 173 策略观察，并独立约束当前清单的新确认缺口。成功项必须具有实际应用文件、正确 Media 身份及必要下游/翻译覆盖。完整分类为 unknown 时须有真实 CLIP 来源、模型及置信度，不强行重新分类。 |
+| 3944187452 | 按负责人裁决不适用：本轮是真实候选祖先链，没有实现另一套 squash 继承或重签旧证据。 |
 
-## 实现
+同类问题审计覆盖枚举 open/next/成员/stat、来源解析与扫描策略、版本绑定的 hash 重用、复制前后版本、五种导入失败分支、局部错误候选保留、全部 cohort/下游与实际文件的验收。负例删除全部 268 缺口或 40 新增、删/换/重复身份、移除新确认来源、漏必要下游/翻译、删除成功项文件或伪造摘要均被拒绝。本轮未扩展格式支持、全局扫描架构、provider 或 schema。
 
-- 每项读取/复制/解码有界执行，单项错误记账后继续；数据库、明确目标存储或子进程启动共同故障、取消、总时限和 cap 保留停止能力。
-- 入场前持久化来源与 run-item、真实尝试时间和调度位置。调度周期为四个导入席位、一个下游补做席位、一个旧重试席位；空席位由其他工作使用，队内按真实最近尝试轮转。
-- 使用既有 JSON 账本保存文件版本、冷却、暂缓、策略排除和可恢复的主动忽略。仅计实际失败运行，未知历史版本单独保留；普通读取失败不能证明文件永久损坏。
-- 复制后核对内容身份及文件版本，再由现有 Media 路径入库。重试成功在同轮继续导入，已存可靠哈希可直接修复去重关联，复用完整来源的下游状态。
-- 首次目录枚举已有有限条目、时间与深度上限；格式过滤前保留已知成员和异常身份，目录无法列举时记录覆盖未知。
-- 页面区分新增、已有内容、实际失败和未执行，提供私有逐项原因与恢复入口。下游未就绪时可先导入，并保留待补做；生产分类和 WD 仍只用已有本地模型缓存。
+原公平周期和版本处置继续生效：新导入/未尝试项优先，已有应用下游与到期旧重试有保留份额；入场和真实尝试位置持久化。冷却或同版本反复失败可暂缓，当前内容无法处理才按版本退出；timeout/Errno22 不标永久坏图。来源、版本或支持条件改变可重新进入，主动忽略仍由所有者选择。
 
-本次复用既有表和 JSON 字段，无新增 schema。精确关联修复在保存目标行 before 附件、刷新路径及版本证据、锁定目标行和核实完整下游记录后，使用既有绑定服务单事务提交。未创建重复 Media、复制相同内容或重跑完整存量标签。
+## 实际恢复与下游
 
-同类问题审计覆盖哈希返回 payload、复制/解码异常、首次枚举、目录/stat 身份、旧 no-op 关联、混合与纯重试、跨 cap 入场位置、取消/时限、下游无目标状态，以及真实控制器文件入口。恢复列表每页最多 100 条观察，可独立翻页；历史不支持格式默认折叠，当前缺失来源与实际内容失败分开显示。完整成员账本仍保留在私有运行记录。
+历史 #28 为 40 新增、263 关联和 190 次实际读取失败；#29 精确修复四个历史关联，总计 267；#30 的五个到期重试失败已留原始证据。旧候选 2b3c075、旧 XML、旧运行及私有包均保留，不把本轮结果回写为历史成功。
 
-## 验证与现场状态
+本轮 #31 普通 GUI 完整链路选择 39 个新确认导入候选和 10 个到期重试，16 个原暂缓项未盲试。39 项中，35 项来自本轮一次独立纯元数据清单，4 项在后续普通现场计划中新出现。第一次 cap=44 计划因超过预设 35 项保护范围而在 execute 前停止；第二次 cap=49 才实际运行。计划计数与执行结果分别保存。
 
-最终候选 `2b3c075`：聚焦测试 **441 passed / 3 skipped**，244.64 秒；隔离 PostgreSQL **85 passed**，192.13 秒。聚焦有 3 个既有 Pydantic 配置弃用警告；跳过为两个 Windows 符号链接权限用例及一个不适用于 SQLite 的 PostgreSQL 正则用例。这是本地验证，不代称 GitHub CI、负责人接受或项目所有者亲自使用。
+#31 实际新入库 19 项、核实内容后关联已有 Media 20 项；新入库项实际分类 19、WD 标签 18、本地化复用已有覆盖 18，1 项非目标不适用。20 个本轮关联复用已有完整下游，其中 17 个目标、3 个非目标。10 个旧来源实际失败（4 read_error、6 read_timeout），均由既有同版本重复失败规则进入暂缓，原 190 项现为 164 可重试、26 暂缓。没有为原 16 暂缓项执行重试，也没有伪造主动忽略。
 
-使用指定 venv、Python 身份预检及标准测试环境，测试存储和临时源位于任务专用本机临时目录。实际 focused 命令覆盖：
+#31 的 421 个需本地化的不同 general/meta 标签全部复用已有中文/静态覆盖，待处理 0，LLM 调用 0、本地化失败 0。最终 346 个成功来源对应 315 个唯一 Media，完整范围的 1,596 个不同 general/meta 标签均有覆盖；这些全范围数量与本轮 421 的工作子集分别记账。
+
+恢复观察器在任务结束后的长页面截图发生超时，原失败日志及已完成的实际 run 保存。随后只读复核正常页面、恢复列表及分页原因通过；没有为截图重复导入或运行下游。
+
+原 498 与后续新增合计 `537` 个唯一来源，本轮契约重建结果如下：
+
+| 结果 | 来源身份数 |
+| --- | ---: |
+| 实际失败，保留正常到期重试 | 164 |
+| 同版本反复失败，暂缓待诊断 | 26 |
+| 关联既有 Media 且必要下游完整 | 287 |
+| 来源缺失/明确边界未执行 | 1 |
+| 实际导入且必要下游完整 | 59 |
+
+各独立 cohort 的结果及下游来源状态（完成、复用、不适用与待补做分开列出）：
+
+- `observed_later`：39 项；结果 `{"imported": 19, "existing_media": 20}`；分类 `{"classified": 39}`；标签 `{"ai_tagged": 35, "ai_tagging_skipped_non_target": 4}`；本地化 `{"localized": 35, "localization_not_applicable_non_target": 4}`。
+- `observed_new`：40 项；结果 `{"imported": 40}`；分类 `{"classified": 40}`；标签 `{"ai_tagged": 34, "ai_tagging_skipped_non_target": 6}`；本地化 `{"localized": 34, "localization_not_applicable_non_target": 6}`。
+- `original_failed`：82 项；结果 `{"deferred_diagnosis": 26, "retryable": 56}`；分类 `{"deferred": 82}`；标签 `{"deferred": 82}`；本地化 `{"blocked_import_failed": 82}`。
+- `original_unattempted`：108 项；结果 `{"retryable": 108}`；分类 `{"deferred": 108}`；标签 `{"deferred": 108}`；本地化 `{"blocked_import_failed": 108}`。
+- `verified_gap`：268 项；结果 `{"existing_media": 267, "unexecuted": 1}`；分类 `{"classified": 256, "deferred": 1, "classified_reused": 11}`；标签 `{"ai_tagged": 203, "tagged": 40, "deferred": 1, "tagged_reused": 11, "ai_tagging_skipped_non_target": 13}`；本地化 `{"localized": 254, "deferred": 1, "localization_not_applicable_non_target": 13}`。
+
+新增范围：独立清单 35 项 `{"imported": 15, "existing_media": 20}`；后续 4 项 `{"imported": 4}`。原 40 新增和 267 关联继续完整保护，不重新导入或重打全部标签。原 190 实际失败项没有整体重试；本轮仅按正常到期轮转实际尝试 10 项，其归宿已包含在原 cohort 中。
+
+原 5 个缺失来源单列，其中 1 个与原 498 重合，另 4 个不重复计数；无可靠内容证据的项目等待来源路径恢复。原 173 策略观察从原 run discovery 独立重建，当前普通计划观察的 174 项保留在 #31 原始记录，不替换历史数量。旧诊断四个未保存身份的 stat 错误不能猜测映射。
+
+必要下游未完成会使完整目标不成立；失败读取对应的 blocked/deferred 状态表示尚未形成可处理 Media，与成功项待补做不同。原 307 成功来源对应 296 个唯一 Media，旧 40 项为 34 个目标内容完成和 6 个非目标策略不适用，267 关联为 254 个目标内容完成/复用和 13 个非目标。原范围 1,548 个不同 general/meta 标签实际覆盖完整；旧报告 611 是当时需本地化工作子集，不能相加。静态/已有翻译复用不要求额外模型调用；本轮新增按原配置执行必要分类、WD 和本地化，实际计数见 #31 原始记录。
+
+## 全历史与当前覆盖限制
+
+未找到可复用的 26 号完整补查成果，已在同一任务完成保存的全部 30 个同步 run、287,288 个 run-item、171 个 ScanJob、43,412 个来源账本和 38,095 个 Media 的对账，并仅做一次独立有界纯元数据来源清单：43,370 项，目录/成员错误均 0、内容读取 0。后续 GUI 计划属于实际导入所需正常复算，没有另做一次诊断全量内容扫描。
+
+当前来源 2 已有关联且下游完整的 38,702 个身份中，38,542 当前存在、160 当前来源缺失；另有 4,433 个已登记格式/隐藏策略项、191 个原恢复范围无 Media 项和 5 个其他历史缺失项。81 个其他未启用来源根身份未做源端访问。清单另发现 35 个受支持未登记身份和 170 个不支持格式项，后者按策略保留。
+
+对 16 个已登记版本与当前元数据不同的身份，仅做必要逐文件有界核验：14 个与既有 Media 内容相同，2 个超时，保留其已有应用内容/完整下游，当前源版本仍未核实。没有全库内容 hash。对应用文件路径元数据核对的 38,095 个 Media 中，38,093 正常；另 2 个无来源账本关联的遗留 Media 文件缺失，无法由现有证据确定可恢复源，未删除记录或伪造替代文件，单列在私有历史附件。
+
+171 个 ScanJob 中 162 个 dry-run、8 个真实完成、1 个真实中断；保存的 ScanJobMedia 关联为空。旧扫描部分只有汇总，因此无法重建曾存在、现已移除且从未登记的每个身份；不宣称过去所有时点或其他来源根绝无遗漏。文件 mtime 也不证明 35 项在旧运行时存在。当前覆盖、新发现、实际不可读和上述遗留异常各自保留范围。
+
+## 验证、原 production 与日常入口
+
+候选 `83d5eda5a9de4622066617206a4b07e86e1bf2a8` 的 focused：**475 passed / 3 skipped / 3 warnings，525.22 秒**；隔离 PostgreSQL：**98 passed，330.65 秒**。跳过为两个 Windows 符号链接权限用例和一个 SQLite 不适用的 PostgreSQL 正则用例；三个警告为既有 Pydantic 配置弃用。此前 60957db 的 471/98、预验证断言失败、环境或工具错误均另存，不冒称本候选结果。
+
+测试从独立候选目录运行，使用指定 venv、标准测试环境和专用本机临时存储；PostgreSQL 限定到隔离测试数据库/角色，未在原库执行测试迁移。完整命令、实际 cwd、Python、起止时间、HEAD/tree 和 XML 哈希均在附件。未重跑完整 non-E2E，未付费补造缺失的历史 AI 证明，未把本地验证称为 GitHub CI。
+
+隔离有界面系统 Edge/CDP：4 张真实测试图入库、1 项无效图像单独失败、三个恢复操作和详情通过；0 页面脚本错误，测试服务及调试监听已关闭。原 production 的有界面系统 Edge/CDP：原 5 样本的缩略图/详情/全屏、19 次普通搜索、来源标签跳转及本轮 2 个实际新增 Media 详情/全屏通过，30 张截图，0 页面脚本错误；#31 结束后另以只读 GUI 核实私有恢复列表和原因，195 个来源两页可达，195 条计划观察单独分页，两个集合不相加为唯一来源数。
+
+正常便携 EXE 的任务专用实例通过原 profile 实际启动和重启；当前管理 PID `60440`，原 production 8012、原 blombooru / system id 7635635488443479756、原存储、指定 venv、安全启动和认证保持。5 Media / 51 绑定 / 1 active run 核实，Pixiv 读取开启、apply 关闭。已有启动器窗口保持，任务专用调试实例结束后关闭监听，并验证原 EXE 无参数新启动。具体 PID、进程参数、监听关闭和锚点保存在操作附件。
+
+首次辅助 runtime 探针导入了隔离模块的默认 state_path，检查失败并留证；正式控制器从真实生产目录停止/启动。五类作业只读检查及历史结束时间核实未打断活动工作。文档预检改动造成一次快进拒绝，仅精确撤回本任务临时文档并由快进带回同样内容，未 reset/clean/stash。自动批准审查拒绝了关闭已有窗口的复合命令；保留该窗口后，新的任务专用实例获准，不把拒绝记作成功操作。
+
+现有注册契约及文档检查已通过；完整目标由独立原集合、现场集合、实际文件和下游重建。行为候选到文档后继继续走既有祖先/行为一致性检查，未另建契约平台。收到负责人接受及实际合并结果后，按 30 号原授权继续对齐 main、受控目录/profile 与持久启动锚点；本轮停止在负责人复审/合并检查点。
+
+## 交付与工程判断
+
+本轮使用既有表/JSON、已有备份和模型配置，没有 schema 变更、新全库备份恢复、源文件修改、云保留属性变更、全库预下载、新模型/provider 或 Pixiv apply。恢复记录不得通过旧数据库备份覆盖；任何回退先等待活动任务结束，再经原控制器恢复已保存的代码/profile，保留本轮 Media、来源和历史。
+
+代码修正、原 498 的保护和本轮可执行恢复已经形成可审查证据。剩余不可读来源保留真实原因和重入条件；2 个当前源版本未核实、2 个无来源关联的应用文件缺失及旧汇总历史覆盖限制没有被包装成已修复。建议负责人依据本轮新候选、实际 #31 和加强后的负例复审，接受/合并由负责人作出。
+
+本机交付路径：
+
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\reports\production-import-recovery.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\reports\production-import-recovery-summary.json`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\.local_manifests\import-recovery\task30\IMPORT-HISTORY-COVERAGE.zh-CN.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\.local_manifests\import-recovery\task30\OPERATIONS-AND-RECOVERY.zh-CN.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\.local_manifests\import-recovery\task30\final-scope-stats-private.json`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\.local_manifests\import-recovery\task30\final-evidence-83d5eda`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\.local_manifests\import-recovery\task30\PRODUCTION-IMPORT-RECOVERY-PR152-83d5eda-TASK30-PRIVATE.zip`
+
+精确测试命令（运行目录均为 `C:\Users\kyloris\Documents\VIOLET-worktrees\pr152-bounded-candidate`）：
 
 ```text
-python scripts/check_python_env.py --expected-python <指定venv Python>
-python -m pytest tests/test_production_import_recovery.py tests/test_s3a_m1_manual_sync_execute.py tests/test_manual_sync_lifecycle.py tests/test_dynamic_library_sync.py tests/test_scanner_icloud.py tests/test_production_pixiv_a1.py tests/test_production_pixiv_a1_contract.py tests/test_production_launcher_control.py tests/test_trusted_git.py -q --basetemp=<本机专用临时目录> --junitxml=.local_manifests/import-recovery/focused-final.xml
-python .local_manifests/import-recovery/run_pg_checks.py pg-policy-final
-python scripts/check_documentation_state.py --check
+C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_production_import_recovery.py tests/test_pr152_bounded_fix.py tests/test_production_pixiv_a1.py tests/test_import_recovery_contract.py tests/test_s3a_m1_manual_sync_execute.py tests/test_manual_sync_lifecycle.py tests/test_dynamic_library_sync.py tests/test_scanner_icloud.py tests/test_production_pixiv_a1_contract.py tests/test_production_launcher_control.py tests/test_trusted_git.py -q --basetemp=C:\Users\kyloris\AppData\Local\Temp\violet-pr152-83d5eda-focused --junitxml=C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\.local_manifests\import-recovery\task30\candidate-83d5eda\focused.xml
 ```
 
-本次注册契约 `production_import_recovery_v1` 已通过（0 errors / 0 warnings），结果为 [production-import-recovery-summary.json](production-import-recovery-summary.json)。通过 `python -m scripts.check_production_import_recovery` 从私有证据生成结果，再用 `scripts/check_phase_contract.py --contract production_import_recovery_v1 --summary docs/reports/production-import-recovery-summary.json --repo-root <可信绝对工作区> --expected-python <指定venv Python> --import-recovery-evidence <私有证据目录>` 复核。新结果文件尚未加入 Git 跟踪时的一次保护拒绝单独保留，纳入本次文档交付后复验通过；未放松保护规则。
+```text
+C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_production_import_recovery.py tests/test_pr152_bounded_fix.py tests/test_production_pixiv_a1.py -q --basetemp=C:\Users\kyloris\AppData\Local\Temp\violet-pr152-83d5eda-postgresql --junitxml=C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\.local_manifests\import-recovery\task30\candidate-83d5eda\postgresql.xml
+```
 
-PostgreSQL 命令限定到已隔离的测试数据库和角色，运行修复及 A1 两个测试文件。三个首/中/尾失败注入用例均超过旧阈值并验证后续健康候选，真实 cap=1 多轮用例验证旧队尾可到达；版本恢复、临时来源重新可用、取消/时限和提交前/后恢复均有回归。未重跑完整 non-E2E，未付费补造缺失的历史 AI 证据。
+相对受审 eca27fa 的本轮变更文件：
 
-历史候选 b14417c 的 439 / 83 项测试和生产证明独立保留。初始测试目录身份配置错误、旧断言失败及测试服务初始化失败均保留原始日志，不称为通过。
-
-首次切换还发现真实控制器文件入口缺少仓库包路径，函数内预检未覆盖该入口。旧服务已恢复且当时未改启动锚点；修正入口、补独立子进程回归并冻结上述候选后，第二次正常启动和重启成功。本次无 schema 迁移。
-
-独立有界面 Edge 在测试数据库验证了四张真实测试图入库、一个不支持版本记账、恢复入口和普通图片浏览。
-最终候选的正式生产独立有界面 Edge 已验证原 5 样本缩略图、详情原图、全屏原图、19 次普通搜索与来源标签跳转，并复验本轮 2 个新增 Media 的详情和全屏；30 张截图、0 页面脚本错误。浏览器导航释放响应体的一次早期验证工具错误单独保留；成功验证包含真实页面结果和普通 API 交叉核对。
-
-正常便携启动器真实界面启动和重启成功，先后 PID 68552、8576；原 production 8012、原数据库与存储、认证、安全启动保持。5 个受保护 Media、51 个绑定和 1 个 active run 核实，Pixiv 产品读取开启、apply 关闭。验证后正常关闭调试启动器并以原 EXE 无参数重开，调试监听端口已关闭。PID 仅为当时证据，后续操作必须刷新身份。
-
-生产基线原诊断的 108 未尝试和 82 失败身份已读取；开工时只读账本另有 258 个可按存储哈希关联现有 Media 的来源，以及 10 个无已存哈希的关联缺口。
-258 包含原诊断的 199，不能相加计算。26 号全历史覆盖补查尚未找到回传文件，不能宣称来源全量无遗漏。
-
-## 真实恢复与覆盖限制
-
-现场计划遍历 43,339 个元数据成员，493 个候选为 411 IMPORT + 82 RETRY_SOURCE，另有 173 个当前不支持格式观察（161 HEIC、11 MOV、1 INI）和 4 个有身份的 stat 异常。当前不支持格式与云占位均不称为损坏，本轮未扩展格式支持。
-
-#28 完整处理 493 个候选：40 新增、263 关联已有 Media、190 实际读取失败（143 超时、47 原始读取异常）。原 108 未尝试和 82 失败项全部实际尝试，仍不可读，未冒称恢复。下游完成 42 分类、36 标签及本地化覆盖，6 非目标内容按策略跳过，无下游失败。
-
-#29 仅将四个有可靠已存哈希、唯一 Media 匹配和完整下游 donor 的来源关联到已有内容；来源路径仍缺失，不称来源已恢复。合计 267 个关联缺口已修复；另一个无可靠哈希且当前缺失的项目保留元数据原因与来源返回后的正常续接。
-
-40 个新增观察和历史缺口分开记账。40 新增及 267 关联项均检查应用原文件存在、实际大小与 Media 账本一致、下游状态完整。剩余来源保留私有逐项版本、真实尝试 run/item、异常类型与已有系统码、worker 状态、耗时/阈值以及重新进入条件。未知 errno/winerror 等为 null，不猜 iCloud 原因；生产没有替所有者选择主动忽略。
-
-在候选 1888b82 上，#30 重新计划观察 43,340 个元数据成员，多出的已知缺失来源已获得明确 stat 身份；179 到期重试中选取 5 项进行正常 cap 续接，11 个暂缓项目未被重新盲试。五项均发生新的读取超时，并依据同一版本真实失败历史进入暂缓；无新导入、无下游目标和下游失败。
-
-原 498 项最终逐项归宿如下，数值互斥且可复核：
-
-| 归宿 | 项数 |
-| --- | ---: |
-| 观察后新增，已实际入库且下游完整 | 40 |
-| 历史关联缺口，已关联既有 Media 且下游完整 | 267 |
-| 仍不可读，保留冷却和正常重试入口 | 174 |
-| 同版本反复失败，暂缓待诊断并可恢复 | 16 |
-| 来源缺失、无可靠哈希，尚未执行内容读取 | 1 |
-
-元数据附件另列当前 5 个 FileNotFoundError 项：其中 1 个与上述 498 项重合，另 4 个为此前已登记的历史来源，不是观察后新增。五项都没有可用来源路径或可靠已存哈希，保留路径恢复后的正常续接。旧诊断的 4 个 stat 错误没有保存身份，不能推定与本次额外四项一一对应。173 个当前格式策略排除观察也逐项保留；未把数据库行全集当作来源全覆盖证明。
-
-最终候选只读现场复验：默认恢复列表为 195 项（190 个实际读取问题及 5 个缺失来源），计划观察 189 条、每页最多 100 条；已完成的 263 个关联观察不再混入，隐藏/空文件策略排除与普通读取失败分别显示，历史策略记录可通过复选框查看。缺失来源在第二页可达，具体 stat 原因和 run 关联可展开。
-
-## 安全恢复与交付边界
-
-本次在诊断后有新数据写入的背景下建立必要新逻辑备份（60,486,322 bytes），保存 SHA256 和 archive listing；未把新备份称为完成了全库恢复演练。原 profile、启动锚点、控制器状态和旧 A1 工作目录保留。版本回退仅应在无活动任务时恢复既有启动锚点和代码入口，不覆盖恢复数据库、不清理本轮导入或账本。
-
-#28 执行期间未更换行为代码；所有同步及下游结束、核实扫描/分类/标签/本地化无活动任务后才切换最终候选。未进行 schema 迁移、原图修改、云保留状态变更、全库预下载、新模型下载、新 provider/Pixiv apply 或额外模型实验。源内容读取及必要分类、WD、既有本地化限于本轮授权范围。
-
-私有逐项附件和操作恢复记录保存在本机任务证据目录，包含精确绝对路径及新旧运行关联；公开 PR 不含原图、凭据和私有源路径。执行代理不合并、不推 main、不追加 reviewer。工程交付标为待负责人复审/合并；负责人合并后，按本任务原授权继续核对接受 main、实际行为、受控目录/profile 和正常启动锚点，不重新迁移或全量导入。
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\AGENTS.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\backend\app\services\dynamic_library_sync_service.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\backend\app\services\manual_sync_execute_service.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\backend\app\utils\bounded_source_copy.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\backend\app\utils\bounded_source_io.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\backend\app\utils\bounded_source_walk.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\backend\app\utils\local_library_scanner.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\current-handoff.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\development\agent-runbook.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\plans\production-import-recovery.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\reports\production-import-recovery-summary.json`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\state\current-phase.json`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\docs\reports\production-import-recovery.md`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\scripts\check_production_import_recovery.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\tests\source_io_worker_fixture.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\tests\test_import_recovery_contract.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\tests\test_pr152_bounded_fix.py`
+- `C:\Users\kyloris\Documents\VIOLET-worktrees\production-import-recovery\tests\test_production_import_recovery.py`

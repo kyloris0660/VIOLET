@@ -4,14 +4,14 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "2b3c075dd4c0ceb7d55371763a9577049ec68d3e",
+  "candidate_head": "83d5eda5a9de4622066617206a4b07e86e1bf2a8",
   "validation": {
     "focused": {
-      "passed": 441,
+      "passed": 475,
       "skipped": 3
     },
     "postgresql": {
-      "passed": 85,
+      "passed": 98,
       "skipped": 0
     }
   },
@@ -20,13 +20,22 @@
     "original_failed": 82,
     "verified_gaps": 268,
     "observed_new": 40,
+    "additional_history": 0,
+    "observed_later": 39,
+    "original_total": 498,
+    "total": 537,
     "outcomes": {
-      "retryable": 174,
-      "deferred_diagnosis": 16,
-      "existing_media": 267,
+      "retryable": 164,
+      "deferred_diagnosis": 26,
+      "existing_media": 287,
       "unexecuted": 1,
-      "imported": 40
-    }
+      "imported": 59
+    },
+    "downstream_complete": 346,
+    "identity_digest": "b7ad74b0b5c23df0acfb75e6920ebb735d3a6f7c957c39110d15d696f3ce7835",
+    "metadata_missing": 5,
+    "metadata_overlap": 1,
+    "policy_observations": 173
   },
   "browser": {
     "samples": 5,
