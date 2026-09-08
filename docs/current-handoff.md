@@ -5,14 +5,15 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`PRODUCTION_IMPORT_RECOVERY_R6_R9_EXACT_CANDIDATE_VALIDATION`。
+- 状态：`PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE`。
 - 分支：`codex/production-import-recovery`；PR：`152`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
-- 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
-- 修复生产候选：`83d5eda5a9de4622066617206a4b07e86e1bf2a8`。
+- 工程目标完成：`True`；负责人复审：`pending_project_lead_review`。
+- 修复生产候选：`a8aeda5fff378392f3a0d599370946dac001258b`。
 
 ## 当前检查点
 
+- 33号R6至R9完成：a8aeda5 focused 498 passed /3 skipped、PostgreSQL 120 passed，两套均含22条实际接入回归；跨更新处置/列表/待导入口径、阻塞优先路径及哈希消费者落库通过，原537来源/315Media与下游逐项保护，原EXE启动重启和CDP/A1复验通过，待负责人复审合并。
 - 33号R6待导入口径同步修正：暂缓/忽略/终止及冷却中的未导入来源保持不可导入；真实版本变化仍重入。108条接入及更新检查预验证通过，5b225bd已通过独立Edge但完整测试中止，未部署。新候选重新绑定最终验证。
 - 33号R6至R9实现及真实接入回归已补齐；141条相关回归、44条新增接入与契约预验证通过。独立Edge发现并修正更新后恢复列表隐藏处置的问题，49b4f7d验证已中止且未部署，原始失败保留。冻结新候选进入最终focused/PostgreSQL/CDP验证。
 - 33号续接已授权并完整阅读；可信fetch核实6b1695e与PR152远端一致、main仍ea4bdd7。独立候选目录从83d5eda安全快进到6b1695e，原production行为未修改。
@@ -66,7 +67,7 @@
 自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
 执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
 
-下一检查点：完成R6至R9真实接入集成验证和原production保护复验，提交同一PR152供负责人复审；不自行合并。
+下一检查点：负责人复审接受并实际合并PR152后，按33号原授权安全快进对齐main、profile与持久日常启动锚点；保持原库/原存储，不重导入、迁移或重做标签。
 
 ## 持久入口
 

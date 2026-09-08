@@ -229,8 +229,8 @@
   "previous_phase_final_head": "c08c84d77535d7b54494729526210c1bc11e694d",
   "previous_phase_final_tree": "f1ed086101b46b1d657e8939985fa2eda7246dfe",
   "previous_phase_status": "owner_accepted_and_merged",
-  "current_status": "PRODUCTION_IMPORT_RECOVERY_R6_R9_EXACT_CANDIDATE_VALIDATION",
-  "target_met": false,
+  "current_status": "PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE",
+  "target_met": true,
   "safe_to_merge": false,
   "route_approved": false,
   "planning_authorized": true,
@@ -253,6 +253,7 @@
     "original_file_mutation": false
   },
   "completed_checkpoints": [
+    "33号R6至R9完成：a8aeda5 focused 498 passed /3 skipped、PostgreSQL 120 passed，两套均含22条实际接入回归；跨更新处置/列表/待导入口径、阻塞优先路径及哈希消费者落库通过，原537来源/315Media与下游逐项保护，原EXE启动重启和CDP/A1复验通过，待负责人复审合并。",
     "33号R6待导入口径同步修正：暂缓/忽略/终止及冷却中的未导入来源保持不可导入；真实版本变化仍重入。108条接入及更新检查预验证通过，5b225bd已通过独立Edge但完整测试中止，未部署。新候选重新绑定最终验证。",
     "33号R6至R9实现及真实接入回归已补齐；141条相关回归、44条新增接入与契约预验证通过。独立Edge发现并修正更新后恢复列表隐藏处置的问题，49b4f7d验证已中止且未部署，原始失败保留。冻结新候选进入最终focused/PostgreSQL/CDP验证。",
     "33号续接已授权并完整阅读；可信fetch核实6b1695e与PR152远端一致、main仍ea4bdd7。独立候选目录从83d5eda安全快进到6b1695e，原production行为未修改。",
@@ -279,9 +280,9 @@
     "production_import_recovery_v1注册契约通过，0错误/0警告；最终498项恢复账本及额外4个历史stat缺失、173策略观察私有附件已核实，等待正常PR负责人复审合并。",
     "正常修复PR #152已创建，非Draft；工程候选已在原production运行，负责人接受/合并及合并后最终主线对齐仍待完成。"
   ],
-  "candidate_head": "83d5eda5a9de4622066617206a4b07e86e1bf2a8",
-  "production_candidate_head": "83d5eda5a9de4622066617206a4b07e86e1bf2a8",
-  "next_required_checkpoint": "完成R6至R9真实接入集成验证和原production保护复验，提交同一PR152供负责人复审；不自行合并。",
+  "candidate_head": "a8aeda5fff378392f3a0d599370946dac001258b",
+  "production_candidate_head": "a8aeda5fff378392f3a0d599370946dac001258b",
+  "next_required_checkpoint": "负责人复审接受并实际合并PR152后，按33号原授权安全快进对齐main、profile与持久日常启动锚点；保持原库/原存储，不重导入、迁移或重做标签。",
   "durable_links": [
     {
       "label": "实施与恢复方案",
@@ -308,6 +309,6 @@
       "path": "docs/roadmap/current-mainline-roadmap.md"
     }
   ],
-  "updated_at": "2026-09-08T14:49:30.395299+00:00",
+  "updated_at": "2026-09-08T15:12:15.730954+00:00",
   "result_path": "docs/reports/production-import-recovery-summary.json"
 }
