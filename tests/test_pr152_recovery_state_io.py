@@ -84,6 +84,9 @@ def test_recovery_api_update_plan_new_session_and_proven_change(db, tmp_path, mo
     item_id, root_id = item.id, root.id
     planner.run_update_check(db, root_ids=[root_id])
     db.expire_all()
+    assert planner.get_pending_summary(db)['pending_import'] == 0
+    latest_observation = db.query(DynamicSyncRunItem).filter_by(source_item_id=item_id, action='record_only').order_by(DynamicSyncRunItem.id.desc()).first()
+    assert latest_observation.eligible_for_db_import is False
     assert recovery(db.get(DynamicSourceItem, item_id)) == before['manual_sync_recovery']
     assert db.get(DynamicSourceItem, item_id).metadata_json['content_hash_version'] == before['content_hash_version']
     with Session(db.get_bind()) as fresh:
@@ -137,6 +140,7 @@ def test_unknown_version_defer_first_fill_then_real_change(db, tmp_path, monkeyp
     version = planner._metadata_for_path(path)
     assert recovery(item)['version_evidence']['source'] == 'first_metadata_after_unknown_disposition'
     assert disposition(item, version) == 'deferred_diagnosis'
+    assert planner.get_pending_summary(db)['pending_import'] == 0
     with Session(db.get_bind()) as fresh:
         current = fresh.get(DynamicSourceItem, item.id)
         plan = planner.plan_manual_sync_dry_run(fresh, source_path=str(source), source_record_id=root.id,

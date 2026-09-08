@@ -2804,7 +2804,7 @@ def _apply_item_state(
     now: datetime,
     previous_metadata: Optional[Dict[str, Any]],
 ) -> DynamicSyncRunItem:
-    from .manual_sync_recovery import known_version, file_version, observe_recovery_version
+    from .manual_sync_recovery import known_version, file_version, observe_recovery_version, disposition, recovery
     old_version = dict(file_size=item.file_size, mtime_ns=item.mtime_ns)
     bound = (item.metadata_json or {}).get("content_hash_version") or {}
     if known_version(bound) and bound.get("content_hash") == item.content_hash:
@@ -2842,14 +2842,19 @@ def _apply_item_state(
             item.classification_status = "waiting_import"
             item.ai_tagging_status = "waiting_import"
             item.localization_status = "waiting_ai_tags"
-        elif item.media_id and item.import_status == "pending":
-            item.import_status = "imported"
     else:
-        if not item.media_id:
-            item.import_status = "deferred"
-            item.classification_status = "deferred"
-            item.ai_tagging_status = "deferred"
-            item.localization_status = "deferred"
+        item.import_status = "deferred"
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "deferred"
+
+    blocked = disposition(item, metadata, now=now) in {'ignored', 'deferred_diagnosis', 'terminal', 'waiting_retry'}
+    if blocked and not item.media_id:
+        item.import_status = "deferred"
+        item.deferred_reason = recovery(item).get('reason') or 'not_processed_budget_stop'
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "deferred"
 
     run_item = DynamicSyncRunItem(
         sync_run_id=run.id,
@@ -2857,7 +2862,7 @@ def _apply_item_state(
         item_state=state,
         action="record_only",
         reason=reason,
-        eligible_for_db_import=eligible and item.import_status == "pending",
+        eligible_for_db_import=eligible and not blocked and item.import_status == "pending",
         bytes_copied=0,
         media_id=item.media_id,
         previous_metadata_json=previous_metadata,
