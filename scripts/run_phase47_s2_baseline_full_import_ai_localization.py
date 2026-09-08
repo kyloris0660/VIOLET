@@ -1600,7 +1600,7 @@ def mark_source_item_import_outcome(
     else:
         item.import_status = "failed" if state in {"copy_failed", "import_failed"} else "deferred"
         item.source_status = "failed"
-        item.failure_reason = failure_reason or state
+        item.failure_reason = str(failure_reason) if failure_reason else state
         item.deferred_reason = None
         item.classification_status = "deferred"
         item.ai_tagging_status = "deferred"
@@ -1608,6 +1608,8 @@ def mark_source_item_import_outcome(
     metadata = dict(item.metadata_json or {})
     metadata["phase47_s2_last_state"] = state
     metadata["phase47_s2_bytes_copied"] = bytes_copied
+    if getattr(failure_reason, "diagnostic", None):
+        metadata["phase47_s2_private_diagnostic"] = failure_reason.diagnostic
     item.metadata_json = metadata
 
 

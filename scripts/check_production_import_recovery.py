@@ -221,6 +221,28 @@ def check_public_result(result, root=None):
         require(candidate_behavior_carry_forward(root, result["candidate_head"]), "candidate_behavior_drift")
 
 
+def check_task33_integration_cases(cases):
+    """Daily entrypoint claims require the actual cross-entry regressions."""
+    required = {
+        "test_recovery_api_update_plan_new_session_and_proven_change": 9,
+        "test_unknown_version_defer_first_fill_then_real_change": 1,
+        "test_api_without_attempt_reads_current_metadata_not_stale_columns": 1,
+        "test_defer_after_newer_observation_does_not_bind_old_attempt": 1,
+        "test_completed_app_copy_failure_retains_downstream_and_retry": 1,
+        "test_app_media_followup_does_not_resolve_unneeded_source": 1,
+        "test_legacy_media_changed_version_reenters_without_update": 1,
+        "test_completed_media_survives_missing_observation_and_changed_source_reenters": 1,
+        "test_priority_resolve_worker_reaped_identity_retained_and_healthy_executes": 4,
+        "test_priority_containment_failure_keeps_registered_identity": 1,
+        "test_hash_real_consumers_persist_string_and_diagnostics_and_continue": 1,
+    }
+    passed = [case for case in cases if not any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped'))]
+    for name, count in required.items():
+        require(sum(case.get('name', '').split('[')[0] == name
+            and case.get('classname') == 'tests.test_pr152_recovery_state_io' for case in passed) == count,
+            'task33_integration_missing:' + name)
+
+
 def derive_result(private, root=ROOT):
     manifest = read(private, "repair-evidence-private.json")
     candidate = manifest["candidate_head"]
@@ -241,6 +263,7 @@ def derive_result(private, root=ROOT):
         require(len(cases) - skipped >= minimum, "validation_count")
         require(any("test_real_cap_one_runs_reach_old_retry_tail" in c.get("name", "") for c in cases), "rotation_test")
         require(sum("test_independent_failures_never_truncate" in c.get("name", "") for c in cases) == 3, "failure_positions")
+        check_task33_integration_cases(cases)
         validation[name] = dict(passed=len(cases)-skipped, skipped=skipped)
 
     runtime = read(private, "production-runtime-private.json")

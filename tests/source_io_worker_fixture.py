@@ -8,7 +8,7 @@ import time
 
 def filesystem_worker(conn):
     from app.utils.bounded_source_io import _worker_main
-    original_scandir, original_stat = os.scandir, Path.stat
+    original_scandir, original_stat, original_resolve = os.scandir, Path.stat, Path.resolve
 
     class BlockedIterator:
         def __next__(self):
@@ -33,5 +33,22 @@ def filesystem_worker(conn):
             time.sleep(60)
         return original_stat(path, *args, **kwargs)
 
-    os.scandir, Path.stat = scandir, stat
+    def resolve(path, *args, **kwargs):
+        if path.name == "blocked-resolve.png":
+            time.sleep(60)
+        return original_resolve(path, *args, **kwargs)
+
+    os.scandir, Path.stat, Path.resolve = scandir, stat, resolve
     _worker_main(conn)
+
+
+def hash_worker(path, conn):
+    from app.utils.local_library_scanner import _hash_file_in_subprocess
+    if Path(path).name == 'timeout.png':
+        time.sleep(60)
+    elif Path(path).name == 'error.png':
+        from app.utils.source_read_diagnostics import exception_detail
+        conn.send(('error', exception_detail(OSError(5, 'fixture read error'), stage='source_hash')))
+        conn.close()
+    else:
+        _hash_file_in_subprocess(path, conn)

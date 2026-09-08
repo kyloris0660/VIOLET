@@ -5,6 +5,18 @@ import pytest
 from scripts.check_production_import_recovery import reconstruct_recovery, check_public_result
 
 
+def test_task33_contract_rejects_old_or_skipped_integration_xml():
+    from xml.etree.ElementTree import Element, SubElement
+    from scripts.check_production_import_recovery import check_task33_integration_cases
+    with pytest.raises(ValueError, match='task33_integration_missing'):
+        check_task33_integration_cases([])
+    case = Element('testcase', classname='tests.test_pr152_recovery_state_io',
+        name='test_recovery_api_update_plan_new_session_and_proven_change[null-defer]')
+    SubElement(case, 'skipped')
+    with pytest.raises(ValueError, match='task33_integration_missing'):
+        check_task33_integration_cases([case]*9)
+
+
 @pytest.fixture()
 def evidence(tmp_path):
     before, sources, run_items, accounting, media = [], [], [], [], []

@@ -13,6 +13,57 @@ def file_version(metadata):
     return {key: metadata.get(key) for key in ("file_size", "mtime_ns")}
 
 
+def known_version(metadata):
+    return all(type(value) is int and value >= 0 for value in file_version(metadata or {}).values())
+
+
+def observe_recovery_version(item, metadata, *, now, run_id):
+    """First metadata for an unknown disposition establishes a baseline, not a resume."""
+    state = recovery(item)
+    if (state.get("disposition") in {"deferred_diagnosis", "terminal", "ignored"}
+            and not known_version(state.get("file_version")) and known_version(metadata)):
+        set_recovery(item, dict(file_version=file_version(metadata),
+            version_evidence=dict(source="first_metadata_after_unknown_disposition",
+                observed_at=now.isoformat(), run_id=run_id)))
+
+
+def disposition_version(db, item, *, now):
+    """Prefer attributable real attempts; ledger columns alone are not version proof."""
+    from ..models import DynamicSyncRunItem
+    rows = db.query(DynamicSyncRunItem).filter(
+        DynamicSyncRunItem.source_item_id == item.id,
+        DynamicSyncRunItem.action.in_(("import", "retry_source", "attempt")),
+        ~DynamicSyncRunItem.item_state.in_(("not_executed", "deferred_unprocessed")),
+    ).order_by(DynamicSyncRunItem.id.desc())
+    for row in rows:
+        if row.created_at is not None and known_version(row.current_metadata_json):
+            observation = (item.metadata_json or {}).get("source_observation") or {}
+            observed_at = as_utc(observation.get("observed_at"))
+            if (known_version(observation.get("file_version")) and observed_at
+                    and observed_at > as_utc(row.created_at)
+                    and file_version(observation["file_version"]) != file_version(row.current_metadata_json)):
+                return file_version(observation["file_version"]), dict(source="newer_metadata_observation",
+                    observed_at=observation["observed_at"], run_id=observation["run_id"],
+                    superseded_attempt_run_item_id=row.id)
+            return file_version(row.current_metadata_json), dict(source="actual_attempt",
+                observed_at=row.created_at.isoformat(), run_id=row.sync_run_id, run_item_id=row.id)
+    # No attributable attempt: one bounded metadata observation, never content I/O.
+    from pathlib import Path
+    from .dynamic_library_sync_service import _source_item_file_path, _metadata_for_path
+    from ..utils.bounded_source_io import source_io_scope
+    from ..utils.source_read_diagnostics import exception_detail
+    try:
+        with source_io_scope():
+            path = _source_item_file_path(Path(item.source_root.root_path), item)
+            metadata = _metadata_for_path(path)
+        if known_version(metadata):
+            return file_version(metadata), dict(source="bounded_current_metadata", observed_at=now.isoformat())
+    except (OSError, ValueError, RuntimeError) as exc:
+        return file_version({}), dict(source="unknown", observed_at=now.isoformat(),
+            private_diagnostic=getattr(exc, "diagnostic", None) or exception_detail(exc, stage="recovery_version"))
+    return file_version({}), dict(source="unknown", observed_at=now.isoformat())
+
+
 def recovery(item):
     return dict((getattr(item, "metadata_json", None) or {}).get("manual_sync_recovery") or {})
 
@@ -33,9 +84,11 @@ def disposition(item, metadata=None, *, now=None):
     status = state.get("disposition", "retryable")
     if status == "ignored":
         return status
-    if metadata is not None and state.get("file_version") != file_version(metadata):
+    if (known_version(metadata) and known_version(state.get("file_version"))
+            and state["file_version"] != file_version(metadata)):
         return "retryable"
-    if status == "terminal" and state.get("policy_version") != POLICY_VERSION:
+    if (status in {"terminal", "deferred_diagnosis"} and type(state.get("policy_version")) is int
+            and state["policy_version"] != POLICY_VERSION):
         return "retryable"
     due = as_utc(state.get("next_attempt_at"))
     if status == "retryable" and due and due > (now or datetime.now(timezone.utc)):
@@ -117,6 +170,7 @@ def record_failure(item, *, run_id, reason, metadata, now):
 
 
 def finish_attempt(item, *, now):
+    item.metadata_json = {**(item.metadata_json or {}), "current_source_version_pending": False}
     set_recovery(item, dict(disposition="complete", last_success_at=now.isoformat(),
         next_attempt_at=None, version_failure_run_ids=[], reason=None))
 

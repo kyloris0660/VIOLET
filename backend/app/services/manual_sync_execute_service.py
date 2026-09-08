@@ -1322,9 +1322,10 @@ def _mark_item_skipped(
 ) -> None:
     item.sync_state = state
     item.import_status = "deferred"
-    item.classification_status = "deferred"
-    item.ai_tagging_status = "deferred"
-    item.localization_status = "deferred"
+    if not item.media_id:
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "deferred"
     item.failure_reason = reason if state == "failed" else None
     item.deferred_reason = reason if state != "failed" else None
     if reason:
@@ -1353,9 +1354,10 @@ def _mark_item_failed(
     item.sync_state = "failed"
     item.source_status = "missing" if reason == "source_missing" else "failed"
     item.import_status = "failed"
-    item.classification_status = "deferred"
-    item.ai_tagging_status = "deferred"
-    item.localization_status = "blocked_import_failed"
+    if not item.media_id:
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "blocked_import_failed"
     item.failure_reason = reason
     item.deferred_reason = None
     _record_retryable_source_failure_attempt(item, reason)

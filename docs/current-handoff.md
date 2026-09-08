@@ -5,14 +5,15 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE`。
+- 状态：`PRODUCTION_IMPORT_RECOVERY_R6_R9_IMPLEMENTATION_IN_PROGRESS`。
 - 分支：`codex/production-import-recovery`；PR：`152`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
-- 工程目标完成：`True`；负责人复审：`pending_project_lead_review`。
+- 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
 - 修复生产候选：`83d5eda5a9de4622066617206a4b07e86e1bf2a8`。
 
 ## 当前检查点
 
+- 33号续接已授权并完整阅读；可信fetch核实6b1695e与PR152远端一致、main仍ea4bdd7。独立候选目录从83d5eda安全快进到6b1695e，原production行为未修改。
 - 30号续接完成：R1至R5修正、一次独立元数据及全部保存历史对账；83d5eda focused 475 passed / 3 skipped、PostgreSQL 98 passed；实际#31新增19、关联20、旧到期重试失败10并暂缓，原498完整保留，合计537身份/346成功来源下游完整；原production正常EXE启动重启与无参数启动、CDP原5样本/51绑定/19搜索/2新Media及恢复列表复核通过；加强后的原注册契约通过，待负责人复审合并。
 - 30号续接已授权；可信fetch核实PR152仍OPEN，受审HEAD eca27fa与远端一致、main仍ea4bdd7。独立工作目录修正，不修改当前运行的生产行为；旧target_met为历史弱契约结果，本轮重新验证。
 - 已通读28号任务并记录三个连续实施步骤；A1历史证据保持不变。
@@ -63,7 +64,7 @@
 自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
 执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
 
-下一检查点：负责人复审并合并同一PR152；收到负责人接受及实际merge结果后，按30号原授权对齐main、受控目录/profile和持久启动锚点，保持原库/存储，不重新导入或迁移。
+下一检查点：完成R6至R9真实接入集成验证和原production保护复验，提交同一PR152供负责人复审；不自行合并。
 
 ## 持久入口
 

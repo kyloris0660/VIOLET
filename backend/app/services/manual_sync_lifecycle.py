@@ -480,6 +480,7 @@ def classify_source_item(
     current_priority: bool = False,
     attempted_in_run: bool = False,
     run_item: Any | None = None,
+    current_source_metadata: Mapping[str, Any] | None = None,
 ) -> LifecycleDecision:
     """Classify a DynamicSourceItem-like object into canonical lifecycle state."""
 
@@ -555,6 +556,22 @@ def classify_source_item(
             attempted_in_run=attempted,
             current_downstream_complete=current_complete,
             attempted_but_current_incomplete=attempted_but_current_incomplete,
+        )
+    from .manual_sync_recovery import known_version, file_version
+    metadata = _value(item, "metadata_json") or {}
+    bound = metadata.get("content_hash_version") or {}
+    recorded = {key: _value(item, key) for key in ("file_size", "mtime_ns")}
+    observed = current_source_metadata or recorded
+    version_pending = bool(metadata.get("current_source_version_pending") or (
+        known_version(bound) and known_version(observed) and file_version(bound) != file_version(observed)) or (
+        known_version(recorded) and known_version(observed) and file_version(recorded) != file_version(observed)))
+    if has_media and version_pending:
+        return _decision(
+            LifecycleKind.RETRYABLE_SOURCE_FAILURE,
+            reason_code=reason if source_retry_needed else "content_changed_after_plan",
+            evidence={**evidence, "current_source_version_pending": True},
+            attempted_in_run=attempted,
+            current_downstream_complete=current_complete,
         )
     if current_complete_media_backed and app_media_exists is True:
         return _decision(

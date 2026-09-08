@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from ...auth import require_admin_mode
 from ...database import get_db
 from ...models import DynamicSourceItem, DynamicSourceRoot, DynamicSyncRun, DynamicSyncRunItem, User
-from ...services.manual_sync_recovery import recovery, disposition, set_recovery, file_version, POLICY_VERSION
+from ...services.manual_sync_recovery import recovery, disposition, set_recovery, disposition_version, POLICY_VERSION
 from ...services.manual_sync_lifecycle import (CLASSIFICATION_COMPLETE_STATUSES, AI_TAGGING_COMPLETE_STATUSES,
     LOCALIZATION_COMPLETE_STATUSES, source_item_downstream_complete)
 
@@ -114,14 +114,17 @@ def update_recovery(source_item_id: int, body: RecoveryAction, db: Session = Dep
             DynamicSyncRun.status.in_(("pending", "running", "cancelling"))).first():
         raise HTTPException(409, detail={"code": "manual_sync_execute_already_active"})
     state = recovery(item)
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(timezone.utc)
+    version, evidence = disposition_version(db, item, now=now)
     events = list(state.get("operator_events") or [])
-    events.append(dict(action=body.action, at=now, user_id=user.id))
+    events.append(dict(action=body.action, at=now.isoformat(), user_id=user.id,
+        file_version=version, version_evidence=evidence))
     set_recovery(item, dict(disposition={"resume": "retryable", "defer": "deferred_diagnosis", "ignore": "ignored"}[body.action],
-        file_version=file_version(dict(file_size=item.file_size, mtime_ns=item.mtime_ns)),
+        file_version=version, version_evidence=evidence,
         policy_version=POLICY_VERSION, next_attempt_at=None,
         version_failure_run_ids=[] if body.action == "resume" else state.get("version_failure_run_ids", []),
-        operator_events=events, reentry_condition="operator_resume_or_file_version_changed"))
+        operator_events=events, reentry_condition="operator_resume" if body.action == "ignore"
+            else "operator_resume_or_proven_file_version_changed"))
     if body.action == "resume" and item.media_id is None:
         item.sync_state = "deferred_unprocessed"
         item.import_status = "deferred"

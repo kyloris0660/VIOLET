@@ -229,8 +229,8 @@
   "previous_phase_final_head": "c08c84d77535d7b54494729526210c1bc11e694d",
   "previous_phase_final_tree": "f1ed086101b46b1d657e8939985fa2eda7246dfe",
   "previous_phase_status": "owner_accepted_and_merged",
-  "current_status": "PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE",
-  "target_met": true,
+  "current_status": "PRODUCTION_IMPORT_RECOVERY_R6_R9_IMPLEMENTATION_IN_PROGRESS",
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "planning_authorized": true,
@@ -238,7 +238,7 @@
   "planning_approved": true,
   "next_phase_started": false,
   "manual_acceptance_status": "pending_project_lead_review",
-  "route_scope": "30号续接：同一PR152完成R1至R5、全历史覆盖和完整下游契约、受控生产复验；保留已完成恢复，负责人复审合并。",
+  "route_scope": "33号续接：同一PR152修正恢复处置跨更新持久性、真实版本绑定、历史优先路径有界解析、哈希消费者诊断落库；保留旧恢复与下游，隔离验证后受控生产复验。",
   "authorities": {
     "production": true,
     "additive_migration": true,
@@ -253,6 +253,7 @@
     "original_file_mutation": false
   },
   "completed_checkpoints": [
+    "33号续接已授权并完整阅读；可信fetch核实6b1695e与PR152远端一致、main仍ea4bdd7。独立候选目录从83d5eda安全快进到6b1695e，原production行为未修改。",
     "30号续接完成：R1至R5修正、一次独立元数据及全部保存历史对账；83d5eda focused 475 passed / 3 skipped、PostgreSQL 98 passed；实际#31新增19、关联20、旧到期重试失败10并暂缓，原498完整保留，合计537身份/346成功来源下游完整；原production正常EXE启动重启与无参数启动、CDP原5样本/51绑定/19搜索/2新Media及恢复列表复核通过；加强后的原注册契约通过，待负责人复审合并。",
     "30号续接已授权；可信fetch核实PR152仍OPEN，受审HEAD eca27fa与远端一致、main仍ea4bdd7。独立工作目录修正，不修改当前运行的生产行为；旧target_met为历史弱契约结果，本轮重新验证。",
     "已通读28号任务并记录三个连续实施步骤；A1历史证据保持不变。",
@@ -278,7 +279,7 @@
   ],
   "candidate_head": "83d5eda5a9de4622066617206a4b07e86e1bf2a8",
   "production_candidate_head": "83d5eda5a9de4622066617206a4b07e86e1bf2a8",
-  "next_required_checkpoint": "负责人复审并合并同一PR152；收到负责人接受及实际merge结果后，按30号原授权对齐main、受控目录/profile和持久启动锚点，保持原库/存储，不重新导入或迁移。",
+  "next_required_checkpoint": "完成R6至R9真实接入集成验证和原production保护复验，提交同一PR152供负责人复审；不自行合并。",
   "durable_links": [
     {
       "label": "实施与恢复方案",
@@ -305,6 +306,6 @@
       "path": "docs/roadmap/current-mainline-roadmap.md"
     }
   ],
-  "updated_at": "2026-09-07T13:16:54.339412+00:00",
+  "updated_at": "2026-09-08T14:31:11.646816+00:00",
   "result_path": "docs/reports/production-import-recovery-summary.json"
 }

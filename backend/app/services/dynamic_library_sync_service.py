@@ -460,7 +460,7 @@ def _calculate_manual_plan_file_hash(path: Path, timeout_sec: int) -> tuple[Opti
     status, payload = _calculate_file_hash_with_timeout(path, max(1, int(timeout_sec)))
     if status == "ok":
         return str(payload), None
-    detail = dict(payload) if isinstance(payload, dict) else {"message": str(payload)[:1024], "exception_type": None, "errno": None, "winerror": None}
+    detail = getattr(payload, "diagnostic", None) or (dict(payload) if isinstance(payload, dict) else {"message": str(payload)[:1024], "exception_type": None, "errno": None, "winerror": None})
     return None, SourceReadReason("read_timeout" if status == "timeout" else "read_error", detail)
 
 
@@ -1043,8 +1043,10 @@ def _plan_manual_sync_incremental_dry_run(
     priority_source_files = (
         _manual_plan_priority_source_files(
             resolved,
-            known_items_by_rel_hash,
+            {key: item for key, item in known_items_by_rel_hash.items()
+                if item.id not in app_media_followup_source_item_ids},
             mtime_cutoff_ns=mtime_cutoff_ns,
+            errors=walk_errors,
         )
         if source_record_id is not None
         else []
@@ -1055,10 +1057,13 @@ def _plan_manual_sync_incremental_dry_run(
     filesystem_walk_after_priority_workset = False
     priority_workset_mode = (
         "source_ledger_followup_then_incremental_mtime_filesystem_metadata_walk"
-        if priority_source_files
+        if priority_source_files or app_media_followup_items
         else "incremental_mtime_filesystem_metadata_walk"
     )
-    processed_path_identities: set[str] = set()
+    processed_path_identities: set[str] = {
+        _normalized_path_identity(resolved / error["relative_path"])
+        for error in walk_errors if isinstance(error, dict) and error.get("stage") == "priority_path_resolve"
+    }
 
     def _candidate_files() -> Iterable[tuple[Path, str]]:
         nonlocal filesystem_walk_after_priority_workset, filesystem_walk_completed
@@ -1066,7 +1071,7 @@ def _plan_manual_sync_incremental_dry_run(
             path_identity = _normalized_path_identity(priority_path)
             processed_path_identities.add(path_identity)
             yield priority_path, "source_ledger_followup"
-        if priority_source_files:
+        if priority_source_files or app_media_followup_items:
             filesystem_walk_after_priority_workset = True
         _progress("filesystem_metadata_walk")
         for walked_path in _iter_source_files(resolved, walk_errors=walk_errors, dispositions=directory_dispositions):
@@ -1157,8 +1162,9 @@ def _plan_manual_sync_incremental_dry_run(
                 media_lookup_performed=True,
                 app_media_exists=app_exists,
                 current_priority=True,
+                current_source_metadata=metadata,
             )
-            if media_decision.kind in {LifecycleKind.BROKEN_STATE, LifecycleKind.STABLE_NOOP}:
+            if media_decision.kind in {LifecycleKind.BROKEN_STATE, LifecycleKind.STABLE_NOOP, LifecycleKind.RETRYABLE_SOURCE_FAILURE}:
                 forced_lifecycle_decision = media_decision
                 reason = media_decision.reason_code
         if (
@@ -1227,8 +1233,8 @@ def _plan_manual_sync_incremental_dry_run(
             continue
 
         if forced_lifecycle_decision is not None:
-            state = "broken_state"
-            candidate_priority = 100
+            state = "broken_state" if forced_lifecycle_decision.kind == LifecycleKind.BROKEN_STATE else "import_planned"
+            candidate_priority = 100 if state == "broken_state" else 35
         elif reason == "downstream_followup" and media_id:
             state = "downstream_followup_planned"
             candidate_priority = 0
@@ -1960,7 +1966,7 @@ def plan_manual_sync_dry_run(
         }
     _progress("scanning")
     priority_source_files = (
-        _manual_plan_priority_source_files(resolved, known_items_by_rel_hash)
+        _manual_plan_priority_source_files(resolved, known_items_by_rel_hash, errors=walk_errors)
         if source_record_id is not None
         else []
     )
@@ -1968,7 +1974,10 @@ def plan_manual_sync_dry_run(
     if priority_source_files:
         priority_workset_mode = "source_delta_priority_workset_then_filesystem_walk"
 
-    processed_path_identities: set[str] = set()
+    processed_path_identities: set[str] = {
+        _normalized_path_identity(resolved / error["relative_path"])
+        for error in walk_errors if isinstance(error, dict) and error.get("stage") == "priority_path_resolve"
+    }
 
     def _source_file_batches() -> Iterable[tuple[Path, str]]:
         nonlocal filesystem_walk_after_priority_workset, filesystem_walk_completed
@@ -2492,7 +2501,7 @@ def plan_manual_sync_dry_run(
             "production_execute_requires_separate_operator_approval": True,
             "stages": stages,
             "estimated_runtime_seconds": estimated_runtime_seconds,
-            "partial_failure_policy": "item_failures_recorded_and_continues_until_failure_budget_or_hard_gate",
+            "partial_failure_policy": "item_failures_record_and_continue_until_shared_dependency_or_hard_gate",
         },
         "ai_execution_profile": profile,
         "integrity": {
@@ -2517,6 +2526,7 @@ def plan_manual_sync_dry_run(
         plan["private_details"] = {
             "not_for_public_reports": True,
             "items": private_items,
+            "directory_errors": walk_errors,
         }
     return plan
 
@@ -2526,18 +2536,18 @@ def _iter_source_files(root_path: Path, *, walk_errors=None, dispositions=None) 
     yield from source_files(root_path, errors=walk_errors, dispositions=dispositions)
 
 
-def _source_item_file_path(root_path: Path, item: DynamicSourceItem) -> Optional[Path]:
+def _source_item_file_path(root_path: Path, item: DynamicSourceItem) -> Path:
     rel = str(item.relative_path or "")
     if not rel:
-        return None
-    try:
-        root_resolved = root_path.resolve()
-        candidate = (root_resolved / rel).resolve()
-        if not candidate.is_relative_to(root_resolved):
-            return None
-        return candidate
-    except (OSError, RuntimeError, ValueError):
-        return None
+        raise ValueError("empty_source_relative_path")
+    root_resolved = source_resolve(root_path)
+    lexical = Path(os.path.abspath(root_resolved / rel))
+    if not lexical.is_relative_to(root_resolved):
+        raise ValueError("source_path_escape")
+    candidate = source_resolve(lexical)
+    if not candidate.is_relative_to(root_resolved):
+        raise ValueError("source_path_escape")
+    return candidate
 
 
 def _manual_plan_priority_for_known_item(
@@ -2581,11 +2591,13 @@ def _manual_plan_priority_for_known_item(
     return None
 
 
+@with_source_io
 def _manual_plan_priority_source_files(
     root_path: Path,
     known_items_by_rel_hash: Dict[str, DynamicSourceItem],
     *,
     mtime_cutoff_ns: Optional[int] = None,
+    errors: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Path]:
     prioritized: List[tuple[int, str, Path]] = []
     for item in known_items_by_rel_hash.values():
@@ -2595,8 +2607,18 @@ def _manual_plan_priority_source_files(
         )
         if priority is None:
             continue
-        file_path = _source_item_file_path(root_path, item)
-        if file_path is None:
+        try:
+            file_path = _source_item_file_path(root_path, item)
+        except (OSError, RuntimeError, ValueError) as exc:
+            if errors is None:
+                raise
+            from ..utils.source_read_diagnostics import exception_detail
+            detail = getattr(exc, "diagnostic", None) or exception_detail(exc, stage="resolve")
+            errors.append({**detail, "stage": "priority_path_resolve", "operation": detail.get("stage"),
+                "source_item_id": item.id, "source_root_id": item.source_root_id,
+                "relative_path": item.relative_path, "directory": str(root_path),
+                "coverage": "unknown", "reason": "source_path_escape" if isinstance(exc, ValueError) else "source_metadata_unavailable",
+                "continuation": "new_plan_retry_registered_source_after_path_available_or_corrected"})
             continue
         prioritized.append((priority, str(item.relative_path_hash or ""), file_path))
     return [path for _priority, _rel_hash, path in sorted(prioritized, key=lambda row: (row[0], row[1]))]
@@ -2782,9 +2804,14 @@ def _apply_item_state(
     now: datetime,
     previous_metadata: Optional[Dict[str, Any]],
 ) -> DynamicSyncRunItem:
-    item.file_size = metadata.get("file_size")
-    item.mtime = metadata.get("mtime")
-    item.mtime_ns = metadata.get("mtime_ns")
+    from .manual_sync_recovery import known_version, file_version, observe_recovery_version
+    old_version = dict(file_size=item.file_size, mtime_ns=item.mtime_ns)
+    bound = (item.metadata_json or {}).get("content_hash_version") or {}
+    if known_version(bound) and bound.get("content_hash") == item.content_hash:
+        old_version = file_version(bound)
+    for key in ("file_size", "mtime", "mtime_ns"):
+        if metadata.get(key) is not None:
+            setattr(item, key, metadata[key])
     item.source_status = "available" if eligible else ("failed" if state == "failed" else "deferred")
     item.sync_state = state
     item.failure_reason = reason if state == "failed" else None
@@ -2794,10 +2821,22 @@ def _apply_item_state(
     item.last_seen_at = now
     item.last_seen_run_id = run.id
     item.metadata_json = {
+        **(item.metadata_json or {}),
         "suffix": metadata.get("suffix"),
         "content_hash_computed": bool(item.content_hash),
+        "source_observation": {"file_version": file_version(metadata), "observed_at": now.isoformat(),
+            "run_id": run.id, "available": eligible},
     }
-    if eligible:
+    if (item.media_id and known_version(old_version) and known_version(metadata)
+            and old_version != file_version(metadata)):
+        item.metadata_json = {**item.metadata_json, "current_source_version_pending": True}
+    observe_recovery_version(item, metadata, now=now, run_id=run.id)
+    if item.media_id:
+        # These statuses describe the existing app copy. A metadata observation
+        # cannot erase its completed work or verify the newly observed content.
+        if item.metadata_json.get("current_source_version_pending"):
+            item.import_status = "pending"
+    elif eligible:
         if state in {"new", "changed"}:
             item.import_status = "pending"
             item.classification_status = "waiting_import"
@@ -2806,10 +2845,11 @@ def _apply_item_state(
         elif item.media_id and item.import_status == "pending":
             item.import_status = "imported"
     else:
-        item.import_status = "deferred"
-        item.classification_status = "deferred"
-        item.ai_tagging_status = "deferred"
-        item.localization_status = "deferred"
+        if not item.media_id:
+            item.import_status = "deferred"
+            item.classification_status = "deferred"
+            item.ai_tagging_status = "deferred"
+            item.localization_status = "deferred"
 
     run_item = DynamicSyncRunItem(
         sync_run_id=run.id,
@@ -2871,8 +2911,9 @@ def _record_file_observation(
         reason = preflight_reason or _is_scannable_file(file_path, hydrated_only=hydrated_only)
         metadata = _metadata_for_path(file_path, follow_symlinks=not bool(preflight_reason))
     except OSError as exc:
-        metadata = {}
-        reason = f"stat_error: {exc}"
+        from ..utils.source_read_diagnostics import exception_detail
+        metadata = {"private_diagnostic": getattr(exc, "diagnostic", None) or exception_detail(exc, stage="update_stat")}
+        reason = "stat_error"
 
     eligible = reason is None
     requeue_from_deferred = (
@@ -2932,10 +2973,11 @@ def _mark_missing_items(db: Session, *, root: DynamicSourceRoot, run: DynamicSyn
         }
         item.source_status = "missing"
         item.sync_state = "missing"
-        item.import_status = "deferred"
-        item.classification_status = "deferred"
-        item.ai_tagging_status = "deferred"
-        item.localization_status = "deferred"
+        if not item.media_id:
+            item.import_status = "deferred"
+            item.classification_status = "deferred"
+            item.ai_tagging_status = "deferred"
+            item.localization_status = "deferred"
         item.failure_reason = "source_missing"
         item.last_checked_at = now
         item.last_sync_run_id = run.id

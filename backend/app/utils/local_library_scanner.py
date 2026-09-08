@@ -102,14 +102,22 @@ def _hash_file_in_subprocess(file_path: str, conn):
 
 
 def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tuple:
+    """Return a hash or stable string reason carrying private worker diagnostics."""
+    from .source_read_diagnostics import SourceReadReason
+    status, value = _calculate_file_hash_result(file_path, timeout_sec)
+    if status == "ok":
+        return status, value
+    return status, SourceReadReason("read_timeout" if status == "timeout" else "read_error", value)
+
+
+def _calculate_file_hash_result(file_path: Path, timeout_sec: int) -> tuple:
     """Calculate file hash with hard timeout via subprocess.
 
     Uses multiprocessing.Pipe for reliable result delivery — unlike Queue,
     Pipe.recv() is synchronous once the child has exited and closed its end,
     so there is no feeder-thread race condition.
 
-    Returns ("ok", hash_str) on success, ("timeout", msg) on timeout,
-    or ("error", msg) on read error.
+    The private result is a hash on success or structured diagnostics on failure.
     """
     import time
     from .source_read_diagnostics import worker_detail
@@ -390,7 +398,7 @@ def scan_and_import(
                     continue
                 elif hash_status == "error":
                     stats["skipped_unreadable"] += 1
-                    _record_failure(stats, str(file_path), f"read error: {hash_value}")
+                    _record_failure(stats, str(file_path), hash_value)
                     _maybe_flush_progress()
                     continue
                 file_hash = hash_value
@@ -494,7 +502,10 @@ def scan_and_import(
 
 def _record_failure(stats: Dict[str, Any], path: str, reason: str):
     if len(stats["failed_files"]) < MAX_FAILED_REPORT:
-        stats["failed_files"].append({"path": path, "reason": reason})
+        row = {"path": path, "reason": str(reason)}
+        if getattr(reason, "diagnostic", None):
+            row["private_diagnostic"] = reason.diagnostic
+        stats["failed_files"].append(row)
 
 
 def preflight_analyze(
