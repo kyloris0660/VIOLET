@@ -48,8 +48,14 @@ def recovery_items(response: Response, root_id: int, after_id: int = 0,
     root = db.get(DynamicSourceRoot, root_id)
     if root is None or not root.is_active:
         raise HTTPException(404, detail={"code": "source_root_not_found"})
+    recovery_status = DynamicSourceItem.metadata_json['manual_sync_recovery']['disposition'].as_string()
+    explicit_disposition = recovery_status.in_(('ignored', 'deferred_diagnosis', 'terminal'))
+    recovery_failure = and_(recovery_status == 'retryable',
+        DynamicSourceItem.metadata_json['manual_sync_recovery']['reason'].as_string().isnot(None))
     query = db.query(DynamicSourceItem).filter(DynamicSourceItem.source_root_id == root_id,
-        or_(DynamicSourceItem.sync_state.in_(("failed", "deferred", "deferred_unprocessed", "import_in_progress", "skipped_unsupported", "skipped_placeholder")),
+        or_(explicit_disposition, recovery_failure,
+            DynamicSourceItem.metadata_json['current_source_version_pending'].as_boolean() == True,
+            DynamicSourceItem.sync_state.in_(("failed", "deferred", "deferred_unprocessed", "import_in_progress", "skipped_unsupported", "skipped_placeholder")),
             DynamicSourceItem.failure_reason.isnot(None),
             and_(DynamicSourceItem.media_id.is_(None),
                 DynamicSourceItem.sync_state.in_(('skipped_existing_media', 'skipped_duplicate', 'unchanged'))),
@@ -58,8 +64,9 @@ def recovery_items(response: Response, root_id: int, after_id: int = 0,
                     func.coalesce(DynamicSourceItem.ai_tagging_status,'').notin_(AI_TAGGING_COMPLETE_STATUSES),
                     func.coalesce(DynamicSourceItem.localization_status,'').notin_(LOCALIZATION_COMPLETE_STATUSES)))))
     if not include_policy_excluded:
-        query = query.filter(func.coalesce(DynamicSourceItem.deferred_reason, '').notin_(_POLICY_EXCLUDED_REASONS),
-            func.coalesce(DynamicSourceItem.failure_reason, '').notin_(_POLICY_EXCLUDED_REASONS))
+        query = query.filter(or_(explicit_disposition,
+            and_(func.coalesce(DynamicSourceItem.deferred_reason, '').notin_(_POLICY_EXCLUDED_REASONS),
+                func.coalesce(DynamicSourceItem.failure_reason, '').notin_(_POLICY_EXCLUDED_REASONS))))
     total = query.count()
     items = query.filter(DynamicSourceItem.id > after_id).order_by(DynamicSourceItem.id).limit(limit + 1).all()
     latest = db.query(DynamicSyncRun).filter(DynamicSyncRun.run_type == 'manual_sync_execute',
@@ -75,9 +82,11 @@ def recovery_items(response: Response, root_id: int, after_id: int = 0,
         attempt = db.query(DynamicSyncRunItem).filter(DynamicSyncRunItem.source_item_id == item.id,
             DynamicSyncRunItem.action.in_(("import", "retry_source", "attempt"))).order_by(DynamicSyncRunItem.id.desc()).first()
         detail = dict(attempt.current_metadata_json or {}) if attempt else {}
-        current_disposition = disposition(item)
-        current_reason = item.failure_reason or item.deferred_reason
-        if current_disposition != 'ignored' and current_reason in _POLICY_EXCLUDED_REASONS:
+        current_disposition = disposition(item, ((item.metadata_json or {}).get('source_observation') or {}).get('file_version'))
+        current_reason = item.failure_reason or item.deferred_reason or state.get('reason')
+        if (item.metadata_json or {}).get('current_source_version_pending') and current_disposition == 'complete':
+            current_disposition, current_reason = 'retryable', 'content_changed_after_plan'
+        if current_disposition not in {'ignored', 'deferred_diagnosis', 'terminal'} and current_reason in _POLICY_EXCLUDED_REASONS:
             current_disposition = 'policy_excluded'
         if (item.media_id is None and current_disposition in {'retryable', 'waiting_retry', 'complete'}
                 and (metadata_errors.get(item.id) or {}).get('exception_type') == 'FileNotFoundError'):

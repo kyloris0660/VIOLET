@@ -5,7 +5,7 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`PRODUCTION_IMPORT_RECOVERY_R6_R9_IMPLEMENTATION_IN_PROGRESS`。
+- 状态：`PRODUCTION_IMPORT_RECOVERY_R6_R9_EXACT_CANDIDATE_VALIDATION`。
 - 分支：`codex/production-import-recovery`；PR：`152`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
 - 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
@@ -13,6 +13,7 @@
 
 ## 当前检查点
 
+- 33号R6至R9实现及真实接入回归已补齐；141条相关回归、44条新增接入与契约预验证通过。独立Edge发现并修正更新后恢复列表隐藏处置的问题，49b4f7d验证已中止且未部署，原始失败保留。冻结新候选进入最终focused/PostgreSQL/CDP验证。
 - 33号续接已授权并完整阅读；可信fetch核实6b1695e与PR152远端一致、main仍ea4bdd7。独立候选目录从83d5eda安全快进到6b1695e，原production行为未修改。
 - 30号续接完成：R1至R5修正、一次独立元数据及全部保存历史对账；83d5eda focused 475 passed / 3 skipped、PostgreSQL 98 passed；实际#31新增19、关联20、旧到期重试失败10并暂缓，原498完整保留，合计537身份/346成功来源下游完整；原production正常EXE启动重启与无参数启动、CDP原5样本/51绑定/19搜索/2新Media及恢复列表复核通过；加强后的原注册契约通过，待负责人复审合并。
 - 30号续接已授权；可信fetch核实PR152仍OPEN，受审HEAD eca27fa与远端一致、main仍ea4bdd7。独立工作目录修正，不修改当前运行的生产行为；旧target_met为历史弱契约结果，本轮重新验证。

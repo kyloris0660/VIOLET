@@ -90,6 +90,11 @@ def test_recovery_api_update_plan_new_session_and_proven_change(db, tmp_path, mo
         reloaded = fresh.get(DynamicSourceItem, item_id)
         assert len(recovery(reloaded)['version_failure_run_ids']) == 3
         assert disposition(reloaded, metadata) == expected
+        with client_for(fresh) as client:
+            response = client.get('/api/admin/dynamic-library-sync/recovery-items',
+                params={'root_id':root_id, 'include_policy_excluded':False})
+        row = next(row for row in response.json()['items'] if row['source_item_id'] == item_id)
+        assert row['disposition'] == expected and row['reason'] == 'read_timeout'
         plan = planner.plan_manual_sync_dry_run(fresh, source_path=str(source), source_record_id=root_id,
             max_files=5, stable_age_seconds=0, include_private_details=True)
         assert not plan['private_details']['items']
@@ -101,6 +106,10 @@ def test_recovery_api_update_plan_new_session_and_proven_change(db, tmp_path, mo
         planner.run_update_check(fresh, root_ids=[root_id])
         changed = planner._metadata_for_path(path)
         assert disposition(reloaded, changed) == ('ignored' if operator == 'ignore' else 'retryable')
+        with client_for(fresh) as client:
+            response = client.get('/api/admin/dynamic-library-sync/recovery-items', params={'root_id':root_id})
+        assert next(row for row in response.json()['items'] if row['source_item_id'] == item_id)['disposition'] == (
+            'ignored' if operator == 'ignore' else 'retryable')
         assert execute_service._stored_hash_for_version(reloaded, changed) is None
         with client_for(fresh) as client:
             action(client, item_id, 'resume')
