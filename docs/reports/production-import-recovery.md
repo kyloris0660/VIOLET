@@ -1,99 +1,84 @@
 # 生产导入可靠性修复与恢复：PR #152
 
-## 33号交付结论
+## 36号交付结论
 
-暂缓、忽略和终止处置在普通更新检查、重新计划及新 Session 后保持，恢复列表与待导入数量一致。更新观察合并来源 JSON，保留真实失败、用户操作及旧哈希版本证据；未知版本首次补齐只建立基线，已证实版本变化和显式 resume 才按规则重入。
+已有应用 Media 的分类、WD 标签和本地化完成事实，在新源版本复制前提交、复制/解码/非重复 HTTP 异常及中断后均保持。失败仍真实记录在来源/run-item/恢复历史，新版本没有被旧 Media 的可用状态冒充完成。成功导入或关联后才切换 Media 并清除版本待处理；新 Media 完成必要下游，已有目标复用其完整或部分完成结果，仅补实际缺口。
 
-已登记历史优先路径现在通过既有可终止 SourceIOWorker 解析并验证归属。异常保留来源身份、目录及恢复条件，健康后继仍能计划和执行；已有应用副本的下游补做不依赖离线来源路径。哈希失败恢复稳定字符串原因，系统码、阶段和耗时保存在私有 JSON，旧直接消费者已通过真实模型落库验证。
+本轮限定实现、隔离集成、原 production 服务与数据复验已完成；EXE内启动/重启按钮的本轮CDP验证被自动审批策略阻断，因此36号尚未全量收口。现场仍为537来源、346成功来源对应315 Media，必要下游待补做0，1596个不同general/meta标签已覆盖。部署前后537行和315 Media/标签/本地化数据逐项一致。生产导入/关联/状态修复/分类/WD/翻译新增量全部为0；没有额外生产AI或LLM调用。
 
-原生产已复验本轮候选；537 个来源和 346 个成功来源对应的 315 个 Media 与原必要下游完整保留，待补做 0，1,596 个不同 general/meta 标签已有覆盖。本轮没有新生产导入、失败重试或 AI/LLM 补跑。
+工程完成与负责人接受分别记账：PR152仍待负责人复审，没有merge，main仍是已接受A1基线；日常入口指向本轮已验证候选，生产服务PID为48388，尚未完成合并后main对齐。
 
-远端 main 仍为已接受 A1 基线，PR #152 尚待负责人复审/合并，因此日常入口已指向本轮生产候选，尚未完成“已合并 main”对齐。工程验证、负责人接受和产品用户亲自体验分别记录。
-
-## 身份与状态
+## 身份、范围和当前状态
 
 | 项目 | 结果 |
 | --- | --- |
-| PR / 分支 | [PR #152](https://github.com/kyloris0660/VIOLET/pull/152) / `codex/production-import-recovery`，正常非 Draft PR |
-| 本轮行为候选 | `a8aeda5fff378392f3a0d599370946dac001258b` |
-| 候选 tree | `8eac0cfcf598c249958ccf4113d8ac317fc2b7ee` |
-| 已接受 main / A1 | `ea4bdd740943b2dad8c4eace88d0b33819d86cb8` |
-| 原生产 | 正常 EXE 启动/重启，生产候选 `a8aeda5`，读取开启 / Pixiv apply 关闭 |
-| 最终文档 HEAD | 当前 PR head 及私有 DELIVERY-STATE 记录；仅允许原 carry-forward 契约规定的文档后继 |
-| 契约结论 | `production_import_recovery_v1` 的本轮工程范围 `target_met=true`；`safe_to_merge=false`、`route_approved=false` |
-| 接受 / 合并 / 产品用户体验 | 负责人复审待完成；未合并；不代称所有者或产品用户亲自验收 |
+| PR / 分支 | [PR #152](https://github.com/kyloris0660/VIOLET/pull/152) / `codex/production-import-recovery` |
+| 被退回HEAD | `69a28c6bd921d4b84ddd95054ebbc925ff572a3b` |
+| 本轮实测行为候选 | `81ea89e9bc21eeaff1988d858a24b1243d451e3c` |
+| 候选tree | `f7979cdc207325b1b44771b7fea40244d4726934` |
+| 最终交付HEAD | 当前PR HEAD及私有DELIVERY-STATE；候选后的提交仅允许原carry-forward契约列出的文档文件 |
+| 生产 | 原controller/profile及正常EXE，候选`81ea89e`；原库/存储/认证/模型，Pixiv读取开启/apply关闭 |
+| main | `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`，尚未包含本轮修复 |
+| 工程契约 / 本任务全量完成 | 原`production_import_recovery_v1`已覆盖自动门槛`target_met=true`；该契约不检查EXE按钮交互，36号current-phase `target_met=false`，EXE/CDP门槛未完成；`safe_to_merge=false`、`route_approved=false` |
+| 负责人接受 / 合并 / 入口对齐 / 产品用户体验 | 复审待完成 / 未合并 / 合并后对齐待完成 / 未冒称亲自验收 |
 
-## 四条意见逐项修正
+本轮按36号执行版授权开始，时间保存在本机task36记录；一周为上限，完成即交付。R1–R5、R7–R9沿用负责人接受结论；两条3959529522祖先/squash、3959529535无哈希FOLLOWUP意见依36号裁决不适用，当前真实父子提交及独立FOLLOWUP路径保留，并加入不依赖来源哈希的执行回归。开场11条未关闭线程，GitHub check-runs与commit statuses均为0；线程数量不等于未修复数。
 
-| 意见 | 修正与真实验证 |
+## 根因及同一执行器修正
+
+1. `_mark_item_import_in_progress()`在复制之前提交时无条件清空三项下游，异常回滚已无法挽回。现在只有首次导入、无Media时初始化等待状态；旧Media事实继续保存。
+2. HTTPException分支先重写下游，再调用有保护的failure helper；普通Exception分支另写一套覆盖逻辑。两处分支统一使用既有`_mark_item_failed()`，去重则直接绑定目标，保留稳定原因、私有诊断、同版本真实失败run、冷却和终止/暂缓。
+3. 同链路的retry-ready只表示源读取成功，保持pending，不能因旧应用副本存在写成imported。首次准入在hash/copy之前持久化`current_source_version_pending`，防止直接legacy计划的旧列在更新后丢失待处理证据；`content_hash_version`只证明已读取源版本，`media_id`与三项下游仍指旧应用副本。只有成功导入或可靠关联才清除此标志。
+4. 成功新Media正常初始化下游；已有Media去重绑定复用目标来源可证实的完整或部分完成状态。目标只缺WD或本地化时，已完成分类/WD不重跑。未执行保留分支也不再覆盖已有Media下游。核对限于当前执行器的这些写入、提交、恢复、成功/去重和后续目标入口。
+
+## 精确候选验证
+
+| 范围 | 实际结果 |
 | --- | --- |
-| R6 / P1 / [3950226963](https://github.com/kyloris0660/VIOLET/pull/152#discussion_r3950226963) | 更新观察合并模块元数据，保留恢复处置、操作事件、三次失败 run 和 content_hash_version。观察不验证内容；已完成应用副本和下游保留，新版本待处理单独表达。恢复 SQL 列表保留处置，更新后仍可查，受处置限制的项目不计入待导入且 run-item 不可导入。 |
-| R7 / P2 / [3950226970](https://github.com/kyloris0660/VIOLET/pull/152#discussion_r3950226970) | 优先取有时间和 run-item 来源的真实尝试版本；较新的真实元数据观察可取代旧尝试，缺证据时有界读取，仍失败保存未知版本。defer/ignore/terminal × 空/旧/当前列值的 9 组真实 API→更新→规划→新 Session 验证；首次补齐、真实变化、resume 和失败去重另有回归。 |
-| R8 / P2 / [3950226953](https://github.com/kyloris0660/VIOLET/pull/152#discussion_r3950226953) | 优先路径使用工作进程 resolve，解析前后保持范围验证；失败、未关联 skipped_existing_media / skipped_duplicate / unchanged 四类阻塞回归确认超时终止回收、健康文件实际导入及异常身份保留。应用 Media 后续处理跳过不需要的来源解析；原 open/next/坏子目录/顺序/cap 回归保留。 |
-| R9 / P2 / [3950226956](https://github.com/kyloris0660/VIOLET/pull/152#discussion_r3950226956) | 哈希返回稳定字符串 SourceReadReason，诊断另存。旧 Phase47 消费者在隔离数据库真实运行 3 个测试来源，timeout/error 均提交 String(255) 原因和私有诊断，随后成功哈希并复用 Media；手动同步与 scanner 消费者也保留诊断。不在生产运行旧阶段脚本。 |
+| focused | 525 passed, 3 skipped, 3 warnings in 705.92s (0:11:45) |
+| 隔离PostgreSQL | 147 passed in 579.03s (0:09:39) |
+| 新增R6矩阵 | 27条，以上两套均通过；原22条R6–R9接入继续通过，共49条由原契约约束 |
+| 隔离真实Edge | 普通导入、解码失败与恢复处置跨更新保持通过；7张截图、0页面错误，任务服务器8013与专用浏览器已关闭 |
+| 原生产真实Edge/CDP | 恢复列表/原因/分页、19次代表搜索、详情/全屏、原5样本/51绑定及#31两个新增样本通过 |
+| controller / 正常EXE | controller启动/重启通过、PID变化；EXE无参数启动成功。EXE内Start/Restart按钮CDP验证未完成，调试实例启动命令被自动策略拒绝；18186未创建监听 |
+| 原契约/文档 | 通过；最终文档HEAD再核实行为继承与current-phase/handoff |
 
-旧 R1–R5 按33号负责人裁决保留：可终止枚举、稳定标识、逐项计数、完整集合/下游契约及 stored-hash 当前版本证据继续有效；3944187452 的 squash 建议仍不适用。未擅自关闭旧线程或追加 reviewer。
+两套最终测试均为0失败、0错误。focused的3项跳过是1项PostgreSQL专属正则和2项Windows符号链接条件；3条警告为既有Pydantic class-based config弃用警告。冻结前扩大定向组合为84 passed，不与最终候选的两套结果混算。
 
-## 本轮实际验证
+27条新增真实接入包括：6条hash成功后的copy/decode/非重复HTTP失败×先update/直接legacy计划；2条复制前已提交后中断→新Session→正常过期运行恢复→成功导入；16条新Media、已有完整目标、仅缺WD、仅缺本地化、HTTP409并发去重及Media提交后响应异常恢复×两种版本发现；2条无旧Media首次失败负例；1条无来源哈希FOLLOWUP只补本地化。失败矩阵同时证明健康后继完成、旧独立来源及真实Media/标签/翻译记录保持，失败仍可暂缓并跨更新保存。
 
-| 范围 | 结果 |
-| --- | --- |
-| 冻结候选 focused | 498 passed / 3 skipped，3 条既有 Pydantic 配置弃用警告，541.72 秒 |
-| 隔离 PostgreSQL | 120 passed / 0 skipped，无警告，396.04 秒 |
-| R6–R9 实际接入回归 | 每套均包含 22 条；原契约现在要求这些 XML 用例存在且通过，旧 XML 不能替代 |
-| 独立 Edge / CDP | 实际 4 导入、1 解码失败、3 恢复动作；terminal/defer/ignore 跨更新检查、重新规划和页面刷新仍可见且待导入为 0；7 张截图，0 页面脚本错误 |
-| 原生产 Edge / CDP | 原 5 Media、51 绑定、19 普通搜索、详情/全屏及 #31 两个真实新增样本；恢复页、缺失和策略分页复核 |
-| Launcher | 原便携 EXE 正常 Start/Restart，PID 实际改变；任务调试监听关闭，正常 EXE 无参数启动 |
-| 契约 / 文档 | 原注册契约与 current-phase/handoff 检查通过；最终交付 HEAD 再检查 |
+使用指定项目venv Python 3.12.0及身份预检，标准测试环境、独立本地存储和专用PostgreSQL角色/每例独立schema。复制、图片验证、导入事务、执行器、恢复API、新Session和本地化流程均真实执行；分类/WD模型使用确定性测试适配器并写入真实模型表，本地化复用已有静态/翻译结果，测试没有付费AI/LLM。模型推理质量不在本轮验证范围。精确sys.executable、完整命令、开始/结束时间、原始日志/XML在私有包。
 
-指定项目 venv Python 3.12.0 身份预检通过；标准测试配置及隔离本地存储，PostgreSQL 使用专用测试数据库/角色和每例独立 schema。精确命令、工作目录、Python 绝对路径、开始/结束时间、XML 与日志在私有附件。3 个 focused skip 为既有两个符号链接条件与 SQLite 不支持的 PostgreSQL 正则条件；本地验证不冒称 GitHub CI。
+- `python -m pytest tests/test_pr152_recovery_state_io.py tests/test_production_import_recovery.py tests/test_pr152_bounded_fix.py tests/test_production_pixiv_a1.py tests/test_import_recovery_contract.py tests/test_s3a_m1_manual_sync_execute.py tests/test_manual_sync_lifecycle.py tests/test_dynamic_library_sync.py tests/test_scanner_icloud.py tests/test_production_pixiv_a1_contract.py tests/test_production_launcher_control.py tests/test_trusted_git.py -q`
+- `python -m pytest tests/test_pr152_recovery_state_io.py tests/test_production_import_recovery.py tests/test_pr152_bounded_fix.py tests/test_production_pixiv_a1.py -q`
 
-本轮命令范围：
+首次8项定向结果为8失败，其中5项复现持久化下游覆盖，3项为测试查找新来源缺少ID的错误；修正执行器后5通过，3个夹具查找错误已改正。扩大矩阵19通过/4失败，4项证明目标已有分类在部分下游去重时重复执行，已修正并补入只缺本地化用例。后续定向和最终候选结果分别保存，不把内部修正编号为新审查轮。旧a8aeda5的498/120保持为历史结果，不改旧XML，不重跑全部历史non-E2E或补造历史AI证明。
 
-- `-m pytest tests/test_pr152_recovery_state_io.py tests/test_production_import_recovery.py tests/test_pr152_bounded_fix.py tests/test_production_pixiv_a1.py tests/test_import_recovery_contract.py tests/test_s3a_m1_manual_sync_execute.py tests/test_manual_sync_lifecycle.py tests/test_dynamic_library_sync.py tests/test_scanner_icloud.py tests/test_production_pixiv_a1_contract.py tests/test_production_launcher_control.py tests/test_trusted_git.py -q`
-- `-m pytest tests/test_pr152_recovery_state_io.py tests/test_production_import_recovery.py tests/test_pr152_bounded_fix.py tests/test_production_pixiv_a1.py -q`
+## 生产保护、增量和剩余例外
 
-## 读取与实际变更文件
+开场及部署后只读核对与task33一致：537来源中59新增、287关联、164可重试、26暂缓、1缺失未执行；346成功来源/315Media完整，下游待补做0。最新真实执行仍是#31，本轮没有新生产run或有证据需要修复的受损来源，因此生产新增/关联/状态修复/下游补做均为0。
 
-已读取33号完整任务、实际工作目录AGENTS/current-phase/handoff/runbook、同一实施方案/工程报告、task30实际恢复材料和最新GitHub审查线程。沿来源观察、恢复API、生命周期、执行器、有界I/O与三个哈希直接消费者检查同类写入；32号获取限制见下文。
+原108未执行与82失败均已实际尝试，190项仍不可读；59新增来自另外发现/新增来源，绝非从旧190中恢复。26暂缓每项有3个同版本真实失败run；未全体重试190或resume26，未重复分类、打标签、本地化、备份、迁移或源哈希。原5个缺失来源按身份去重，历史不支持MOV不算新可导入图片。
 
-相对本次退回HEAD的文件变更：
+source40562/40567对应Media36204/36209，旧应用副本和下游完整，新源内容仍未核验；本轮先update和直接legacy计划矩阵确认正常重入及失败保护，没有重复源内容读取。Media35399/35400两个遗留小型应用文件仍无可信恢复来源，保留具名异常，不删除记录或生成替代图。这些原有例外不阻塞本轮生命周期修正。
 
-- `backend/app/routes/admin/manual_sync_recovery.py`
-- `backend/app/services/dynamic_library_sync_service.py`
+## 变更文件与证据
+
 - `backend/app/services/manual_sync_execute_service.py`
-- `backend/app/services/manual_sync_lifecycle.py`
-- `backend/app/services/manual_sync_recovery.py`
-- `backend/app/utils/local_library_scanner.py`
 - `docs/current-handoff.md`
 - `docs/plans/production-import-recovery.md`
 - `docs/reports/production-import-recovery-summary.json`
 - `docs/reports/production-import-recovery.md`
 - `docs/state/current-phase.json`
 - `scripts/check_production_import_recovery.py`
-- `scripts/run_phase47_s2_baseline_full_import_ai_localization.py`
-- `tests/source_io_worker_fixture.py`
-- `tests/test_import_recovery_contract.py`
 - `tests/test_pr152_recovery_state_io.py`
 
-开发预验证原始结果保留：首批18通过；扩大回归发现3失败后修正，141通过；44条接入与契约通过；待导入口径修正后108通过。49b4f7d 和5b225bd 的完整候选测试因真实 UI 发现本轮接入遗漏而中止，未部署、未记为通过。最终结果仅来自上表候选；旧83d5eda的475/98是历史结果。不重跑全部历史 non-E2E，不补造历史 AI 证明。
+同一工程报告保留为唯一入口。私有task36证据包保存本轮XML、对账、身份、截图、命令、原始失败及操作恢复记录；task33原包保留。原完整历史/库存输入通过本机硬链接和哈希引用复用，没有复制或重新打包旧大历史；公开Git不包含私有路径、原图或凭据。35号文件在Downloads未找到，依36号完整缺口继续执行，没有反复抓取旧会话。
 
-## 已完成生产结果保护
+## 工程判断与下一步
 
-最新真实执行仍为 #31：49 项中 19 新增、20 关联、10 旧失败进入暂缓。原 498 + 后续39 =537，59 新增、287 关联、164 可重试、26 暂缓、1 缺失未执行，类别互斥。原190失败最新144 timeout /46 error；26暂缓各有3个同版本真实失败run。部署前后537行逐项一致，315 Media/标签/本地化数据一致，未发现需要恢复的被清除处置。
+本轮长期维护代码是执行器生命周期修正及其回归；原契约仅增加27条实际接入的最小约束，专用复验脚本属于本机阶段工具。没有新schema、队列、扫描器、治理平台或产品阶段。原有来源不可读/缺失继续按已知归宿展示，不承诺历史绝无漏图。
 
-原5个缺失身份与一个交叉项保留并去重；173策略观察和历史不支持MOV不算新增图片。两个旧应用副本仍可用、源新版本未核验的身份保留，使用已有版本证据确认正常规划可重入，未循环读取内容。两个无来源关联的遗留小型应用文件缺失，经一次有界既有任务材料定位仍无可信恢复来源，作为具名私有异常保留；不删除或拿其他图片替换，不阻塞四项修正。
+当前返回项目负责人复审同一PR152，并明确交付一个尚未执行的EXE按钮门槛。自动审批拒绝了启动带CDP参数的独立Production Launcher EXE命令，未给出比“blocked by policy”更具体的原因；命令未执行，没有改用其他机制绕过。原controller已恢复服务并验证重启，正常EXE无参数启动成功；它们不能替代本轮EXE按钮的实际操作证据。最小后续动作是在允许的EXE交互路径恢复后，只补启动/重启按钮及身份核验，不重跑本轮已通过行为测试或生产恢复。
 
-## 生产操作与证据
-
-开工现场服务已停止、8012无监听，生产五类任务空闲；此前记录的PID未被当作现场事实。切换前重新确认导入/扫描/分类/标签/本地化空闲，保存原profile及启动锚点，通过安全快进与原控制器切换。原数据库、存储、认证、模型配置保持；无schema变更，无迁移，无全库备份恢复或全根扫描。生产只做必要登录和只读页面/数据验证。
-
-独立测试目录、旧生产目录、旧备份与task30完整证据均保留。新增材料限定在同一task33私有附件，旧完整历史/库存输入原样复用，没有重新生成大规模历史证据。附件包含 before/after、受影响身份及版本、模型/下游保护、原始失败、命令/XML、启动及CDP清理记录、最终候选/PR/HEAD关系。源路径、凭据和原图不提交公开PR。
-
-## 工程判断与下一检查点
-
-本轮属于现有日常入口的有限接入修复。持久生产代码是来源观察、恢复API/生命周期与I/O兼容；原阶段契约和回归是复用验证工具；旧Phase47只做返回值兼容；本机操作脚本和输出均为私有一次性材料。没有新增处置平台、数据库schema、扫描器或布局重设计。
-
-当前注册契约证明本轮22条实际接入、既有恢复完整性及原生产复验，不能外推为所有日常用法或人工接受。32号文件未在Downloads定位到，负责人会话的只读取回两次超时；33号完整授权与四条实时远端意见已读，具体缺口通过本轮实际入口自行验证。
-
-下一步由项目负责人复审同一PR152并决定接受/合并。收到接受和真实merge后，沿33号原授权可信fetch、安全快进并受控对齐main/profile/持久日常锚点；不自行merge、推main或强推，不重导入/迁移/重做标签。Pixiv A2/A3、provider/truth与完整侧栏布局继续后排。
+未merge/main push/force/reviewer/关闭线程；未启动Pixiv A2或第二provider，UI美化等延期。收到实际接受及真实合并后，按原授权可信fetch、安全快进并经controller对齐main/profile/持久入口，验证正常停止再启动；若切换失败恢复已验证代码和配置，保留原库及完成数据，不用数据库回滚解决入口问题。

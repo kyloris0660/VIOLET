@@ -4,14 +4,14 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "a8aeda5fff378392f3a0d599370946dac001258b",
+  "candidate_head": "81ea89e9bc21eeaff1988d858a24b1243d451e3c",
   "validation": {
     "focused": {
-      "passed": 498,
+      "passed": 525,
       "skipped": 3
     },
     "postgresql": {
-      "passed": 120,
+      "passed": 147,
       "skipped": 0
     }
   },
