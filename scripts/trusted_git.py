@@ -968,7 +968,8 @@ def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
         for path in filter(None, changed):
             if path == 'AGENTS.md' or (path.startswith('docs/') and path.endswith('.md')):
                 continue
-            if path not in {'docs/state/current-phase.json', 'docs/reports/production-pixiv-a1-summary.json'}:
+            if path not in {'docs/state/current-phase.json', 'docs/reports/production-pixiv-a1-summary.json',
+                            'docs/reports/production-import-recovery-summary.json'}:
                 return False
         for path in filter(None, git('ls-files','--others','--exclude-standard','-z').split('\0')):
             if _classify_untracked(repo_root, path) != 'ordinary':

@@ -182,6 +182,7 @@ class ContractRepositoryContext:
     scv2_px2_evidence: object | None = None
     scv2_px3_evidence: object | None = None
     production_pixiv_a1_evidence: object | None = None
+    production_import_recovery_evidence: object | None = None
 
 
 def load_summary_file(path: str | Path) -> dict[str, Any]:
@@ -212,6 +213,18 @@ def check_phase_contract(
     _check_forbidden_stages(contract, summary, result)
 
     for check_name in contract.custom_checks:
+        if check_name == 'production_import_recovery':
+            from scripts.check_production_import_recovery import check_public_result, derive_result
+            try:
+                check_public_result(summary)
+                if repository_context is None or not repository_context.production_import_recovery_evidence:
+                    raise ValueError('import_recovery_private_evidence_required')
+                actual = derive_result(Path(repository_context.production_import_recovery_evidence), repository_context.repo_root)
+                if dict(summary) != actual:
+                    raise ValueError('import_recovery_projection_mismatch')
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                result.fail('import_recovery_evidence_invalid', str(exc))
+            continue
         if check_name == 'production_pixiv_a1':
             from scripts.check_production_pixiv_a1 import check_public_result, derive_result
             try:

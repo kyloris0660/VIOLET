@@ -89,7 +89,18 @@ def test_state_candidate_requires_evidence_and_real_commit(tmp_path,field):
     from scripts.production_pixiv_a1_state import validate
     from scripts.check_documentation_state import DocumentationStateError
     repo=Path(__file__).resolve().parents[1]
-    state=json.loads((repo/'docs/state/current-phase.json').read_text(encoding='utf-8'))
+    # A1 is historical after the current route advances. Bind this regression
+    # to its own fixture, not whichever phase the checkout currently declares.
+    state=dict(schema_version='violet.current-phase.v2', branch='codex/production-pixiv-a1',
+        accepted_mainline_base='26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3',
+        previous_phase_merge_commit='26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3',
+        planning_approved=True, manual_acceptance_status='pending_project_lead_review',
+        safe_to_merge=False, route_approved=False, next_phase_started=False,
+        authorities={key:False for key in ('merge','provider_network','llm','original_file_mutation','truth_mutation')},
+        result_path='docs/reports/production-pixiv-a1-summary.json',
+        candidate_head='7dd8733ef0963458af6611a2d947fb040e4b5412',
+        production_candidate_head='7dd8733ef0963458af6611a2d947fb040e4b5412',
+        durable_links=[dict(path='docs/reports/production-pixiv-a1-summary.json')])
     state['target_met']=True
     for link in state['durable_links']:
         destination=tmp_path/link['path']

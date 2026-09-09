@@ -1,0 +1,51 @@
+{
+  "contract_id": "production_import_recovery_v1",
+  "target_met": true,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "project_lead_acceptance": "pending",
+  "candidate_head": "81ea89e9bc21eeaff1988d858a24b1243d451e3c",
+  "validation": {
+    "focused": {
+      "passed": 525,
+      "skipped": 3
+    },
+    "postgresql": {
+      "passed": 147,
+      "skipped": 0
+    }
+  },
+  "recovery": {
+    "original_unattempted": 108,
+    "original_failed": 82,
+    "verified_gaps": 268,
+    "observed_new": 40,
+    "additional_history": 0,
+    "observed_later": 39,
+    "original_total": 498,
+    "total": 537,
+    "outcomes": {
+      "retryable": 164,
+      "deferred_diagnosis": 26,
+      "existing_media": 287,
+      "unexecuted": 1,
+      "imported": 59
+    },
+    "downstream_complete": 346,
+    "identity_digest": "b7ad74b0b5c23df0acfb75e6920ebb735d3a6f7c957c39110d15d696f3ce7835",
+    "metadata_missing": 5,
+    "metadata_overlap": 1,
+    "policy_observations": 173
+  },
+  "browser": {
+    "samples": 5,
+    "bindings": 51,
+    "headed": true
+  },
+  "launcher": {
+    "restarted": true,
+    "product_enabled": true,
+    "apply_enabled": false,
+    "main_merge_pending": true
+  }
+}

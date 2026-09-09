@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from fastapi import HTTPException
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from ..config import settings
@@ -38,6 +39,9 @@ from ..schemas import RatingEnum
 from ..utils.logger import logger
 from ..utils.local_library_scanner import _is_scannable_file
 from ..utils.media_helpers import get_unique_filename
+from ..utils.source_read_diagnostics import exception_detail
+from ..utils.bounded_source_io import source_io, source_resolve, with_source_io
+from .manual_sync_recovery import start_attempt, record_failure, finish_attempt, set_recovery
 from .dynamic_library_sync_service import (
     MANUAL_SYNC_PLAN_STALE_AFTER_SECONDS,
     S3A_M2_MANUAL_EXECUTE_CONFIRMATION_PREFIX,
@@ -89,6 +93,9 @@ CONFIRMED_NON_TARGET_CONTENT_CLASSES = {"non_anime"}
 UNKNOWN_OR_UNCERTAIN_CONTENT_CLASSES = {"", "none", "null", "unknown", "unclassified", "uncertain"}
 CLASSIFICATION_DONE_STATUSES = {"classified", "classified_reused"}
 RETRYABLE_SOURCE_FAILURE_REASONS = {
+    "import_failed",
+    "stat_error",
+    "corrupted_image",
     "cloud_hydration_failed",
     "cloud_network_unavailable",
     "content_changed_after_plan",
@@ -119,6 +126,8 @@ def _manual_sync_media_ai_eligibility(
 ) -> tuple[str, str]:
     """Return manual-sync AI/localization eligibility without collapsing unknown into non-target."""
     if not settings.CONTENT_CLASSIFICATION_ENABLED:
+        if settings.IS_PRODUCTION_ENV:
+            return ("classification_blocked", "classification_disabled")
         return ("eligible", "classification_disabled")
 
     content_class = _media_content_class_value(media)
@@ -233,55 +242,6 @@ def _translation_llm_provider_configured() -> bool:
     return primary_ready or fallback_ready
 
 
-def _assert_manual_e2e_components_ready_for_production() -> None:
-    if not settings.IS_PRODUCTION_ENV:
-        return
-    if not settings.CONTENT_CLASSIFICATION_ENABLED:
-        raise ManualSyncExecuteError(
-            "manual_sync_classification_disabled",
-            "Production manual E2E execute requires content classification to be enabled.",
-            status_code=409,
-        )
-    if str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower() != "clip":
-        raise ManualSyncExecuteError(
-            "manual_sync_classification_gate_requires_clip",
-            "Production manual E2E execute requires classification-before-AI gating; use CONTENT_CLASSIFICATION_METHOD=clip.",
-            status_code=409,
-        )
-    clip_ready, clip_reason = _ensure_clip_model_cache_only()
-    if not clip_ready:
-        raise ManualSyncExecuteError(
-            str(clip_reason or "classification_model_uncached"),
-            "Production manual E2E execute requires the CLIP classifier to be available from local cache before import writes begin.",
-            status_code=409,
-        )
-    if not settings.AI_TAGGING_ENABLED:
-        raise ManualSyncExecuteError(
-            "manual_sync_ai_tagging_disabled",
-            "Production manual E2E execute requires AI tagging to be enabled.",
-            status_code=409,
-        )
-    wd_ready, wd_reason = _ensure_wd_tagger_model_cache_only()
-    if not wd_ready:
-        raise ManualSyncExecuteError(
-            str(wd_reason or "manual_sync_ai_tagger_model_uncached"),
-            "Production manual E2E execute requires the WD tagger model and labels to be available from local cache before import writes begin.",
-            status_code=409,
-        )
-    if not settings.TAG_TRANSLATION_LLM_ENABLED:
-        raise ManualSyncExecuteError(
-            "manual_sync_localization_llm_disabled",
-            "Production manual E2E execute requires tag localization LLM to be enabled or an accepted stable policy.",
-            status_code=409,
-        )
-    if not _translation_llm_provider_configured():
-        raise ManualSyncExecuteError(
-            "manual_sync_localization_llm_provider_unconfigured",
-            "Production manual E2E execute requires a configured tag localization LLM provider.",
-            status_code=409,
-        )
-
-
 def _assert_no_active_ai_or_classification_jobs(db: Optional[Session] = None) -> None:
     from .ai_tagging_job_service import is_ai_job_active
     from .classification_job_service import is_classification_job_active
@@ -392,9 +352,8 @@ def _plan_partial_scan_allows_execute(plan: Dict[str, Any]) -> bool:
         partial_reason == "source_walk_error"
         and not unsafe_partial
         and batch_executable
-        and int(counts.get("estimated_import_count") or 0) == 0
-        and int(counts.get("estimated_downstream_followup_count") or 0) > 0
-        and bool(limits.get("source_walk_error_followup_only_batch"))
+        and bool(limits.get("source_walk_error_confirmed_candidates_batch")
+                 or limits.get("source_walk_error_followup_only_batch"))
     ):
         return True
     return bool(
@@ -449,12 +408,9 @@ def _localization_policy_payload(blockers: Optional[List[str]] = None) -> Dict[s
 def _budget_policy_payload() -> Dict[str, Any]:
     return {
         "max_files": manual_sync_execute_max_files_cap(),
-        "max_item_failures": MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES,
-        "max_failure_rate": MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE,
-        "failure_rate_min_items": MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS,
-        "max_consecutive_failures": MANUAL_SYNC_EXECUTE_MAX_CONSECUTIVE_FAILURES,
+        "item_failure_policy": "record_and_continue",
         "max_duration_seconds": manual_sync_execute_max_duration_seconds(),
-        "stop_reasons": ["stopped_by_failure_budget", "stopped_by_duration_budget"],
+        "stop_reasons": ["systemic_database_unavailable", "systemic_storage_unavailable", "stopped_by_duration_budget", "cancelled"],
     }
 
 
@@ -468,16 +424,6 @@ def _budget_stop_reason(
     started = _aware_utc(started_at) or _utcnow()
     if (_utcnow() - started).total_seconds() > manual_sync_execute_max_duration_seconds():
         return "stopped_by_duration_budget"
-    if failed_items > MANUAL_SYNC_EXECUTE_MAX_ITEM_FAILURES:
-        return "stopped_by_failure_budget"
-    if consecutive_failures > MANUAL_SYNC_EXECUTE_MAX_CONSECUTIVE_FAILURES:
-        return "stopped_by_failure_budget"
-    if (
-        processed_items >= MANUAL_SYNC_EXECUTE_FAILURE_RATE_MIN_ITEMS
-        and processed_items > 0
-        and failed_items / processed_items > MANUAL_SYNC_EXECUTE_MAX_FAILURE_RATE
-    ):
-        return "stopped_by_failure_budget"
     return None
 
 
@@ -542,6 +488,8 @@ def _plan_item_can_materialize_deferred_unprocessed(plan_item: Dict[str, Any]) -
 
 
 def _order_manual_sync_execute_plan_items(plan_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if any("scheduler_cursor_after" in item for item in plan_items):
+        return plan_items
     return [
         item
         for _index, item in sorted(
@@ -767,7 +715,7 @@ def _verify_execute_gates(
                 "Manual sync execute requires explicit operator confirmation from the dry-run plan.",
                 status_code=409,
             )
-    _assert_manual_e2e_components_ready_for_production()
+    # Downstream readiness is recorded on its stage; it does not block import.
 
 
 def _verify_execute_recheck(
@@ -796,7 +744,7 @@ def _verify_execute_recheck(
             "Automatic or unattended sync flags became enabled before execute.",
             status_code=409,
         )
-    _assert_manual_e2e_components_ready_for_production()
+    # Cache-only downstream handlers retain unfinished work without downloading.
     _assert_translation_side_effects_disabled()
     _assert_no_active_ai_or_classification_jobs(db)
     current_hash = str((plan.get("integrity") or {}).get("plan_hash") or "")
@@ -1011,6 +959,7 @@ def create_manual_sync_execute_run(
                 "plan": plan,
                 "runtime_provenance": runtime_payload,
                 "private_plan_items": private_plan_items,
+                "private_discovery": {key: value for key, value in (private_plan.get("private_details") or {}).items() if key != "items"},
                 "stage_rows": stage_rows,
                 "outcome_counts": {},
                 "budgets": _budget_policy_payload(),
@@ -1041,6 +990,10 @@ def create_manual_sync_execute_run(
         },
     )
     db.add(run)
+    db.flush()
+    # Persist selected identities before starting I/O, including a new process.
+    _materialize_deferred_unprocessed_items(db, root=_root, run=run,
+        plan_items=private_plan_items, reason="not_processed_budget_stop")
     db.commit()
     db.refresh(run)
     return run
@@ -1187,9 +1140,9 @@ def _find_active_manual_sync_execute_run(db: Session) -> Optional[DynamicSyncRun
 
 
 def _safe_source_file(root_path: Path, relative_path: str) -> Path:
-    candidate = (root_path / relative_path).resolve()
+    candidate = source_resolve(root_path / relative_path)
     try:
-        candidate.relative_to(root_path.resolve())
+        candidate.relative_to(source_resolve(root_path))
     except ValueError as exc:
         raise ManualSyncExecuteError("source_path_escape", "Source item escaped the registered root.") from exc
     return candidate
@@ -1224,9 +1177,9 @@ def _get_or_create_source_item(
         db.add(item)
         db.flush()
     item.relative_path = relative_path
-    item.file_size = metadata.get("file_size")
-    item.mtime = metadata.get("mtime")
-    item.mtime_ns = metadata.get("mtime_ns")
+    for key in ("file_size", "mtime", "mtime_ns"):
+        if metadata.get(key) is not None:
+            setattr(item, key, metadata[key])
     if content_hash:
         item.content_hash = content_hash
     item.source_status = "available"
@@ -1235,10 +1188,33 @@ def _get_or_create_source_item(
     item.last_sync_run_id = run.id
     item.last_seen_run_id = run.id
     item.metadata_json = {
+        **(item.metadata_json or {}),
         "suffix": metadata.get("suffix"),
         "content_hash_computed": bool(content_hash),
     }
+    if content_hash:
+        _remember_content_hash(item, content_hash, metadata)
     return item
+
+
+def _remember_content_hash(item, content_hash, metadata):
+    item.content_hash = str(content_hash)
+    version = {key: metadata.get(key) for key in ("file_size", "mtime_ns")}
+    if all(type(value) is int and value >= 0 for value in version.values()):
+        item.metadata_json = {**(item.metadata_json or {}),
+            "content_hash_version": {**version, "content_hash": str(content_hash)}}
+
+
+def _stored_hash_for_version(item, metadata):
+    if item is None or not item.content_hash:
+        return None
+    evidence = (item.metadata_json or {}).get("content_hash_version") or {}
+    if (evidence.get("content_hash") == item.content_hash
+            and all(type(evidence.get(key)) is int and evidence[key] >= 0
+                    and evidence[key] == metadata.get(key) for key in ("file_size", "mtime_ns"))):
+        return str(item.content_hash)
+    # Legacy hashes without a bound version need ordinary per-file validation.
+    return None
 
 
 def _record_run_item(
@@ -1271,7 +1247,15 @@ def _record_run_item(
     run_item.eligible_for_db_import = eligible
     run_item.bytes_copied = bytes_copied
     run_item.media_id = media_id
-    run_item.current_metadata_json = current_metadata or {}
+    detail = {**(run_item.current_metadata_json or {}), **(current_metadata or {})}
+    if detail.get("private_diagnostic") is not None:
+        detail["private_diagnostic"] = {
+            **dict.fromkeys(("exception_type", "errno", "winerror", "exitcode", "worker_status", "elapsed_seconds", "timeout_seconds")),
+            **detail["private_diagnostic"], "source_root_id": item.source_root_id,
+            "source_item_id": item.id, "run_id": run.id, "run_item_id": run_item.id,
+            "file_version": {key: detail.get(key, getattr(item, key, None)) for key in ("file_size", "mtime_ns")},
+        }
+    run_item.current_metadata_json = detail
     return run_item
 
 
@@ -1338,9 +1322,10 @@ def _mark_item_skipped(
 ) -> None:
     item.sync_state = state
     item.import_status = "deferred"
-    item.classification_status = "deferred"
-    item.ai_tagging_status = "deferred"
-    item.localization_status = "deferred"
+    if not item.media_id:
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "deferred"
     item.failure_reason = reason if state == "failed" else None
     item.deferred_reason = reason if state != "failed" else None
     if reason:
@@ -1369,12 +1354,14 @@ def _mark_item_failed(
     item.sync_state = "failed"
     item.source_status = "missing" if reason == "source_missing" else "failed"
     item.import_status = "failed"
-    item.classification_status = "deferred"
-    item.ai_tagging_status = "deferred"
-    item.localization_status = "blocked_import_failed"
+    if not item.media_id:
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "blocked_import_failed"
     item.failure_reason = reason
     item.deferred_reason = None
     _record_retryable_source_failure_attempt(item, reason)
+    record_failure(item, run_id=run.id, reason=reason, metadata=metadata, now=_utcnow())
     _record_run_item(
         db,
         run=run,
@@ -1387,6 +1374,57 @@ def _mark_item_failed(
     )
 
 
+def _bind_existing_media(db, *, run, item, media, metadata):
+    """Attach reliable content identity without overwriting curated Media/tags."""
+    donors = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media.id).all()
+    # Reuse partial completion too: a target awaiting localization must not
+    # repeat classification or WD inference merely because another source binds.
+    completed_stages = (
+        ("classification_status", CLASSIFICATION_DONE_STATUSES),
+        ("ai_tagging_status", {"ai_tagged", "tagged", "tagged_reused", "ai_tagging_skipped_non_target", "skipped_non_target"}),
+        ("localization_status", {"localized", "completed", "skipped_no_localizable_tags", "skipped_no_new_tags",
+                                 "skipped_static_coverage", "localization_not_applicable_non_target"}),
+    )
+    donor = max(donors, key=lambda other: (source_item_downstream_complete(other),
+        sum(getattr(other, key) in statuses for key, statuses in completed_stages)), default=None)
+    same_media = item.media_id == int(media.id)
+    item.media_id = int(media.id)
+    item.content_hash = media.hash
+    item.sync_state = "skipped_existing_media"
+    item.import_status = "imported"
+    item.failure_reason = None
+    item.deferred_reason = None
+    if donor is not None:
+        for key in ("classification_status", "ai_tagging_status", "localization_status"):
+            setattr(item, key, getattr(donor, key))
+    elif not same_media:
+        item.classification_status = "pending"
+        item.ai_tagging_status = "pending"
+        item.localization_status = "waiting_ai_tags"
+    finish_attempt(item, now=_utcnow())
+    _record_run_item(db, run=run, item=item, state="skipped_existing_media", action="skip",
+        reason="existing_media_hash", eligible=False, media_id=media.id,
+        current_metadata={**metadata, "existing_content_identity_verified": True})
+
+
+def _shared_storage_failure(exc):
+    """File read failures are never inferred to be shared failures."""
+    import errno
+    if (getattr(exc, "diagnostic", None) or {}).get("shared_dependency") == "source_worker_start":
+        return "execution_dependency_unavailable"
+    # ENOSPC and EDQUOT from the target copy are explicit common failures.
+    if isinstance(exc, OSError) and exc.errno in {errno.ENOSPC, getattr(errno, "EDQUOT", 122)}:
+        return "systemic_storage_unavailable"
+    filename = getattr(exc, "filename", None)
+    if isinstance(exc, OSError) and exc.errno in {errno.EACCES, errno.EPERM} and filename:
+        try:
+            if Path(filename).resolve().is_relative_to(settings.ORIGINAL_DIR.resolve()):
+                return "systemic_storage_unavailable"
+        except (OSError, ValueError):
+            pass
+    return None
+
+
 def _mark_retry_source_ready_for_import(
     db: Session,
     *,
@@ -1397,28 +1435,18 @@ def _mark_retry_source_ready_for_import(
     previous_reason: Optional[str],
 ) -> None:
     now = _utcnow()
-    media_row: Optional[Media] = None
+    # Matching, usable Media were handled by _bind_existing_media above.
+    # Reading a new source version successfully does not switch its old Media.
     media_backed_retry_restored = False
-    if item.media_id is not None:
-        media_row = db.get(Media, int(item.media_id))
-        media_backed_retry_restored = bool(
-            media_row is not None
-            and lifecycle_app_media_exists(media_row, storage_root=settings.STORAGE_ROOT)
-        )
     item.source_status = "available"
-    if media_backed_retry_restored:
-        item.sync_state = "imported"
-        item.import_status = "imported"
-        next_work_item_kind = "NOOP_DIAGNOSTIC" if source_item_downstream_complete(item) else "FOLLOWUP"
-        retry_status = "media_backed_restored"
-    else:
-        item.sync_state = "new"
-        item.import_status = "pending"
+    item.sync_state = "new"
+    item.import_status = "pending"
+    if item.media_id is None:
         item.classification_status = "waiting_import"
         item.ai_tagging_status = "waiting_import"
         item.localization_status = "waiting_ai_tags"
-        next_work_item_kind = "IMPORT"
-        retry_status = "ready_for_import"
+    next_work_item_kind = "IMPORT"
+    retry_status = "ready_for_import"
     item.failure_reason = None
     item.deferred_reason = None
     item.file_size = metadata.get("file_size")
@@ -1475,9 +1503,10 @@ def _mark_item_import_in_progress(
 ) -> DynamicSyncRunItem:
     item.sync_state = "import_in_progress"
     item.import_status = "import_in_progress"
-    item.classification_status = "deferred"
-    item.ai_tagging_status = "deferred"
-    item.localization_status = "waiting_import"
+    if item.media_id is None:
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "waiting_import"
     item.failure_reason = None
     item.deferred_reason = None
     return _record_run_item(
@@ -1522,9 +1551,10 @@ def _materialize_deferred_unprocessed_items(
             item.import_status = "imported"
         else:
             item.import_status = "deferred"
-        item.classification_status = "deferred"
-        item.ai_tagging_status = "deferred"
-        item.localization_status = "deferred"
+        if item.media_id is None:
+            item.classification_status = "deferred"
+            item.ai_tagging_status = "deferred"
+            item.localization_status = "deferred"
         item.failure_reason = None
         item.deferred_reason = reason
         _record_run_item(
@@ -1615,13 +1645,15 @@ def _ensure_wd_tagger_model_cache_only() -> tuple[bool, Optional[str]]:
     return False, f"manual_sync_{reason}"
 
 
-def _copy_and_import_media(db: Session, source_file: Path) -> tuple[int, int]:
+def _copy_and_import_media(db: Session, source_file: Path, *, expected_hash=None) -> tuple[int, int]:
     settings.ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
     unique_filename = get_unique_filename(settings.ORIGINAL_DIR, source_file.name)
     destination = settings.ORIGINAL_DIR / unique_filename
     copied = False
     try:
-        shutil.copy2(source_file, destination)
+        from ..utils.bounded_source_copy import copy_source
+        copy_source(source_file, destination,
+            timeout_seconds=max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS)), expected_hash=expected_hash)
         copied = True
         bytes_copied = destination.stat().st_size
         media = process_and_save_media(
@@ -1659,6 +1691,8 @@ def _classify_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
     method = str(settings.CONTENT_CLASSIFICATION_METHOD or "").lower()
     if not settings.CONTENT_CLASSIFICATION_ENABLED:
         return {"media_id": media_id, "skipped": True, "reason": "classification_disabled", "method": method}
+    if settings.IS_PRODUCTION_ENV and method != "clip":
+        return {"media_id": media_id, "skipped": True, "reason": "classification_requires_clip", "method": method}
     if method == "clip":
         ready, detail = _ensure_clip_model_cache_only()
         if not ready:
@@ -1702,6 +1736,10 @@ def _ai_tagging_failure_reason(error: Any) -> str:
 def _ai_tag_imported_media(db: Session, media_id: int) -> Dict[str, Any]:
     if not settings.AI_TAGGING_ENABLED:
         return {"media_id": media_id, "skipped": True, "reason": "ai_tagging_disabled"}
+    if settings.IS_PRODUCTION_ENV:
+        ready, reason = _ensure_wd_tagger_model_cache_only()
+        if not ready:
+            return {"media_id": media_id, "skipped": True, "reason": reason or "ai_tagger_model_uncached"}
     from .ai_tagging_service import run_ai_tagging
 
     return run_ai_tagging(
@@ -2011,6 +2049,7 @@ def _manual_sync_skipped_localization_result(
     }
 
 
+@with_source_io
 def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
     global _active_execute_run_id
 
@@ -2130,6 +2169,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         consecutive_failures = 0
         stop_reason: Optional[str] = None
         processed_plan_items = 0
+        admitted_items = 0
+        admission_cap = int(request.get("effective_max_files") or manual_sync_execute_max_files_cap())
         run.total_seen = len(private_items)
 
         def _append_downstream_media_id(media_id: Optional[int]) -> None:
@@ -2196,6 +2237,9 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
             if stop_reason:
                 break
+            if _plan_item_is_actionable_work(plan_item) and admitted_items >= admission_cap:
+                stop_reason = "stopped_by_cap"
+                break
 
             relative_path = str(plan_item.get("relative_path") or "")
             rel = relative_path
@@ -2238,6 +2282,27 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     planned_source_item = candidate_source_item
                     rel = str(candidate_source_item.relative_path or rel)
 
+            if _plan_item_is_actionable_work(plan_item):
+                admitted_items += 1
+                attempt_metadata = {"file_size": plan_item.get("file_size"), "mtime_ns": plan_item.get("mtime_ns")}
+                if planned_source_item is None:
+                    planned_source_item = _get_or_create_source_item(db, root=root, run=run,
+                        relative_path=rel, metadata=attempt_metadata, content_hash=None)
+                if planned_source_item.media_id is not None and (is_import_work_item or is_retry_source_work_item):
+                    # Persist before hash/copy and before legacy ledger versions
+                    # are updated. Hash evidence describes the source; media_id
+                    # and downstream statuses still describe the old app copy.
+                    planned_source_item.metadata_json = {**(planned_source_item.metadata_json or {}),
+                        "current_source_version_pending": True}
+                start_attempt(planned_source_item, run_id=run.id, metadata=attempt_metadata, now=_utcnow(), db=db)
+                _record_run_item(db, run=run, item=planned_source_item, state="attempt_in_progress",
+                    action="attempt", reason=None, eligible=False,
+                    current_metadata={**attempt_metadata, "attempt_started_at": _utcnow().isoformat(),
+                        "work_item_kind": work_item_kind, "safe_label": plan_item.get("safe_label")})
+                _update_execute_summary(run, scheduler_cursor=int(plan_item.get("scheduler_cursor_after") or 0),
+                    next_plan_index=processed_plan_items, admitted_source_item_id=planned_source_item.id)
+                db.commit()
+
             if is_followup_work_item:
                 metadata = {
                     "file_size": plan_item.get("file_size"),
@@ -2260,7 +2325,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 try:
                     source_file = _safe_source_file(root_path, relative_path)
                     rel, preflight_reason = _relative_identity_and_preflight_reason(root_path, source_file)
-                    if not source_file.exists() or not source_file.is_file():
+                    if not source_io("is_file", str(source_file)):
                         item_failure_reason = "source_missing"
                     else:
                         metadata = _metadata_for_path(source_file, follow_symlinks=not bool(preflight_reason))
@@ -2291,27 +2356,42 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                             except (TypeError, ValueError):
                                 item_failure_reason = "content_changed_after_plan"
                         should_verify_content = is_import_work_item or is_retry_source_work_item or bool(expected_hash)
+                        stored_hash = _stored_hash_for_version(planned_source_item, metadata)
+                        if (item_failure_reason is None and stored_hash
+                                and planned_source_item.media_id is None):
+                            linked = db.query(Media).filter(Media.hash == stored_hash).first()
+                            if linked is not None and lifecycle_app_media_exists(linked, storage_root=settings.STORAGE_ROOT):
+                                _bind_existing_media(db, run=run, item=planned_source_item, media=linked,
+                                    metadata={**metadata, "safe_label": plan_item.get("safe_label"),
+                                        "stored_hash_version_verified": True})
+                                if not source_item_downstream_complete(planned_source_item):
+                                    _append_downstream_target(linked.id, planned_source_item.id)
+                                counts["skipped_existing_media"] += 1
+                                processed_items += 1
+                                processed_plan_items += 1
+                                db.commit()
+                                continue
                         if item_failure_reason is None and should_verify_content:
                             current_hash, hash_reason = _calculate_manual_plan_file_hash(
                                 source_file,
                                 max(1, int(settings.SCAN_FILE_OPEN_TIMEOUT_SECONDS)),
                             )
                             item_failure_reason = _manual_public_reason_code(hash_reason)
+                            if getattr(hash_reason, "diagnostic", None):
+                                metadata["private_diagnostic"] = dict(hash_reason.diagnostic)
                             if item_failure_reason is None:
                                 if expected_hash and current_hash and current_hash != expected_hash:
                                     item_failure_reason = "content_changed_after_plan"
                                 current_content_hash = current_hash or current_content_hash
                 except ManualSyncExecuteError as exc:
                     item_failure_reason = _manual_public_reason_code(exc.code)
-                except OSError:
+                except OSError as exc:
                     item_failure_reason = "read_error"
+                    metadata["private_diagnostic"] = getattr(exc, "diagnostic", None) or exception_detail(exc, stage="source_metadata")
+                    item_failure_reason = metadata["private_diagnostic"].get("reason") or item_failure_reason
                 except Exception as exc:
-                    item_failure_reason = _manual_public_reason_code(str(exc))
-            if (
-                bool(plan_item.get("cloud_placeholder_before_hydration"))
-                and item_failure_reason in {"read_error", "read_timeout", "stat_error"}
-            ):
-                item_failure_reason = "cloud_hydration_failed"
+                    item_failure_reason = "read_error"
+                    metadata["private_diagnostic"] = exception_detail(exc, stage="source_validation")
 
             if can_execute is False or work_item_kind in {"BROKEN_STATE", "NOOP_DIAGNOSTIC", "PLACEHOLDER"}:
                 diagnostic_reason = reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or work_item_kind.lower()
@@ -2336,8 +2416,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
 
             if planned_source_item is not None:
                 item = planned_source_item
-                if current_content_hash and not item.content_hash:
-                    item.content_hash = str(current_content_hash)
+                if current_content_hash and not item_failure_reason and not is_followup_work_item:
+                    _remember_content_hash(item, current_content_hash, metadata)
             else:
                 item = _get_or_create_source_item(
                     db,
@@ -2348,6 +2428,10 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     content_hash=str(current_content_hash) if current_content_hash else None,
                 )
 
+            diagnostic = metadata.get("private_diagnostic")
+            if diagnostic is not None:
+                diagnostic.update(source_item_id=item.id, run_id=run.id, source_root_id=root.id,
+                                  file_version={key: metadata.get(key) for key in ("file_size", "mtime_ns")})
             if item_failure_reason:
                 stable_skip_state = _manual_sync_execute_skip_state_for_reason(item_failure_reason)
                 if stable_skip_state:
@@ -2383,7 +2467,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 processed_plan_items += 1
                 run.failed_items = int(counts["failed"])
                 db.commit()
-                stop_reason = _budget_stop_reason(
+                stop_reason = ("execution_dependency_unavailable" if (metadata.get("private_diagnostic") or {}).get("shared_dependency") else None) or _budget_stop_reason(
                     started_at=run.started_at or _utcnow(),
                     processed_items=processed_items,
                     failed_items=item_failure_count,
@@ -2449,6 +2533,19 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     break
                 continue
 
+            existing_media = None
+            if current_content_hash:
+                existing_media = db.query(Media).filter(Media.hash == str(current_content_hash)).first()
+            if existing_media is not None and lifecycle_app_media_exists(existing_media, storage_root=settings.STORAGE_ROOT):
+                _bind_existing_media(db, run=run, item=item, media=existing_media, metadata=metadata)
+                if not source_item_downstream_complete(item):
+                    _append_downstream_target(existing_media.id, item.id)
+                counts["skipped_existing_media"] += 1
+                processed_items += 1
+                processed_plan_items += 1
+                db.commit()
+                continue
+
             if is_retry_source_work_item:
                 _mark_retry_source_ready_for_import(
                     db,
@@ -2458,12 +2555,10 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     content_hash=str(current_content_hash) if current_content_hash else None,
                     previous_reason=reason or str(plan_item.get("lifecycle_reason_code") or "").strip() or None,
                 )
-                counts["retry_source_ready_for_import"] += 1
-                processed_items += 1
-                processed_plan_items += 1
-                consecutive_failures = 0
+                counts["retry_source_recovered"] += 1
+                is_import_work_item = True
+                state = "import_planned"
                 db.commit()
-                continue
 
             if not is_import_work_item:
                 _mark_item_skipped(db, run=run, item=item, state=state, reason=reason, metadata=metadata)
@@ -2486,7 +2581,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 )
                 db.commit()
                 try:
-                    media_id, bytes_copied = _copy_and_import_media(db, source_file)
+                    media_id, bytes_copied = _copy_and_import_media(db, source_file, expected_hash=current_content_hash)
                 except MediaCommittedError as exc:
                     from .media_commit_boundary import recover_committed_media
                     saved = recover_committed_media(db, exc, expected_hash=current_content_hash)
@@ -2509,6 +2604,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 item.ai_tagging_status = "pending"
                 item.localization_status = "waiting_ai_tags"
                 item.last_imported_at = _utcnow()
+                finish_attempt(item, now=_utcnow())
                 _append_downstream_target(media_id, item.id)
                 _record_run_item(
                     db,
@@ -2530,7 +2626,8 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 db.commit()
             except HTTPException as exc:
                 db.rollback()
-                duplicate = exc.status_code == 409
+                duplicate_media = db.query(Media).filter(Media.hash == str(current_content_hash)).first() if current_content_hash and exc.status_code == 409 else None
+                duplicate = duplicate_media is not None and lifecycle_app_media_exists(duplicate_media, storage_root=settings.STORAGE_ROOT)
                 item = _get_or_create_source_item(
                     db,
                     root=root,
@@ -2539,24 +2636,19 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     metadata=metadata,
                     content_hash=None,
                 )
-                item.sync_state = "skipped_existing_media" if duplicate else "failed"
-                item.import_status = "deferred" if duplicate else "failed"
-                item.classification_status = "deferred"
-                item.ai_tagging_status = "deferred"
-                item.localization_status = "deferred"
-                item.failure_reason = None if duplicate else (exc.detail.get('code') if isinstance(exc, MediaCommittedError) else "import_failed")
-                item.deferred_reason = "existing_media_hash" if duplicate else None
-                _record_run_item(
-                    db,
-                    run=run,
-                    item=item,
-                    state=item.sync_state,
-                    action="skip" if duplicate else "import",
-                    reason="existing_media_hash" if duplicate else "import_failed",
-                    eligible=False,
-                    current_metadata={**metadata, "safe_label": plan_item.get("safe_label")},
-                )
+                if duplicate:
+                    _bind_existing_media(db, run=run, item=item, media=duplicate_media, metadata=metadata)
+                    if not source_item_downstream_complete(item):
+                        _append_downstream_target(duplicate_media.id, item.id)
+                else:
+                    failure_metadata = {**metadata, "safe_label": plan_item.get("safe_label"),
+                        "private_diagnostic": exception_detail(exc, stage="import")}
+                    _mark_item_failed(db, run=run, item=item,
+                        reason=exc.detail.get('code') if isinstance(exc, MediaCommittedError) else "import_failed",
+                        metadata=failure_metadata)
                 counts[item.sync_state] += 1
+                if not duplicate:
+                    counts[item.failure_reason or "import_failed"] += 1
                 if duplicate:
                     processed_items += 1
                     processed_plan_items += 1
@@ -2569,6 +2661,9 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 db.commit()
             except Exception as exc:
                 db.rollback()
+                if isinstance(exc, DBAPIError):
+                    raise
+                shared_failure = _shared_storage_failure(exc)
                 item = _get_or_create_source_item(
                     db,
                     root=root,
@@ -2577,28 +2672,24 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     metadata=metadata,
                     content_hash=None,
                 )
-                item.sync_state = "failed"
-                item.import_status = "failed"
-                item.classification_status = "deferred"
-                item.ai_tagging_status = "deferred"
-                item.localization_status = "deferred"
-                item.failure_reason = "import_failed"
-                _record_run_item(
-                    db,
-                    run=run,
-                    item=item,
-                    state="failed",
-                    action="import",
-                    reason="import_failed",
-                    eligible=False,
-                    current_metadata={**metadata, "safe_label": plan_item.get("safe_label"), "error_code": exc.__class__.__name__},
-                )
+                copy_diagnostic = getattr(exc, "diagnostic", None)
+                failure_reason = (copy_diagnostic or {}).get("reason") or (
+                    "read_timeout" if (copy_diagnostic or {}).get("worker_status") == "timeout" else
+                    "read_error" if (copy_diagnostic or {}).get("stage") in {"source_copy", "source_stat"} else "import_failed")
+                _mark_item_failed(db, run=run, item=item, reason=failure_reason,
+                    metadata={**metadata, "safe_label": plan_item.get("safe_label"),
+                        "error_code": exc.__class__.__name__,
+                        "private_diagnostic": copy_diagnostic or exception_detail(exc, stage="copy_import")})
                 counts["failed"] += 1
+                counts[item.failure_reason] += 1
                 item_failure_count += 1
                 consecutive_failures += 1
                 processed_items += 1
                 processed_plan_items += 1
                 db.commit()
+                if shared_failure:
+                    stop_reason = shared_failure
+                    break
             stop_reason = _budget_stop_reason(
                 started_at=run.started_at or _utcnow(),
                 processed_items=processed_items,
@@ -2645,7 +2736,17 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             )
             counts["deferred_unprocessed"] += materialized_count
         if unprocessed_retry_source_count:
+            for pending in remaining_actionable_plan_items:
+                if pending.get("work_item_kind") != "RETRY_SOURCE":
+                    continue
+                pending_item = db.get(DynamicSourceItem, int(pending.get("source_item_id") or 0))
+                if pending_item is not None:
+                    _record_run_item(db, run=run, item=pending_item, state="not_executed", action="defer",
+                        reason=stop_reason, eligible=False, current_metadata={"work_item_kind": "RETRY_SOURCE"})
             counts["retry_source_not_deferred"] += unprocessed_retry_source_count
+        _update_execute_summary(run, next_plan_index=processed_plan_items,
+            remaining_source_item_ids=[p.get("source_item_id") for p in remaining_actionable_plan_items],
+            remaining_work_reason=stop_reason)
         if skipped_or_recorded_diagnostic_count:
             counts["diagnostic_not_deferred"] += skipped_or_recorded_diagnostic_count
         import_status = stop_reason or ("cancelled" if run.status == "cancelled" else "completed")
@@ -3228,6 +3329,7 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
             unprocessed_count=unprocessed_count,
             unprocessed_import_planned_count=unprocessed_import_planned_count,
             localization_incomplete=localization_incomplete,
+            downstream_incomplete_count=sum(not source_item_downstream_complete(_target_source_item(target)) for target in downstream_targets),
             stopped_by=stop_reason,
             import_stopped_by=import_stop_reason,
         )
@@ -3299,9 +3401,13 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
         failed = db.get(DynamicSyncRun, run_id)
         if failed:
             failed.status = "failed"
-            failed.error_message = str(exc)[:1000]
+            failure_code = "systemic_database_unavailable" if isinstance(exc, DBAPIError) else "manual_sync_execution_error"
+            failed.error_message = failure_code
             failed.finished_at = _utcnow()
-            _update_execute_summary(failed, status="failed", error_code=exc.__class__.__name__)
+            _update_execute_summary(failed, status="failed", error_code=failure_code,
+                private_diagnostic=exception_detail(exc, stage="execute"),
+                next_plan_index=processed_plan_items,
+                remaining_work_reason=failure_code)
             db.commit()
             db.refresh(failed)
             return serialize_manual_sync_execute_run(failed)

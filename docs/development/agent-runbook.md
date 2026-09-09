@@ -384,7 +384,13 @@ For every feature phase, bug fix, or UI-affecting change, the agent must perform
 
 **Required standard:**
 
-1. Prefer Playwright with system Edge on Windows.
+1. Deterministic browser and launcher validation defaults to CDP on Windows:
+   connect to an agent-owned system Edge or Electron window, with debugging
+   bound to loopback only. Playwright may provide the CDP call layer. If CDP is
+   unavailable, record the concrete reason and use direct Playwright with system
+   Edge. Do not default to Computer Use or repeat known URL recognition failures.
+   Close only owned debugging windows/listeners afterwards and reopen the normal
+   launcher without extra arguments; preserve private user browser sessions.
 2. Do not rely only on API tests or unit tests when UI behavior is affected.
 3. Use a real running local server. **Agents must start a controlled test server themselves** (see "Agent-started test servers" section). Do not ask the user to start the server unless startup fails for a concrete reason.
 4. Use the actual app page, not only mocked DOM tests.

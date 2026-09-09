@@ -27,6 +27,30 @@ from backend.app.routes import health  # noqa: E402
 from backend.app.auth_middleware import AuthMiddleware  # noqa: E402
 
 
+def test_file_entrypoint_resolves_pinned_candidate_package_without_pythonpath(tmp_path):
+    """The launcher child has no pytest-added repository import path."""
+    script = """
+import runpy, sys
+from pathlib import Path
+from types import SimpleNamespace
+namespace = runpy.run_path(sys.argv[1])
+check = namespace['_pinned_candidate_worktree']
+check.__globals__['profile_file_is_local_ignored'] = lambda *args: True
+root = Path(sys.argv[2])
+config = SimpleNamespace(profile_data={'candidate_head': 'a'*40},
+    config_source='production_profile', profile_exists=True, repo_root=root,
+    env={'VIOLET_CANONICAL_REPO_ROOT': str(root)}, profile_path=root/'profile.json')
+assert check(config) is False
+print('candidate_package_resolved_and_nonrepo_rejected')
+"""
+    result = subprocess.run(
+        [sys.executable, '-I', '-c', script, str(ROOT/'scripts/violet_production_control.py'), str(tmp_path)],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert 'candidate_package_resolved_and_nonrepo_rejected' in result.stdout
+
+
 def _write_fake_repo(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
     repo = tmp_path / "repo"
     repo.mkdir()

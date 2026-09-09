@@ -95,28 +95,48 @@ def _hash_file_in_subprocess(file_path: str, conn):
                 hash_md5.update(chunk)
         conn.send(("ok", hash_md5.hexdigest()))
     except Exception as e:
-        conn.send(("error", str(e)))
+        from .source_read_diagnostics import exception_detail
+        conn.send(("error", exception_detail(e, stage="source_hash")))
     finally:
         conn.close()
 
 
 def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tuple:
+    """Return a hash or stable string reason carrying private worker diagnostics."""
+    from .source_read_diagnostics import SourceReadReason
+    status, value = _calculate_file_hash_result(file_path, timeout_sec)
+    if status == "ok":
+        return status, value
+    return status, SourceReadReason("read_timeout" if status == "timeout" else "read_error", value)
+
+
+def _calculate_file_hash_result(file_path: Path, timeout_sec: int) -> tuple:
     """Calculate file hash with hard timeout via subprocess.
 
     Uses multiprocessing.Pipe for reliable result delivery — unlike Queue,
     Pipe.recv() is synchronous once the child has exited and closed its end,
     so there is no feeder-thread race condition.
 
-    Returns ("ok", hash_str) on success, ("timeout", msg) on timeout,
-    or ("error", msg) on read error.
+    The private result is a hash on success or structured diagnostics on failure.
     """
+    import time
+    from .source_read_diagnostics import worker_detail
+    started = time.monotonic()
     parent_conn, child_conn = multiprocessing.Pipe(duplex=False)
     proc = multiprocessing.Process(
         target=_hash_file_in_subprocess,
         args=(str(file_path), child_conn),
         daemon=True,
     )
-    proc.start()
+    try:
+        proc.start()
+    except Exception as exc:
+        from .source_read_diagnostics import exception_detail
+        parent_conn.close()
+        child_conn.close()
+        return ("error", worker_detail({**exception_detail(exc, stage="hash_worker_start"),
+            "shared_dependency": "source_worker_start"}, stage="hash_worker_start", status="start_failed",
+            started=started, timeout=timeout_sec, exitcode=None))
     child_conn.close()
 
     proc.join(timeout=timeout_sec)
@@ -128,22 +148,31 @@ def _calculate_file_hash_with_timeout(file_path: Path, timeout_sec: int) -> tupl
             proc.kill()
             proc.join(timeout=2)
         parent_conn.close()
-        return ("timeout", f"hash timed out after {timeout_sec}s")
+        return ("timeout", worker_detail(None, stage="source_hash", status="timeout", started=started, timeout=timeout_sec, exitcode=proc.exitcode))
 
     try:
         if parent_conn.poll(timeout=2.0):
             status, value = parent_conn.recv()
             parent_conn.close()
+            if status != "ok":
+                value = worker_detail(value, stage="source_hash", status=status, started=started, timeout=timeout_sec, exitcode=proc.exitcode)
             return (status, value)
         else:
             parent_conn.close()
-            return ("error", f"subprocess exited but sent no result (code={proc.exitcode})")
+            return ("error", worker_detail(None, stage="source_hash", status="no_result", started=started, timeout=timeout_sec, exitcode=proc.exitcode))
     except (EOFError, OSError):
         parent_conn.close()
-        return ("error", f"subprocess exited unexpectedly (code={proc.exitcode})")
+        return ("error", worker_detail(None, stage="source_hash", status="no_result", started=started, timeout=timeout_sec, exitcode=proc.exitcode))
 
 
 def _is_cloud_only(file_path: Path) -> bool:
+    from .bounded_source_io import _local, source_io
+    if getattr(_local, "worker", None) is not None:
+        return source_io("cloud_only", str(file_path))
+    return _is_cloud_only_unbounded(file_path)
+
+
+def _is_cloud_only_unbounded(file_path: Path) -> bool:
     """Check if a file is cloud-only (not locally hydrated) on Windows.
 
     Uses the shared Source Ingestion Gate, which delegates to Cloud Files
@@ -180,7 +209,8 @@ def validate_scan_paths(paths: List[Path]) -> Optional[str]:
 
     for p in paths:
         try:
-            resolved = p.resolve()
+            from .bounded_source_io import source_resolve
+            resolved = source_resolve(p)
         except OSError:
             continue
         for b in blocked:
@@ -193,6 +223,13 @@ def validate_scan_paths(paths: List[Path]) -> Optional[str]:
 
 
 def _is_scannable_file(file_path: Path, *, hydrated_only: bool = True) -> str | None:
+    from .bounded_source_io import _local, source_io
+    if getattr(_local, "worker", None) is not None:
+        return source_io("scannable", str(file_path), hydrated_only, settings.SCAN_MAX_FILE_SIZE_MB * 1024 * 1024)
+    return _is_scannable_file_unbounded(file_path, hydrated_only=hydrated_only)
+
+
+def _is_scannable_file_unbounded(file_path: Path, *, hydrated_only: bool = True, max_bytes=None) -> str | None:
     """Return None if the file is scannable, or a skip-reason string."""
     if file_path.is_symlink():
         return "symlink"
@@ -220,7 +257,7 @@ def _is_scannable_file(file_path: Path, *, hydrated_only: bool = True) -> str | 
     if size == 0:
         return "zero_byte_file"
 
-    max_bytes = settings.SCAN_MAX_FILE_SIZE_MB * 1024 * 1024
+    max_bytes = settings.SCAN_MAX_FILE_SIZE_MB * 1024 * 1024 if max_bytes is None else max_bytes
     if size > max_bytes:
         return "too_large"
 
@@ -361,7 +398,7 @@ def scan_and_import(
                     continue
                 elif hash_status == "error":
                     stats["skipped_unreadable"] += 1
-                    _record_failure(stats, str(file_path), f"read error: {hash_value}")
+                    _record_failure(stats, str(file_path), hash_value)
                     _maybe_flush_progress()
                     continue
                 file_hash = hash_value
@@ -465,7 +502,10 @@ def scan_and_import(
 
 def _record_failure(stats: Dict[str, Any], path: str, reason: str):
     if len(stats["failed_files"]) < MAX_FAILED_REPORT:
-        stats["failed_files"].append({"path": path, "reason": reason})
+        row = {"path": path, "reason": str(reason)}
+        if getattr(reason, "diagnostic", None):
+            row["private_diagnostic"] = reason.diagnostic
+        stats["failed_files"].append(row)
 
 
 def preflight_analyze(

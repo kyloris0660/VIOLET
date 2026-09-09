@@ -82,6 +82,11 @@ there. The detailed operating runbook lives at
 - For UI/runtime changes, start a controlled test server and perform real
   browser validation with system Edge/Playwright. Do not substitute a mocked DOM
   for the user flow.
+- Deterministic browser and launcher validation defaults to CDP: connect to an
+  agent-owned system Edge or Electron window on loopback only, using Playwright
+  as the call layer when useful. Use direct Playwright if CDP is unavailable;
+  record the concrete fallback. Close owned debug listeners after validation,
+  reopen the normal launcher without debug arguments, and preserve user browsers.
 - Report exact commands, passed/failed/skipped counts, warnings, and unavailable
   gates truthfully. Local validation is not GitHub CI.
 - For non-trivial bug fixes, identify the root cause, audit the bounded

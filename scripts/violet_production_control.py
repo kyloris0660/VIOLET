@@ -28,6 +28,10 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 ROOT = Path(__file__).resolve().parents[1]
+# Electron invokes this file by absolute path from an arbitrary working directory.
+# Resolve our own package before a pinned worktree performs its behavior check.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 STATE_DIR = ROOT / ".local_manifests" / "production_launcher"
 STATE_FILE = STATE_DIR / "violet-production-launcher-state.json"
 LOG_FILE = STATE_DIR / "violet-production.log"
