@@ -1,4 +1,4 @@
-"""Task33 real API/update/plan/session and physical I/O consumer regressions."""
+"""Task33/36 real recovery, Media lifecycle and physical I/O regressions."""
 
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -22,6 +22,277 @@ from app.models import DynamicSyncRun
 from app.services.manual_sync_recovery import recovery, record_failure, start_attempt, disposition
 from app.services.manual_sync_lifecycle import source_item_downstream_complete
 from app.routes.admin import manual_sync_recovery as routes
+
+
+def _task36_models(monkeypatch):
+    """Deterministic model adapters; real executor, media import and localization."""
+    from app.models import Tag, blombooru_media_tags
+    monkeypatch.setenv('CONTENT_CLASSIFICATION_ENABLED', 'true')
+    monkeypatch.setenv('CONTENT_CLASSIFICATION_METHOD', 'clip')
+    monkeypatch.setenv('AI_TAGGING_ENABLED', 'true')
+    monkeypatch.setattr(execute_service, '_ensure_clip_model_cache_only', lambda: (True, None))
+    calls = []
+    def classify(session, media_id):
+        session.get(Media, media_id).content_class = 'anime'
+        calls.append(('classification', media_id))
+        return {'media_id':media_id, 'content_class':'anime', 'method':'clip'}
+    def tag(session, media_id):
+        row = session.query(Tag).filter_by(name='1girl').first()
+        if row is None:
+            row = Tag(name='1girl', category='general')
+            session.add(row)
+            session.flush()
+        session.execute(blombooru_media_tags.insert().values(media_id=media_id, tag_id=row.id,
+            source='ai_wd', confidence=.95, is_locked=False, is_suggestion=False))
+        calls.append(('wd', media_id))
+        return {'media_id':media_id, 'tags_added':1, 'suggestions_added':0}
+    monkeypatch.setattr(execute_service, '_classify_imported_media', classify)
+    monkeypatch.setattr(execute_service, '_ai_tag_imported_media', tag)
+    return calls
+
+
+def _task36_existing(db, tmp_path, monkeypatch, *, legacy=False):
+    from app.models import Tag, TagTranslation, blombooru_media_tags
+    source, root, storage = setup_import(db, tmp_path, monkeypatch)
+    path = source/'changing.png'
+    _write_png(path, (10, 20, 30))
+    _write_png(storage/'media/original/old.png', (10, 20, 30))
+    media = Media(filename='old.png', path='media/original/old.png', hash=calculate_file_hash(path),
+        file_size=path.stat().st_size, file_type='image', content_class='anime')
+    tag = Tag(name='task36_preserved', category='general')
+    db.add_all([media, tag])
+    db.flush()
+    db.execute(blombooru_media_tags.insert().values(media_id=media.id, tag_id=tag.id,
+        source='ai_wd', confidence=.96, is_locked=True, is_suggestion=False))
+    db.add(TagTranslation(tag_id=tag.id, canonical_name=tag.name, language='zh-CN', display_name='preserved', source='manual'))
+    items = []
+    for name in ['changing.png', 'independent.png']:
+        _write_png(source/name, (10, 20, 30))
+        observed = planner._metadata_for_path(source/name)
+        item = DynamicSourceItem(source_root_id=root.id, relative_path=name,
+            relative_path_hash=planner._hash_text(name), file_size=observed['file_size'], mtime_ns=observed['mtime_ns'],
+            media_id=media.id, content_hash=media.hash, import_status='imported', sync_state='imported',
+            classification_status='classified', ai_tagging_status='ai_tagged', localization_status='localized')
+        db.add(item)
+        if not legacy:
+            execute_service._remember_content_hash(item, media.hash, observed)
+        items.append(item)
+    db.commit()
+    return source, root, storage, items[0], items[1], media, _task36_models(monkeypatch)
+
+
+def _task36_media_facts(session, media_id, storage):
+    from app.models import TagTranslation, blombooru_media_tags
+    media = session.get(Media, media_id)
+    relations = session.execute(blombooru_media_tags.select().where(blombooru_media_tags.c.media_id==media_id)).all()
+    return (media.hash, media.path, media.content_class, (storage/media.path).read_bytes(),
+        [tuple(row) for row in relations],
+        [(row.canonical_name, row.display_name, row.source) for row in session.query(TagTranslation).order_by(TagTranslation.id)])
+
+
+@pytest.mark.parametrize('discovery', ['update', 'direct_legacy'])
+@pytest.mark.parametrize('failure', ['copy', 'decode', 'http'])
+def test_existing_media_downstream_survives_post_hash_failure(db, tmp_path, monkeypatch, discovery, failure):
+    from fastapi import HTTPException
+    from app.utils import bounded_source_copy
+    source, root, storage, item, donor, old, calls = _task36_existing(db, tmp_path, monkeypatch, legacy=discovery=='direct_legacy')
+    source_id, old_id, donor_id = item.id, old.id, donor.id
+    facts = _task36_media_facts(db, old_id, storage)
+    path = source/'changing.png'
+    if failure=='decode':
+        path.write_bytes(b'not a decodable image for task36')
+    else:
+        _write_png(path, (90, 80, 70))
+    _write_png(source/'healthy.png', (50, 60, 70))
+    if discovery=='update':
+        planner.run_update_check(db, root_ids=[root.id])
+    real_copy = bounded_source_copy.copy_source
+    real_import = execute_service.process_and_save_media
+    def copy(source_file, destination, **kwargs):
+        if source_file.name=='changing.png' and failure=='copy':
+            raise bounded_source_copy.SourceCopyError({'stage':'source_copy', 'reason':'read_error', 'errno':5})
+        return real_copy(source_file, destination, **kwargs)
+    def save(**kwargs):
+        if kwargs['unique_filename'].startswith('changing') and failure=='http':
+            raise HTTPException(status_code=422, detail='task36 nonduplicate import error')
+        return real_import(**kwargs)
+    monkeypatch.setattr(bounded_source_copy, 'copy_source', copy)
+    monkeypatch.setattr(execute_service, 'process_and_save_media', save)
+    run, plan = enqueue(db, root, 5)
+    assert next(row for row in plan['private_details']['items'] if row.get('source_item_id')==source_id)['work_item_kind']=='RETRY_SOURCE'
+    result = execute_manual_sync_run(db, run_id=run.id)['manual_sync_execute']
+    assert result['outcome_counts']['failed']==1 and result['outcome_counts']['imported']==1
+    assert result['stopped_by'] is None
+    with Session(db.get_bind()) as fresh:
+        current = fresh.get(DynamicSourceItem, source_id)
+        assert current.media_id==old_id and source_item_downstream_complete(current)
+        assert current.import_status=='failed' and current.failure_reason
+        assert current.metadata_json['current_source_version_pending'] is True
+        assert current.metadata_json['content_hash_version']['content_hash']==calculate_file_hash(path)
+        assert current.content_hash!=old.hash
+        assert recovery(current)['version_failure_run_ids']==[run.id]
+        failed = fresh.query(DynamicSyncRunItem).filter_by(sync_run_id=run.id, source_item_id=source_id).one()
+        assert failed.item_state=='failed' and failed.reason==current.failure_reason
+        assert failed.current_metadata_json['private_diagnostic']['stage'] in {'source_copy','copied_image_decode','import'}
+        assert _task36_media_facts(fresh, old_id, storage)==facts
+        assert source_item_downstream_complete(fresh.get(DynamicSourceItem, donor_id))
+        healthy = fresh.query(DynamicSourceItem).filter_by(relative_path='healthy.png').one()
+        assert source_item_downstream_complete(healthy)
+        assert calls==[('classification', healthy.media_id), ('wd', healthy.media_id)]
+        assert planner.classify_source_item(current).work_item_kind.value=='RETRY_SOURCE'
+        with client_for(fresh) as client:
+            action(client, source_id, 'defer')
+        planner.run_update_check(fresh, root_ids=[root.id])
+        assert source_item_downstream_complete(current) and disposition(current, planner._metadata_for_path(path))=='deferred_diagnosis'
+
+
+@pytest.mark.parametrize('discovery', ['update', 'direct_legacy'])
+@pytest.mark.parametrize('mode', ['new', 'existing_complete', 'existing_gap', 'existing_localization_gap',
+    'http409_complete', 'http409_gap', 'http409_localization_gap', 'post_commit'])
+def test_existing_media_switch_or_deduplicate_completes_target(db, tmp_path, monkeypatch, discovery, mode):
+    from fastapi import HTTPException
+    from app.models import Tag, blombooru_media_tags
+    from app.services.media_commit_boundary import MediaCommittedError
+    source, root, storage, item, donor, old, calls = _task36_existing(db, tmp_path, monkeypatch, legacy=discovery=='direct_legacy')
+    source_id, old_id, donor_id = item.id, old.id, donor.id
+    facts = _task36_media_facts(db, old_id, storage)
+    _write_png(source/'changing.png', (90, 80, 70))
+    target_ids = []
+    def create_target():
+        destination = storage/'media/original/existing-target.png'
+        destination.write_bytes((source/'changing.png').read_bytes())
+        target = Media(filename=destination.name, path='media/original/existing-target.png',
+            file_size=destination.stat().st_size, hash=calculate_file_hash(destination), file_type='image', content_class='anime')
+        db.add(target)
+        db.flush()
+        target_ids.append(target.id)
+        # An independent source proves the target's classification is already done.
+        target_source = DynamicSourceItem(source_root_id=root.id, relative_path='target-support.png',
+            relative_path_hash=planner._hash_text('target-support.png'), media_id=target.id,
+            content_hash=target.hash, sync_state='imported', import_status='imported',
+            classification_status='classified', ai_tagging_status='ai_tagged' if mode.endswith(('complete','localization_gap')) else 'pending',
+            localization_status='localized' if mode.endswith('complete') else 'waiting_ai_tags')
+        db.add(target_source)
+        if mode.endswith(('complete','localization_gap')):
+            tag=db.query(Tag).filter_by(name='task36_preserved').one()
+            db.execute(blombooru_media_tags.insert().values(media_id=target.id, tag_id=tag.id,
+                source='ai_wd', confidence=.96, is_locked=True, is_suggestion=False))
+        db.commit()
+    if discovery=='update':planner.run_update_check(db, root_ids=[root.id])
+    run, _ = enqueue(db, root, 5)
+    # Populate after planning to isolate this source's binding decision from
+    # the independent target source's own future FOLLOWUP schedule.
+    if mode.startswith('existing_'):create_target()
+    real_import = execute_service.process_and_save_media
+    def save(**kwargs):
+        if mode.startswith('http409_'):
+            create_target()
+            raise HTTPException(status_code=409, detail='concurrent matching Media')
+        result=real_import(**kwargs)
+        if mode=='post_commit':
+            raise MediaCommittedError(result.id, file_hash=result.hash, path=result.path)
+        return result
+    monkeypatch.setattr(execute_service, 'process_and_save_media', save)
+    result = execute_manual_sync_run(db, run_id=run.id)['manual_sync_execute']
+    with Session(db.get_bind()) as fresh:
+        current=fresh.get(DynamicSourceItem, source_id)
+        assert current.media_id!=old_id and source_item_downstream_complete(current)
+        assert current.import_status=='imported' and current.failure_reason is None
+        assert current.metadata_json['current_source_version_pending'] is False
+        assert current.content_hash==fresh.get(Media, current.media_id).hash==calculate_file_hash(source/'changing.png')
+        assert (storage/fresh.get(Media, current.media_id).path).is_file()
+        assert recovery(current)['disposition']=='complete'
+        assert _task36_media_facts(fresh, old_id, storage)==facts
+        assert source_item_downstream_complete(fresh.get(DynamicSourceItem, donor_id))
+        if mode in {'new', 'post_commit'}:
+            assert calls==[('classification',current.media_id), ('wd',current.media_id)]
+            assert result['outcome_counts']['imported']==1
+        else:
+            assert current.media_id==target_ids[0]
+            assert calls==([] if mode.endswith(('complete','localization_gap')) else [('wd',current.media_id)])
+            assert result['outcome_counts']['skipped_existing_media']==1
+        assert result['outcome_counts'].get('failed',0)==0
+        assert result['localization']['llm_called'] is False
+
+
+@pytest.mark.parametrize('failure', ['copy', 'http'])
+def test_first_import_failure_has_no_completed_media(db, tmp_path, monkeypatch, failure):
+    from fastapi import HTTPException
+    from app.utils import bounded_source_copy
+    source, root, _ = setup_import(db, tmp_path, monkeypatch)
+    _write_png(source/'new.png')
+    if failure=='copy':
+        def fail(*args, **kwargs):raise OSError('task36 first copy error')
+        monkeypatch.setattr(bounded_source_copy, 'copy_source', fail)
+    else:
+        def fail(**kwargs):raise HTTPException(status_code=422, detail='task36 first HTTP error')
+        monkeypatch.setattr(execute_service, 'process_and_save_media', fail)
+    run, _ = enqueue(db, root, 5)
+    result=execute_manual_sync_run(db, run_id=run.id)['manual_sync_execute']
+    with Session(db.get_bind()) as fresh:
+        item=fresh.query(DynamicSourceItem).one()
+        assert item.media_id is None and item.import_status=='failed'
+        assert not source_item_downstream_complete(item)
+        assert item.classification_status==item.ai_tagging_status=='deferred'
+        assert item.localization_status=='blocked_import_failed'
+        assert result['outcome_counts']['failed']==1
+
+
+def test_existing_followup_without_source_hash_executes_only_missing_stage(db, tmp_path, monkeypatch):
+    source, root, storage, item, donor, old, calls = _task36_existing(db, tmp_path, monkeypatch)
+    item.content_hash=None
+    item.localization_status='waiting_localization'
+    db.commit()
+    # Source validation must be irrelevant to the already available app copy.
+    def forbidden(*args, **kwargs):raise AssertionError('FOLLOWUP source hash access')
+    monkeypatch.setattr(execute_service, '_calculate_manual_plan_file_hash', forbidden)
+    run, plan=enqueue(db, root, 5)
+    assert plan['private_details']['items'][0]['work_item_kind']=='FOLLOWUP'
+    execute_manual_sync_run(db, run_id=run.id)
+    with Session(db.get_bind()) as fresh:
+        assert source_item_downstream_complete(fresh.get(DynamicSourceItem,item.id))
+        assert fresh.get(DynamicSourceItem,item.id).media_id==old.id
+    assert calls==[]
+
+
+@pytest.mark.parametrize('discovery', ['update', 'direct_legacy'])
+def test_existing_media_copy_precommit_interrupt_recovers_in_new_session(db, tmp_path, monkeypatch, discovery):
+    from datetime import timedelta
+    from app.utils import bounded_source_copy
+    source, root, storage, item, donor, old, calls = _task36_existing(db, tmp_path, monkeypatch, legacy=discovery=='direct_legacy')
+    source_id, old_id = item.id, old.id
+    facts = _task36_media_facts(db, old_id, storage)
+    _write_png(source/'changing.png', (90, 80, 70))
+    if discovery=='update':planner.run_update_check(db, root_ids=[root.id])
+    class CopyInterrupted(BaseException):pass
+    def interrupt(*args, **kwargs):raise CopyInterrupted()
+    with monkeypatch.context() as patch:
+        patch.setattr(bounded_source_copy, 'copy_source', interrupt)
+        run, _ = enqueue(db, root, 5)
+        run_id = run.id
+        with pytest.raises(CopyInterrupted):execute_manual_sync_run(db, run_id=run_id)
+    db.rollback()
+    with Session(db.get_bind()) as fresh:
+        current = fresh.get(DynamicSourceItem, source_id)
+        assert current.media_id==old_id and source_item_downstream_complete(current)
+        assert current.import_status=='import_in_progress'
+        assert current.metadata_json['current_source_version_pending'] is True
+        assert recovery(current)['disposition']!='complete'
+        assert _task36_media_facts(fresh, old_id, storage)==facts
+        stale = fresh.get(DynamicSyncRun, run_id)
+        stale.started_at=datetime.now(timezone.utc)-timedelta(hours=1)
+        fresh.commit()
+        retry, plan = enqueue(fresh, fresh.get(type(root), root.id), 5)
+        assert fresh.get(DynamicSyncRun, run_id).status=='failed'
+        assert next(row for row in plan['private_details']['items'] if row['source_item_id']==source_id)['work_item_kind']=='RETRY_SOURCE'
+        result=execute_manual_sync_run(fresh, run_id=retry.id)['manual_sync_execute']
+        fresh.expire_all()
+        assert result['outcome_counts']['imported']==1
+        assert current.media_id!=old_id and source_item_downstream_complete(current)
+        assert current.metadata_json['current_source_version_pending'] is False
+        assert calls==[('classification', current.media_id), ('wd', current.media_id)]
+        assert result['localization']['llm_called'] is False
+        assert _task36_media_facts(fresh, old_id, storage)==facts
 
 
 def client_for(session):

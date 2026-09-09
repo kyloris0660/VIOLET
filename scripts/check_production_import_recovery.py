@@ -235,6 +235,11 @@ def check_task33_integration_cases(cases):
         "test_priority_resolve_worker_reaped_identity_retained_and_healthy_executes": 4,
         "test_priority_containment_failure_keeps_registered_identity": 1,
         "test_hash_real_consumers_persist_string_and_diagnostics_and_continue": 1,
+        "test_existing_media_downstream_survives_post_hash_failure": 6,
+        "test_existing_media_copy_precommit_interrupt_recovers_in_new_session": 2,
+        "test_existing_media_switch_or_deduplicate_completes_target": 16,
+        "test_first_import_failure_has_no_completed_media": 2,
+        "test_existing_followup_without_source_hash_executes_only_missing_stage": 1,
     }
     passed = [case for case in cases if not any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped'))]
     for name, count in required.items():

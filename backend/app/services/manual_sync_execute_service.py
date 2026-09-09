@@ -1376,8 +1376,17 @@ def _mark_item_failed(
 
 def _bind_existing_media(db, *, run, item, media, metadata):
     """Attach reliable content identity without overwriting curated Media/tags."""
-    donor = next((other for other in db.query(DynamicSourceItem).filter(
-        DynamicSourceItem.media_id == media.id).all() if source_item_downstream_complete(other)), None)
+    donors = db.query(DynamicSourceItem).filter(DynamicSourceItem.media_id == media.id).all()
+    # Reuse partial completion too: a target awaiting localization must not
+    # repeat classification or WD inference merely because another source binds.
+    completed_stages = (
+        ("classification_status", CLASSIFICATION_DONE_STATUSES),
+        ("ai_tagging_status", {"ai_tagged", "tagged", "tagged_reused", "ai_tagging_skipped_non_target", "skipped_non_target"}),
+        ("localization_status", {"localized", "completed", "skipped_no_localizable_tags", "skipped_no_new_tags",
+                                 "skipped_static_coverage", "localization_not_applicable_non_target"}),
+    )
+    donor = max(donors, key=lambda other: (source_item_downstream_complete(other),
+        sum(getattr(other, key) in statuses for key, statuses in completed_stages)), default=None)
     same_media = item.media_id == int(media.id)
     item.media_id = int(media.id)
     item.content_hash = media.hash
@@ -1426,28 +1435,18 @@ def _mark_retry_source_ready_for_import(
     previous_reason: Optional[str],
 ) -> None:
     now = _utcnow()
-    media_row: Optional[Media] = None
+    # Matching, usable Media were handled by _bind_existing_media above.
+    # Reading a new source version successfully does not switch its old Media.
     media_backed_retry_restored = False
-    if item.media_id is not None:
-        media_row = db.get(Media, int(item.media_id))
-        media_backed_retry_restored = bool(
-            media_row is not None
-            and lifecycle_app_media_exists(media_row, storage_root=settings.STORAGE_ROOT)
-        )
     item.source_status = "available"
-    if media_backed_retry_restored:
-        item.sync_state = "imported"
-        item.import_status = "imported"
-        next_work_item_kind = "NOOP_DIAGNOSTIC" if source_item_downstream_complete(item) else "FOLLOWUP"
-        retry_status = "media_backed_restored"
-    else:
-        item.sync_state = "new"
-        item.import_status = "pending"
+    item.sync_state = "new"
+    item.import_status = "pending"
+    if item.media_id is None:
         item.classification_status = "waiting_import"
         item.ai_tagging_status = "waiting_import"
         item.localization_status = "waiting_ai_tags"
-        next_work_item_kind = "IMPORT"
-        retry_status = "ready_for_import"
+    next_work_item_kind = "IMPORT"
+    retry_status = "ready_for_import"
     item.failure_reason = None
     item.deferred_reason = None
     item.file_size = metadata.get("file_size")
@@ -1504,9 +1503,10 @@ def _mark_item_import_in_progress(
 ) -> DynamicSyncRunItem:
     item.sync_state = "import_in_progress"
     item.import_status = "import_in_progress"
-    item.classification_status = "deferred"
-    item.ai_tagging_status = "deferred"
-    item.localization_status = "waiting_import"
+    if item.media_id is None:
+        item.classification_status = "deferred"
+        item.ai_tagging_status = "deferred"
+        item.localization_status = "waiting_import"
     item.failure_reason = None
     item.deferred_reason = None
     return _record_run_item(
@@ -1551,7 +1551,7 @@ def _materialize_deferred_unprocessed_items(
             item.import_status = "imported"
         else:
             item.import_status = "deferred"
-        if item.import_status != "imported":
+        if item.media_id is None:
             item.classification_status = "deferred"
             item.ai_tagging_status = "deferred"
             item.localization_status = "deferred"
@@ -2288,6 +2288,12 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                 if planned_source_item is None:
                     planned_source_item = _get_or_create_source_item(db, root=root, run=run,
                         relative_path=rel, metadata=attempt_metadata, content_hash=None)
+                if planned_source_item.media_id is not None and (is_import_work_item or is_retry_source_work_item):
+                    # Persist before hash/copy and before legacy ledger versions
+                    # are updated. Hash evidence describes the source; media_id
+                    # and downstream statuses still describe the old app copy.
+                    planned_source_item.metadata_json = {**(planned_source_item.metadata_json or {}),
+                        "current_source_version_pending": True}
                 start_attempt(planned_source_item, run_id=run.id, metadata=attempt_metadata, now=_utcnow(), db=db)
                 _record_run_item(db, run=run, item=planned_source_item, state="attempt_in_progress",
                     action="attempt", reason=None, eligible=False,
@@ -2630,31 +2636,16 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     metadata=metadata,
                     content_hash=None,
                 )
-                item.sync_state = "skipped_existing_media" if duplicate else "failed"
-                item.import_status = "deferred" if duplicate else "failed"
-                item.classification_status = "deferred"
-                item.ai_tagging_status = "deferred"
-                item.localization_status = "deferred"
-                item.failure_reason = None if duplicate else (exc.detail.get('code') if isinstance(exc, MediaCommittedError) else "import_failed")
-                item.deferred_reason = "existing_media_hash" if duplicate else None
-                _record_run_item(
-                    db,
-                    run=run,
-                    item=item,
-                    state=item.sync_state,
-                    action="skip" if duplicate else "import",
-                    reason="existing_media_hash" if duplicate else "import_failed",
-                    eligible=False,
-                    current_metadata={**metadata, "safe_label": plan_item.get("safe_label")},
-                )
                 if duplicate:
                     _bind_existing_media(db, run=run, item=item, media=duplicate_media, metadata=metadata)
                     if not source_item_downstream_complete(item):
                         _append_downstream_target(duplicate_media.id, item.id)
                 else:
-                    failure_metadata = {**metadata, "private_diagnostic": exception_detail(exc, stage="import")}
+                    failure_metadata = {**metadata, "safe_label": plan_item.get("safe_label"),
+                        "private_diagnostic": exception_detail(exc, stage="import")}
                     _mark_item_failed(db, run=run, item=item,
-                        reason=item.failure_reason or "import_failed", metadata=failure_metadata)
+                        reason=exc.detail.get('code') if isinstance(exc, MediaCommittedError) else "import_failed",
+                        metadata=failure_metadata)
                 counts[item.sync_state] += 1
                 if not duplicate:
                     counts[item.failure_reason or "import_failed"] += 1
@@ -2681,28 +2672,14 @@ def execute_manual_sync_run(db: Session, *, run_id: int) -> Dict[str, Any]:
                     metadata=metadata,
                     content_hash=None,
                 )
-                item.sync_state = "failed"
-                item.import_status = "failed"
-                item.classification_status = "deferred"
-                item.ai_tagging_status = "deferred"
-                item.localization_status = "deferred"
                 copy_diagnostic = getattr(exc, "diagnostic", None)
-                if copy_diagnostic:
-                    metadata["private_diagnostic"] = dict(copy_diagnostic)
-                item.failure_reason = (copy_diagnostic or {}).get("reason") or (
+                failure_reason = (copy_diagnostic or {}).get("reason") or (
                     "read_timeout" if (copy_diagnostic or {}).get("worker_status") == "timeout" else
                     "read_error" if (copy_diagnostic or {}).get("stage") in {"source_copy", "source_stat"} else "import_failed")
-                record_failure(item, run_id=run.id, reason=item.failure_reason, metadata=metadata, now=_utcnow())
-                _record_run_item(
-                    db,
-                    run=run,
-                    item=item,
-                    state="failed",
-                    action="import",
-                    reason=item.failure_reason,
-                    eligible=False,
-                    current_metadata={**metadata, "safe_label": plan_item.get("safe_label"), "error_code": exc.__class__.__name__, "private_diagnostic": copy_diagnostic or exception_detail(exc, stage="copy_import")},
-                )
+                _mark_item_failed(db, run=run, item=item, reason=failure_reason,
+                    metadata={**metadata, "safe_label": plan_item.get("safe_label"),
+                        "error_code": exc.__class__.__name__,
+                        "private_diagnostic": copy_diagnostic or exception_detail(exc, stage="copy_import")})
                 counts["failed"] += 1
                 counts[item.failure_reason] += 1
                 item_failure_count += 1

@@ -229,8 +229,8 @@
   "previous_phase_final_head": "c08c84d77535d7b54494729526210c1bc11e694d",
   "previous_phase_final_tree": "f1ed086101b46b1d657e8939985fa2eda7246dfe",
   "previous_phase_status": "owner_accepted_and_merged",
-  "current_status": "PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE",
-  "target_met": true,
+  "current_status": "PRODUCTION_IMPORT_RECOVERY_R6_EXACT_CANDIDATE_VALIDATION",
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "planning_authorized": true,
@@ -253,6 +253,8 @@
     "original_file_mutation": false
   },
   "completed_checkpoints": [
+    "36号执行器写入与成功/去重路径已修正，新增27条生命周期接入矩阵及原22条等定向回归84通过；旧Media完成事实、新来源失败/未落地、部分目标下游复用与新Session恢复覆盖，冻结候选进入focused/PostgreSQL和原production复验。",
+    "36号执行版已完整读取并获授权：可信fetch核实69a28c6、main仍ea4bdd7，独立候选目录仅落后四份文档并已安全快进。R1至R5、R7至R9和两条不适用意见沿用负责人裁决；本轮仅关闭R6执行器生命周期缺口。",
     "33号R6至R9完成：a8aeda5 focused 498 passed /3 skipped、PostgreSQL 120 passed，两套均含22条实际接入回归；跨更新处置/列表/待导入口径、阻塞优先路径及哈希消费者落库通过，原537来源/315Media与下游逐项保护，原EXE启动重启和CDP/A1复验通过，待负责人复审合并。",
     "33号R6待导入口径同步修正：暂缓/忽略/终止及冷却中的未导入来源保持不可导入；真实版本变化仍重入。108条接入及更新检查预验证通过，5b225bd已通过独立Edge但完整测试中止，未部署。新候选重新绑定最终验证。",
     "33号R6至R9实现及真实接入回归已补齐；141条相关回归、44条新增接入与契约预验证通过。独立Edge发现并修正更新后恢复列表隐藏处置的问题，49b4f7d验证已中止且未部署，原始失败保留。冻结新候选进入最终focused/PostgreSQL/CDP验证。",
@@ -282,7 +284,7 @@
   ],
   "candidate_head": "a8aeda5fff378392f3a0d599370946dac001258b",
   "production_candidate_head": "a8aeda5fff378392f3a0d599370946dac001258b",
-  "next_required_checkpoint": "负责人复审接受并实际合并PR152后，按33号原授权安全快进对齐main、profile与持久日常启动锚点；保持原库/原存储，不重导入、迁移或重做标签。",
+  "next_required_checkpoint": "按36号完成旧Media下游保护的执行器接入回归、原生产保护复验和同PR152交付，停止于负责人复审；不自行合并。",
   "durable_links": [
     {
       "label": "实施与恢复方案",
@@ -309,6 +311,6 @@
       "path": "docs/roadmap/current-mainline-roadmap.md"
     }
   ],
-  "updated_at": "2026-09-08T15:12:15.730954+00:00",
+  "updated_at": "2026-09-09T12:47:20.349292+00:00",
   "result_path": "docs/reports/production-import-recovery-summary.json"
 }
