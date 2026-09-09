@@ -5,14 +5,15 @@
 当前状态以 docs/state/current-phase.json 为准。
 
 - 阶段：`PRODUCTION-IMPORT-RECOVERY`。
-- 状态：`PRODUCTION_IMPORT_RECOVERY_EXE_UI_GATE_BLOCKED_PENDING_LEAD_REVIEW`。
+- 状态：`PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE`。
 - 分支：`codex/production-import-recovery`；PR：`152`。
 - 已接受并合并的基线：PR #151 / `ea4bdd740943b2dad8c4eace88d0b33819d86cb8`。
-- 工程目标完成：`False`；负责人复审：`pending_project_lead_review`。
+- 工程目标完成：`True`；负责人复审：`pending_project_lead_review`。
 - 修复生产候选：`81ea89e9bc21eeaff1988d858a24b1243d451e3c`。
 
 ## 当前检查点
 
+- 36号验收续接完成：普通无参数EXE经Windows UI Automation InvokePattern执行停止→启动（自动preflight）→重启；服务48388→停止→25608→37528，监听81304，窗口与只读身份最终健康一致。537来源SQL记录不变，五类业务任务新增0；原525/147不重跑，历史CDP拒绝保持未执行，返回负责人复审。
 - 36号限定实现与验证：81ea89e旧Media下游与新源失败独立保存，27条新增接入和原22条通过；focused 525 passed /3 skipped，PostgreSQL 147 passed。原537来源/315Media逐项保护，生产写入新增补做0，controller重启/生产Edge/A1通过；EXE按钮CDP门槛被策略阻断，不能宣称全量完成。
 - 36号执行器写入与成功/去重路径已修正，新增27条生命周期接入矩阵及原22条等定向回归84通过；旧Media完成事实、新来源失败/未落地、部分目标下游复用与新Session恢复覆盖，冻结候选进入focused/PostgreSQL和原production复验。
 - 36号执行版已完整读取并获授权：可信fetch核实69a28c6、main仍ea4bdd7，独立候选目录仅落后四份文档并已安全快进。R1至R5、R7至R9和两条不适用意见沿用负责人裁决；本轮仅关闭R6执行器生命周期缺口。
@@ -70,7 +71,7 @@
 自动测试、执行代理界面验证、负责人接受、所有者使用、PR 合并和实际运行分别记账。
 执行代理不合并、不推 main、不追加 reviewer；不启动 Pixiv A2/A3。
 
-下一检查点：36号R6代码、回归及production服务/数据复验已交付；EXE按钮CDP启动命令被自动策略拒绝，尚未全量完成。返回负责人复审，获准交互路径恢复后只补该门槛；不自行合并或启动A2。
+下一检查点：36号原R6修正及普通EXE真实UIA停止/启动/重启验收已完成，原525/147与生产保护证据保留；返回负责人复审更新私有包与同一PR152。实际接受并合并后按原授权对齐main/profile/持久入口，不自行合并或启动A2。
 
 ## 持久入口
 
