@@ -23,7 +23,7 @@ from .pixiv_metadata_projection_service import (
 )
 from .source_concept_resolver_service import LLMAdjudicationConfig, resolve_source_concepts
 
-PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v4'
+PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v5'
 SUPPORT_NAMESPACE = 'production_pixiv'
 SCOPE_SCHEMA = 'violet.production-pixiv-fixed-scope.v1'
 SELECTION_SCHEMA = 'violet.production-pixiv-fixed-scope-selection.v1'
@@ -212,6 +212,13 @@ def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role
     judgments = tuple({**dict(judgment), **{
         key: signal_keys.get(judgment[key], judgment[key])
         for key in ('left_signal_key', 'right_signal_key')}} for judgment in judgments)
+    # Equal-weight positive edges constrained by a cannot-link can admit more
+    # than one valid partition. Give the existing resolver a stable order for
+    # both its work-context pass and its full pass, independent of batch/cache
+    # arrival order. Volatile invocation counters never break semantic ties.
+    judgments = tuple(sorted(judgments,key=lambda row:(
+        row['left_signal_key'],row['right_signal_key'],str(row.get('decision')),
+        str(row.get('confidence')),str(row.get('cache_key')),str(row.get('error_state')))))
     # Judge identity excludes volatile run/pair counters, costs and cache hits.
     semantic = sorted([{'left':j['left_signal_key'],'right':j['right_signal_key'],
                         'decision':j.get('decision'),'confidence':j.get('confidence'),

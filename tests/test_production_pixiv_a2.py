@@ -183,3 +183,33 @@ def test_batch_order_and_resume_receipts_do_not_change_business_identity(databas
     first=apply(database,direct,scope)
     second=apply(database,replay,scope)
     assert second['idempotent_replay'] and first['product_result_fingerprint']==second['product_result_fingerprint']
+
+
+def test_tied_positive_judgments_with_cannot_link_are_stable_across_resume_order(database):
+    from itertools import permutations
+    from app.models import SourceTagObservation
+    from app.services.production_pixiv_semantics import build_semantic_vocabulary
+    names=('AlphaVerse','BetaVerse','GammaVerse')
+    for name in names:
+        database.add(SourceTagObservation(source_metadata_record_id=101,provider='pixiv',
+            observation_key='tied-'+name,raw_tag=name,normalized_tag=name.lower(),
+            canonical_tag_key=name.lower(),source_category_raw='copyright',status='observed'))
+    database.commit()
+    aggregates=build_canonical_pixiv_aggregates_from_session(database)
+    consumer=production_consumer(aggregates)
+    vocabulary=build_semantic_vocabulary([{'canonical_name':name,'category':'copyright','source':'static'} for name in names])
+    initial=build_production_clustering(consumer,vocabulary=vocabulary)
+    keys={signal.raw_value:signal.signal_key for signal in initial.resolution.signals if signal.raw_value in names}
+    judgments=[{'left_signal_key':keys[left],'right_signal_key':keys[right],
+        'decision':decision,'confidence':0.9,'cache_key':left+right}
+        for left,right,decision in [('AlphaVerse','BetaVerse','must_link'),
+            ('BetaVerse','GammaVerse','must_link'),('AlphaVerse','GammaVerse','cannot_link')]]
+    fingerprints=set();partitions=set()
+    for order in permutations(judgments):
+        run=build_production_clustering(consumer,vocabulary=vocabulary,judgments=order)
+        groups=tuple(sorted(tuple(sorted(signal.raw_value for signal in concept.signals if signal.raw_value in names))
+            for concept in run.resolution.concepts if any(signal.raw_value in names for signal in concept.signals)))
+        assert len(groups)==2 and sorted(map(len,groups))==[1,2]
+        assert not any({'AlphaVerse','GammaVerse'}<=set(group) for group in groups)
+        fingerprints.add(run.business_projection_fingerprint);partitions.add(groups)
+    assert len(partitions)==len(fingerprints)==1
