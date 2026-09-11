@@ -14,6 +14,15 @@ from .source_metadata_registry_service import canonical_source_key, parse_parent
 VOCABULARY_SCHEMA = 'violet.production-pixiv-semantic-vocabulary.v1'
 
 
+def _context_candidate_matches(candidate,raw_value):
+    # F7a may preserve a second observed spelling as display/normalized value.
+    # Reuse only its role in this exact metadata group; identity still requires
+    # the resolver's separate guarded decision. Never apply this across groups.
+    key=canonical_source_key(raw_value)
+    return bool(key) and any(canonical_source_key(candidate.get(field))==key
+        for field in ('raw_value','display_name','normalized_value','canonical_key'))
+
+
 def _specific_role_candidates(candidates):
     """An unknown prefix observation cannot contradict a typed name answer.
 
@@ -130,11 +139,11 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
             if role_facts and role_facts.get('completion_by_aggregate'):
                 completion_key=role_facts['completion_by_aggregate'].get(signal.evidence_payload.get('aggregate_fingerprint'))
                 completed=role_facts.get('completion_records',{}).get(completion_key)
-                if completed and role in {'unknown','person'} and any(canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)
+                if completed and role in {'unknown','person'} and any(_context_candidate_matches(row,signal.raw_value)
                     for row in completed['candidates']):contextual=completed
             if contextual and not candidates:
                 matches=_specific_role_candidates([row for row in contextual['candidates']
-                    if canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)])
+                    if _context_candidate_matches(row,signal.raw_value)])
                 from .source_concept_resolver_service import role_from_source_role,_trust_for_f7a_candidate
                 from types import SimpleNamespace
                 roles={role_from_source_role(row['candidate_role']) for row in matches}

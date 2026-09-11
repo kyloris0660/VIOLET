@@ -111,6 +111,31 @@ def test_parallel_text_workers_reject_shared_mutable_provider(tmp_path):
     assert not provider.calls
 
 
+def test_contextual_display_spelling_reuses_role_only_inside_its_metadata_group(tmp_path):
+    from app.services.production_pixiv_role_extraction import extract_contextual_production_roles
+    from app.services.source_concept_resolver_service import resolve_source_concepts
+    class DisplaySpelling(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            payload=json.loads(await super().complete_chat(messages,**kwargs))
+            for row in payload['records']:
+                row['candidates'][0].update(raw_value='MysteryName',display_name='ミステリ',normalized_value='ミステリ')
+            return json.dumps(payload,ensure_ascii=False)
+    def scoped(aggregate):
+        inputs=[replace(source(name,'12345678'),evidence_payload={'work_id':'12345678','page_index':0,
+            'aggregate_fingerprint':aggregate}) for name in ('MysteryName','ミステリ')]
+        signals=build_source_concept_signal_drafts(inputs)
+        return make_dataclass('ScopedConsumer',['signals','input_fingerprint'],frozen=True)(signals,'scoped')
+    provider=DisplaySpelling();vocabulary=build_semantic_vocabulary([])
+    facts=extract_contextual_production_roles(scoped('observed'),vocabulary,
+        {'schema_version':'violet.production-pixiv-role-result.v1','records':{}},provider=provider,
+        budget=task_budget(tmp_path,provider),cache_dir=tmp_path/'roles')
+    adapted=adapt_production_semantics(scoped('observed'),vocabulary,facts)
+    assert {signal.role_hint for signal in adapted.signals}=={'character'}
+    assert len(resolve_source_concepts(adapted.signals,run_id='display-role-not-identity').concepts)==2
+    unrelated=adapt_production_semantics(scoped('unrelated'),vocabulary,facts)
+    assert {signal.role_hint for signal in unrelated.signals}=={'unknown'}
+
+
 def test_partial_invalid_batch_never_repays_already_valid_units(tmp_path):
     class Partial(Provider):
         async def complete_chat(self,messages,**kwargs):

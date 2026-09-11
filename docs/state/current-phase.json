@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": null,
   "draft": false,
-  "candidate_head": "ac4045a60e58dd9c1b087705d4085e28a19bffbc",
+  "candidate_head": "753fa74fdb459526a49a535dcc0cc59028e76cfc",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -90,13 +90,18 @@
     "真实531聚合/979裁决暴露同权重正边受cannot-link约束时的输入顺序依赖。生产入口按稳定裁决身份排序后，三批逆序及续跑的run、业务、别名、聚类和信号键全部一致；15项相关回归通过，保留全部cannot-link，历史PX2入口不变。",
     "0553589恢复副本系统Edge新会话：三张原图与缩略图加载、source chip跳转、页面和API搜索集合一致，零页面脚本错误。副本只复制三份授权样本，其余图库缩略图显示占位，最终原生产浏览器验收仍待执行。",
     "ac4045a的集中292项与PostgreSQL14项通过。恢复副本509个剩余角色单元全部完成，8缓存、71新调用，后续作品优先配对正在执行；累计2730基础角色、970上下文和509补全记录已合并保存。",
-    "剩余名称增加可选最多两个文本worker，独立provider usage、共享预算和全局错误暂停。隔离竞争测试发现并修复Windows锁字节在获得锁前被读取的问题；22项提取/预算测试通过，实际并行付费调用尚未启用。"
+    "剩余名称增加可选最多两个文本worker，独立provider usage、共享预算和全局错误暂停。隔离竞争测试发现并修复Windows锁字节在获得锁前被读取的问题；22项提取/预算测试通过，实际并行付费调用尚未启用。",
+    "753fa74的提取/预算/语义/裁决及resolver集中93项通过。作品阶段447对闭合：323缓存、124新调用、零错误；其他名称裁决继续。实际响应有些拼写仅保存在display/normalized字段，增加同一metadata组内角色读取，26项局部回归通过，本地恢复3个作品标签角色，其他未知保留。"
   ],
   "next_required_checkpoint": "持续完成固定metadata清单及上下文裁决，复核多语言碎裂，完成最终候选恢复副本生命周期、全量原生产物化与真实浏览器验收。",
   "durable_links": [
     {
       "label": "A2实施方案",
       "path": "docs/plans/production-pixiv-a2.md"
+    },
+    {
+      "label": "A2执行结果报告（未完成）",
+      "path": "docs/reports/production-pixiv-a2-result.md"
     },
     {
       "label": "执行runbook",

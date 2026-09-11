@@ -50,6 +50,7 @@
 - 0553589恢复副本系统Edge新会话：三张原图与缩略图加载、source chip跳转、页面和API搜索集合一致，零页面脚本错误。副本只复制三份授权样本，其余图库缩略图显示占位，最终原生产浏览器验收仍待执行。
 - ac4045a的集中292项与PostgreSQL14项通过。恢复副本509个剩余角色单元全部完成，8缓存、71新调用，后续作品优先配对正在执行；累计2730基础角色、970上下文和509补全记录已合并保存。
 - 剩余名称增加可选最多两个文本worker，独立provider usage、共享预算和全局错误暂停。隔离竞争测试发现并修复Windows锁字节在获得锁前被读取的问题；22项提取/预算测试通过，实际并行付费调用尚未启用。
+- 753fa74的提取/预算/语义/裁决及resolver集中93项通过。作品阶段447对闭合：323缓存、124新调用、零错误；其他名称裁决继续。实际响应有些拼写仅保存在display/normalized字段，增加同一metadata组内角色读取，26项局部回归通过，本地恢复3个作品标签角色，其他未知保留。
 
 ## 后续执行
 
@@ -85,6 +86,7 @@
 ## 持久入口
 
 - [A2实施方案](../docs/plans/production-pixiv-a2.md)
+- [A2执行结果报告（未完成）](../docs/reports/production-pixiv-a2-result.md)
 - [执行runbook](../docs/development/agent-runbook.md)
 - [生产启动器](../docs/production-launcher.md)
 - [阶段契约](../docs/phase-contracts.md)
