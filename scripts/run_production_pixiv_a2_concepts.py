@@ -40,7 +40,7 @@ def peak_memory_bytes():
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=('roles','contextual-roles','cluster','adjudicate'))
+    parser.add_argument('action',choices=('roles','contextual-roles','complete-contextual-roles','cluster','adjudicate'))
     parser.add_argument('--artifacts',required=True,type=Path)
     parser.add_argument('--profile',required=True,type=Path)
     parser.add_argument('--aggregates',required=True,type=Path)
@@ -86,8 +86,13 @@ def main():
     budget=AdjudicationBudget(out/'llm-budget-private.json',model=llm['model'],cap_usd=10,input_per_million=0.4,output_per_million=1.6)
     started=time.monotonic()
     with (exclusive(out/'llm-task.lock') if args.action!='cluster' else nullcontext()):
-        if args.action=='contextual-roles':
+        if args.action in {'contextual-roles','complete-contextual-roles'}:
             from app.services.production_pixiv_role_extraction import extract_contextual_production_roles,plan_contextual_role_extraction
+            if args.action=='complete-contextual-roles':
+                from app.services.production_pixiv_role_extraction import (
+                    complete_contextual_production_roles as extract_contextual_production_roles,
+                    plan_contextual_role_completion as plan_contextual_role_extraction,
+                )
             if not facts:raise RuntimeError('existing_role_facts_required_for_contextual_supplement')
             provider,summary=primary_openai_provider_from_settings()
             if provider is None:raise RuntimeError('approved_primary_model_unavailable')
@@ -100,7 +105,7 @@ def main():
             result=extract_contextual_production_roles(consumer,vocabulary,facts,provider=provider,budget=budget,
                 cache_dir=out/'role-cache',progress=context_progress,batch_size=args.context_batch_size)
             write(out/f'{args.label}-roles-private.json',result)
-            print(json.dumps(result['context_summary']),flush=True)
+            print(json.dumps(result['completion_summary'] if args.action=='complete-contextual-roles' else result['context_summary']),flush=True)
             return
         if args.action=='roles':
             units,plan=plan_role_extraction(consumer,vocabulary)
@@ -133,7 +138,20 @@ def main():
                 'candidate_edges':len(run.resolution.edge_candidates),'signals':len(run.resolution.signals)}
             write(out/f'{args.label}-adjudication-plan-private.json',planned)
             print(json.dumps(planned),flush=True)
-            judgments,receipt=run_bounded_llm_adjudication(run.resolution.edge_candidates,signals=run.resolution.signals,config=config)
+            by_key={signal.signal_key:signal for signal in run.resolution.signals}
+            def work_pair(edge):
+                return by_key[edge.left_signal_key].role_hint==by_key[edge.right_signal_key].role_hint=='work'
+            work_edges=[edge for edge in run.resolution.edge_candidates if work_pair(edge)]
+            work_judgments,work_receipt=run_bounded_llm_adjudication(work_edges,signals=run.resolution.signals,config=config)
+            write(out/f'{args.label}-work-judgments-private.json',work_judgments)
+            write(out/f'{args.label}-work-adjudication-private.json',work_receipt)
+            run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=work_judgments)
+            remaining=[edge for edge in run.resolution.edge_candidates if not work_pair(edge)]
+            other_judgments,other_receipt=run_bounded_llm_adjudication(remaining,signals=run.resolution.signals,config=config)
+            judgments=[*work_judgments,*other_judgments]
+            receipt={'work_stage':work_receipt,'remaining_stage':other_receipt,'task_budget':budget.summary(),
+                **{key:work_receipt[key]+other_receipt[key] for key in ('selected_pair_count','judgment_count',
+                    'error_count','cache_hits','new_provider_call_count','remaining_missing_pair_count')}}
             write(out/f'{args.label}-judgments-private.json',judgments)
             write(out/f'{args.label}-adjudication-private.json',receipt)
             run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=judgments)

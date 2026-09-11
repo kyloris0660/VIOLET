@@ -25,6 +25,18 @@ from .source_name_candidate_extraction_service import (
 )
 
 ROLE_SCHEMA='violet.production-pixiv-role-result.v1'
+COMPLETION_ORIGIN='production_pixiv_residual_roles_v1'
+COMPLETION_PROMPT=(
+    'Production residual role completion v1. The requested raw tags are listed in each record data_type_label. '
+    'Classify every requested spelling using ALL of its actual tags as context. '
+    'Earlier deterministic hints were partial and did not classify the remaining tags. '
+    'Do not merely repeat parenthetical or popularity-prefix rules. Multilingual spellings are not redundant: '
+    'preserve each requested raw_value separately, even if several refer to the same name. '
+    'Use character for a fictional character and work_title for its franchise/game/series. '
+    'Provide work_context from an actual context tag when supported. Do not invent a context. '
+    'Keep an uncertain name unknown_name_like needs_review; reject descriptions and meta tags. '
+    'Do not create identity equivalence or Entity truth.'
+)
 
 
 class ProductionRoleProviderPaused(RuntimeError):
@@ -49,6 +61,18 @@ def _identity(unit,model):
     return {'schema_version':ROLE_SCHEMA,'extractor_version':EXTRACTOR_VERSION,'prompt_version':PROMPT_VERSION,
         'decision_schema':SCHEMA_VERSION,'model':model,'extraction_key':unit.extraction_key,
         'input_fingerprint':canonical_fingerprint(group_prompt_payload(unit.unit_group))}
+
+
+def _production_messages(messages):
+    payload=json.loads(messages[1]['content'])
+    selected=[row for row in payload.get('records',[]) if row.get('data_origin')==COMPLETION_ORIGIN]
+    if not selected:return messages
+    for row in selected:row.pop('deterministic_hints',None)
+    payload['production_prompt_adapter']=COMPLETION_ORIGIN
+    system=messages[0]['content']
+    if not system.endswith(COMPLETION_PROMPT):system+='\n'+COMPLETION_PROMPT
+    return [{**messages[0],'content':system},
+        {**messages[1],'content':json.dumps(payload,ensure_ascii=False,sort_keys=True)}]
 
 
 def _unit_path(cache_dir,unit):
@@ -175,7 +199,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             except (ValueError,KeyError,TypeError):continue
             # Old raw envelopes predate stored request identities. Rebuild the
             # exact F7a question and prove its hash before accepting any row.
-            messages=extraction_messages(groups)
+            messages=_production_messages(extraction_messages(groups))
             expected=canonical_fingerprint({'model':self.model,'messages':messages,
                 'temperature':0.0,'max_tokens':6000})
             if expected==saved['input_fingerprint']:
@@ -183,6 +207,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         return sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())-recovered_before
 
     async def complete_chat(self,messages,*,temperature=0.0,max_tokens=6000):
+        messages=_production_messages(messages)
         # F7a may split a partially invalid batch. Preserve the valid units
         # already saved by the callback instead of paying to classify them
         # again within the smaller request.
@@ -324,3 +349,48 @@ def extract_contextual_production_roles(consumer,vocabulary,role_facts,*,provide
     extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress)
     return {**role_facts,'context_records':extracted['records'],'context_by_aggregate':mapping,
         'context_summary':{**extracted['summary'],**plan}}
+
+
+def plan_contextual_role_completion(consumer,vocabulary,role_facts):
+    """One residual completion after a partial context answer, never a loop."""
+    from .source_name_candidate_extraction_service import is_meta_or_descriptive_rejection,popularity_suffix_prefix
+    adapted=adapt_production_semantics(consumer,vocabulary,role_facts)
+    grouped=defaultdict(list)
+    for signal in adapted.signals:
+        if signal.origin_type=='pixiv_tag_observation':
+            grouped[signal.evidence_payload['aggregate_fingerprint']].append(signal)
+    units={};mapping={};skipped=0;target_count=0
+    for aggregate,signals in sorted(grouped.items()):
+        if aggregate in role_facts.get('completion_by_aggregate',{}):skipped+=1;continue
+        original_key=role_facts.get('context_by_aggregate',{}).get(aggregate)
+        if original_key not in role_facts.get('context_records',{}):continue
+        targets=sorted({signal.raw_value for signal in signals if signal.role_hint in {'unknown','person'}
+            and signal.evidence_payload.get('production_non_identity_reason')!='accepted_general_search_term'
+            and not is_meta_or_descriptive_rejection(signal.raw_value) and not popularity_suffix_prefix(signal.raw_value)},
+            key=lambda raw:(canonical_source_key(raw),raw))
+        if not targets:continue
+        tags=tuple({'raw_tag':raw,'source_tag_kind':'provider_tag'} for raw in sorted({signal.raw_value for signal in signals},
+            key=lambda raw:(canonical_source_key(raw),raw)))
+        signature=canonical_fingerprint({'schema':COMPLETION_ORIGIN,'tags':tags,'targets':targets})
+        extraction_key='production-context-completion:'+signature
+        mapping[aggregate]=extraction_key;target_count+=len(targets)
+        group=SourceCandidateInputGroup(group_key='a2-residual:'+signature[:24],provider='pixiv',tags=tags,
+            data_origin=COMPLETION_ORIGIN,source_work_id_present=True,
+            data_type_label='Requested unresolved raw tags: '+json.dumps(targets,ensure_ascii=False))
+        units[extraction_key]=SourceExtractionUnit(extraction_key=extraction_key,normalized_value='remaining roles '+signature,
+            canonical_key=signature,raw_values=tuple(targets),provider='pixiv',source_field='pixiv_tag',role_hint=None,
+            context_key=signature,language_hint=None,script_hint=None,occurrences=(),llm_required=True,
+            deterministic_resolution='one_residual_context_completion',unit_group=group)
+    return list(units.values()),mapping,{'residual_context_units':len(units),'aggregate_occurrences':len(mapping),
+        'requested_tag_occurrences':target_count,'previously_completed_aggregates':skipped,
+        'identity_equivalence_authorized':False}
+
+
+def complete_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5):
+    if type(batch_size) is not int or not 1<=batch_size<=10:raise ValueError('production_context_batch_size_invalid')
+    units,mapping,plan=plan_contextual_role_completion(consumer,vocabulary,role_facts)
+    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress)
+    return {**role_facts,'completion_records':{**role_facts.get('completion_records',{}),**extracted['records']},
+        'completion_by_aggregate':{**role_facts.get('completion_by_aggregate',{}),
+            **{aggregate:key for aggregate,key in mapping.items() if key in extracted['records']}},
+        'completion_summary':{**extracted['summary'],**plan}}

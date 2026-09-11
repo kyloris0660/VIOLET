@@ -23,7 +23,7 @@ from .pixiv_metadata_projection_service import (
 )
 from .source_concept_resolver_service import LLMAdjudicationConfig, resolve_source_concepts
 
-PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v3'
+PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v4'
 SUPPORT_NAMESPACE = 'production_pixiv'
 SCOPE_SCHEMA = 'violet.production-pixiv-fixed-scope.v1'
 SELECTION_SCHEMA = 'violet.production-pixiv-fixed-scope-selection.v1'
@@ -161,6 +161,47 @@ def production_consumer(aggregates):
     return validate_px1_consumer_artifacts(aggregates=aggregates, signal_bundles=bundles, consumer_contract=contract)
 
 
+def _with_adjudicated_work_context(signals,judgments,run_id):
+    """Reuse guarded work components as context, without assigning characters.
+
+    This first pass uses the same resolver and accepted work judgments. It
+    cannot promote unknown roles, override cannot links, or turn weak inferred
+    context into explicit evidence. The second pass resolves the full input.
+    """
+    from .source_concept_resolver_service import _context_candidates_by_scope,signal_context_key
+    works=tuple(signal for signal in signals if signal.role_hint=='work')
+    work_keys={signal.signal_key for signal in works}
+    accepted=[row for row in judgments if row['left_signal_key'] in work_keys and row['right_signal_key'] in work_keys]
+    if not accepted:return signals
+    resolved=resolve_source_concepts(works,run_id=run_id+':work-context',llm_judgments=accepted,
+        llm_config=LLMAdjudicationConfig(enabled=False,max_calls=0),concept_namespace=SUPPORT_NAMESPACE)
+    aliases={};groups=[];owners=defaultdict(set)
+    for concept in resolved.concepts:
+        names={signal.canonical_key for signal in concept.signals if signal.canonical_key}
+        for name in names:owners[name].add(concept.concept_key)
+        groups.append(names)
+    for names in groups:
+        if len(names)<2:continue
+        if any(len(owners[name])!=1 for name in names):continue
+        canonical=min(names)
+        for name in names:aliases[name]=canonical
+    if not aliases:return signals
+    contexts=_context_candidates_by_scope(signals,context_alias_by_key=aliases)
+    adapted=[]
+    for signal in signals:
+        # Remove any caller-provided derived context before computing it from
+        # this exact input and this pass's guarded, materialized work groups.
+        evidence={key:value for key,value in signal.evidence_payload.items() if key!='production_adjudicated_work_context'}
+        clean=replace(signal,evidence_payload=evidence)
+        if signal.role_hint in {'character','person','unknown'}:
+            context,reason=signal_context_key(clean,contexts,aliases)
+            if context and reason:
+                evidence['production_adjudicated_work_context']={'key':context,'reason':reason,
+                    'work_resolution_run_id':resolved.run_id,'identity_equivalence_authorized_for_character':False}
+        adapted.append(replace(clean,evidence_payload=evidence))
+    return tuple(adapted)
+
+
 def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role_facts=None):
     from .production_pixiv_semantics import adapt_production_semantics
     consumer = adapt_production_semantics(consumer,vocabulary,role_facts)
@@ -180,11 +221,13 @@ def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role
     run_id = 'production-pixiv:' + identity[:32]
     signals = tuple(replace(signal, signal_key=signal_keys[signal.signal_key],
         created_by_run_id=run_id, source_run_id=run_id,
-        evidence_payload={**signal.evidence_payload,
+        evidence_payload={**{key:value for key,value in signal.evidence_payload.items()
+                             if key!='production_adjudicated_work_context'},
             'production_support_namespace': SUPPORT_NAMESPACE,
             'original_signal_key': signal.signal_key,
             'production_candidate_scope': 'pixiv:work:' + signal.evidence_payload['work_id']})
         for signal in consumer.signals)
+    signals=_with_adjudicated_work_context(signals,judgments,run_id)
     consumer = replace(consumer, signals=signals, bundle_signal_keys={
         key: tuple(signal_keys[value] for value in values)
         for key, values in consumer.bundle_signal_keys.items()})

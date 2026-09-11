@@ -127,6 +127,11 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
             if role_facts and role_facts.get('context_by_aggregate'):
                 context_key=role_facts['context_by_aggregate'].get(signal.evidence_payload.get('aggregate_fingerprint'))
                 contextual=role_facts.get('context_records',{}).get(context_key)
+            if role_facts and role_facts.get('completion_by_aggregate'):
+                completion_key=role_facts['completion_by_aggregate'].get(signal.evidence_payload.get('aggregate_fingerprint'))
+                completed=role_facts.get('completion_records',{}).get(completion_key)
+                if completed and role in {'unknown','person'} and any(canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)
+                    for row in completed['candidates']):contextual=completed
             if contextual and not candidates:
                 matches=_specific_role_candidates([row for row in contextual['candidates']
                     if canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)])

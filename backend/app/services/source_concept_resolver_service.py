@@ -2007,6 +2007,10 @@ def signal_context_key(
     context_by_scope: Mapping[tuple[str, int], set[str]],
     context_alias_by_key: Mapping[str, str] | None = None,
 ) -> tuple[str | None, str | None]:
+    derived=(signal.evidence_payload or {}).get('production_adjudicated_work_context')
+    if (_production_work_scope(signal) and isinstance(derived,dict)
+        and derived.get('reason') in {'explicit_work_context','parenthetical_context','unique_source_or_media_work_context'}):
+        return _context_alias_key(derived.get('key'),context_alias_by_key),derived['reason']
     if signal.work_context_key:
         return _context_alias_key(signal.work_context_key, context_alias_by_key), "explicit_work_context"
     if signal.parenthetical_context:
@@ -2014,6 +2018,10 @@ def signal_context_key(
     _parsed_base, parsed_context = parse_parenthetical(signal.raw_value)
     if parsed_context:
         return _context_alias_key(parsed_context, context_alias_by_key), "parenthetical_context"
+    if signal.role_hint == 'work' and _production_work_scope(signal):
+        # Co-occurring work names are candidates for alias adjudication. They
+        # are not each other's enclosing franchise or series context.
+        return None, None
     return _infer_unique_context(signal, context_by_scope, context_alias_by_key=context_alias_by_key)
 
 
@@ -3497,6 +3505,8 @@ def _llm_must_link_guard(
             return True, None, payload
     short_without_context = (
         not (left_context or right_context)
+        and not (left.role_hint == right.role_hint == 'work'
+                 and _production_work_scope(left) and _production_work_scope(right))
         and (
             (left_surface and _surface_is_ambiguous(left_surface, ambiguity_profiles))
             or (right_surface and _surface_is_ambiguous(right_surface, ambiguity_profiles))

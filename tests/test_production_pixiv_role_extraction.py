@@ -229,3 +229,37 @@ def test_context_batch_size_is_bounded_before_any_call(tmp_path,size):
         extract_contextual_production_roles(consumer(1),build_semantic_vocabulary([]),{},provider=provider,
             budget=task_budget(tmp_path,provider),cache_dir=tmp_path/'roles',batch_size=size)
     assert not provider.calls
+
+
+def test_residual_completion_uses_real_context_without_repeating_partial_hints(tmp_path):
+    from app.services.production_pixiv_role_extraction import complete_contextual_production_roles,plan_contextual_role_completion
+    class Completion(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            payload=json.loads(messages[1]['content'])
+            assert 'partial' in messages[0]['content']
+            assert all('deterministic_hints' not in group for group in payload['records'])
+            assert all({tag['raw_tag'] for tag in group['tags']}=={'MysteryName','ContextWork'} for group in payload['records'])
+            self.calls.append(payload['records']);self.last_usage={'prompt_tokens':100,'completion_tokens':100}
+            return json.dumps({'records':[{'group_key':group['group_key'],'provider':'pixiv',
+                'verdict':'multiple_candidates_found','candidates':[
+                    {'raw_value':name,'role':'work_title' if name=='ContextWork' else 'character',
+                        'status':'active_candidate','confidence':0.9,'source_field':'source_tag_observation',
+                        'extraction_action':'direct_name'}
+                    for name in json.loads(group['data_type_label'].split(': ',1)[1])],
+                'rejected_summary':{}} for group in payload['records']]})
+    signals=build_source_concept_signal_drafts([replace(source(name,'12345678'),
+        evidence_payload={'work_id':'12345678','page_index':0,'aggregate_fingerprint':'residual-context'})
+        for name in ['MysteryName','ContextWork']])
+    value=make_dataclass('Consumer',['signals','input_fingerprint'],frozen=True)(signals,'residual-input')
+    facts={'schema_version':'violet.production-pixiv-role-result.v1','records':{},
+        'context_by_aggregate':{'residual-context':'prior-question'},
+        'context_records':{'prior-question':{'candidates':[],'verdict':'no_explicit_name'}}}
+    provider=Completion();budget=task_budget(tmp_path,provider);vocabulary=build_semantic_vocabulary([])
+    first=complete_contextual_production_roles(value,vocabulary,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert first['completion_summary']['completed_units']==1 and len(provider.calls)==1
+    adapted=adapt_production_semantics(value,vocabulary,first)
+    assert {s.role_hint for s in adapted.signals}=={'work','character'}
+    replay=complete_contextual_production_roles(value,vocabulary,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=8)
+    assert replay['completion_summary']['cache_hits']==1 and len(provider.calls)==1
+    assert plan_contextual_role_completion(value,vocabulary,first)[0]==[]
+    assert facts['context_records']['prior-question']['candidates']==[]

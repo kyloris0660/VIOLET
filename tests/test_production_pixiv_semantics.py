@@ -1,5 +1,6 @@
 from dataclasses import replace
 from types import SimpleNamespace
+import pytest
 
 from app.services.production_pixiv_semantics import build_semantic_vocabulary,adapt_production_semantics
 from app.services.source_concept_resolver_service import (
@@ -44,3 +45,59 @@ def test_artwork_context_does_not_fragment_a_character_and_alias_needs_judgment(
         config=LLMAdjudicationConfig(enabled=True,max_calls=100,selection_policy='all_eligible'))
     assert any({edge.left_signal_key,edge.right_signal_key}=={by_name['アリス'].signal_key,signal.signal_key}
         for edge in pairs for signal in chinese)
+
+
+@pytest.mark.parametrize('decision,merged',[('must_link',True),('cannot_link',False)])
+def test_production_work_aliases_are_not_each_others_enclosing_context(decision,merged):
+    from app.services.source_concept_resolver_service import _context_candidates_by_scope,signal_context_key
+    inputs=[replace(source(name,'12345678'),role_hint='work',work_context_key=None,trust_tier='medium',
+        status='active',evidence_payload={'production_candidate_scope':'pixiv:work:12345678'})
+        for name in ('ExampleAdventure','冒险')]
+    signals=build_source_concept_signal_drafts(inputs)
+    contexts=_context_candidates_by_scope(signals)
+    assert all(signal_context_key(signal,contexts)==(None,None) for signal in signals)
+    judgments=[{'left_signal_key':signals[0].signal_key,'right_signal_key':signals[1].signal_key,
+        'decision':decision,'confidence':0.9}]
+    result=resolve_source_concepts(signals,run_id='production-work-context-test',llm_judgments=judgments)
+    assert (len(result.concepts)==1) is merged
+
+
+def test_explicit_character_and_parenthetical_work_context_guards_still_apply():
+    from app.services.source_concept_resolver_service import signal_context_key
+    inputs=[replace(source('Aster','12345678'),role_hint='character',work_context_key=context,
+        trust_tier='medium',status='active',origin_key='aster-'+context,
+        evidence_payload={'production_candidate_scope':'pixiv:work:12345678'}) for context in ('garden','ocean')]
+    signals=build_source_concept_signal_drafts(inputs)
+    result=resolve_source_concepts(signals,run_id='production-character-guard-test',llm_judgments=[
+        {'left_signal_key':signals[0].signal_key,'right_signal_key':signals[1].signal_key,
+         'decision':'must_link','confidence':0.9}])
+    assert len(result.concepts)==2
+    work=replace(signals[0],role_hint='work',work_context_key=None,raw_value='Episode (Series)',parenthetical_context='Series')
+    assert signal_context_key(work,{})==('series','parenthetical_context')
+
+
+@pytest.mark.parametrize('work_decision,shared_context',[('must_link',True),('cannot_link',False)])
+def test_only_materialized_work_aliases_supply_character_context(work_decision,shared_context):
+    from app.services.production_pixiv_service import _with_adjudicated_work_context
+    from app.services.source_concept_resolver_service import _context_candidates_by_scope,signal_context_key
+    inputs=[]
+    for work_id,work_name,character in [('12345678','ExampleAdventure','Alice'),('23456789','冒险','アリス')]:
+        for name,role in [(work_name,'work'),(character,'character')]:
+            inputs.append(replace(source(name,work_id),role_hint=role,work_context_key=None,
+                trust_tier='medium',status='active',evidence_payload={'production_candidate_scope':'pixiv:work:'+work_id}))
+    signals=build_source_concept_signal_drafts(inputs)
+    work_keys=[signal.signal_key for signal in signals if signal.role_hint=='work']
+    judgments=[{'left_signal_key':work_keys[0],'right_signal_key':work_keys[1],
+        'decision':work_decision,'confidence':0.9}]
+    adapted=_with_adjudicated_work_context(signals,judgments,'test-work-bootstrap')
+    contexts=_context_candidates_by_scope(adapted)
+    characters=[signal for signal in adapted if signal.role_hint=='character']
+    values=[signal_context_key(signal,contexts) for signal in characters]
+    assert (values[0][0]==values[1][0]) is shared_context
+    assert all(value[1]=='unique_source_or_media_work_context' for value in values)
+    assert all(signal.work_context_key is None for signal in characters)
+    # Work identity supplies context only. Character aliases need their own
+    # accepted judgment, even after their franchises have been resolved.
+    result=resolve_source_concepts(adapted,run_id='test-work-no-character-truth',llm_judgments=judgments)
+    assert not any({signal.signal_key for signal in characters}<={signal.signal_key for signal in concept.signals}
+        for concept in result.concepts)
