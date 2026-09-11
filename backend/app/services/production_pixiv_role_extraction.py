@@ -317,8 +317,10 @@ def plan_contextual_role_extraction(consumer,vocabulary,role_facts):
         'already_grounded_aggregates':skipped,'context_derived_identity_equivalence':False}
 
 
-def extract_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None):
+def extract_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5):
+    if type(batch_size) is not int or not 1<=batch_size<=10:
+        raise ValueError('production_context_batch_size_invalid')
     units,mapping,plan=plan_contextual_role_extraction(consumer,vocabulary,role_facts)
-    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=5,progress=progress)
+    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress)
     return {**role_facts,'context_records':extracted['records'],'context_by_aggregate':mapping,
         'context_summary':{**extracted['summary'],**plan}}

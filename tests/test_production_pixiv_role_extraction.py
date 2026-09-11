@@ -114,7 +114,7 @@ def test_contextual_supplement_is_cached_and_bound_to_real_aggregate(tmp_path):
     result=extract_contextual_production_roles(first,vocabulary,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
     assert len(provider.calls)==1 and len(provider.calls[0][0]['tags'])==2
     assert result['context_summary']['completed_units']==1
-    replay=extract_contextual_production_roles(first,vocabulary,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    replay=extract_contextual_production_roles(first,vocabulary,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=8)
     assert replay['context_summary']['cache_hits']==1 and len(provider.calls)==1
     adapted=adapt_production_semantics(first,vocabulary,result)
     assert next(s for s in adapted.signals if s.raw_value=='MysteryName').role_hint=='character'
@@ -219,3 +219,13 @@ def test_actual_tag_provenance_repair_does_not_promote_unobserved_provider_title
     units,_=plan_role_extraction(consumer(1),build_semantic_vocabulary([]))
     row={'candidates':[{'raw_value':'UnobservedTitle','source_field':'provider_field','role':'work_title'}]}
     assert _adapt_response_record(row,units[0])==row
+
+
+@pytest.mark.parametrize('size',[0,11,True])
+def test_context_batch_size_is_bounded_before_any_call(tmp_path,size):
+    from app.services.production_pixiv_role_extraction import extract_contextual_production_roles
+    provider=Provider()
+    with pytest.raises(ValueError,match='production_context_batch_size_invalid'):
+        extract_contextual_production_roles(consumer(1),build_semantic_vocabulary([]),{},provider=provider,
+            budget=task_budget(tmp_path,provider),cache_dir=tmp_path/'roles',batch_size=size)
+    assert not provider.calls
