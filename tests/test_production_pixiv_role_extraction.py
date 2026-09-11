@@ -263,3 +263,5 @@ def test_residual_completion_uses_real_context_without_repeating_partial_hints(t
     assert replay['completion_summary']['cache_hits']==1 and len(provider.calls)==1
     assert plan_contextual_role_completion(value,vocabulary,first)[0]==[]
     assert facts['context_records']['prior-question']['candidates']==[]
+    unseen={'schema_version':'violet.production-pixiv-role-result.v1','records':{}}
+    assert len(plan_contextual_role_completion(value,vocabulary,unseen)[0])==1

@@ -48,7 +48,7 @@ def main():
     parser.add_argument('--role-facts',type=Path)
     parser.add_argument('--label',required=True)
     parser.add_argument('--expected-python',required=True)
-    parser.add_argument('--limit',type=int,default=0,help='bounded first role batch; 0 processes all remaining units')
+    parser.add_argument('--limit',type=int,default=0,help='bounded role/completion batch; 0 processes all remaining units')
     parser.add_argument('--context-batch-size',type=int,choices=range(1,11),default=5,
                         help='context groups per request; shared token and USD limits remain unchanged')
     args=parser.parse_args()
@@ -103,7 +103,8 @@ def main():
                 write(out/f'{args.label}-context-progress-private.json',value)
                 print(json.dumps(value),flush=True)
             result=extract_contextual_production_roles(consumer,vocabulary,facts,provider=provider,budget=budget,
-                cache_dir=out/'role-cache',progress=context_progress,batch_size=args.context_batch_size)
+                cache_dir=out/'role-cache',progress=context_progress,batch_size=args.context_batch_size,
+                **({'unit_limit':args.limit} if args.action=='complete-contextual-roles' else {}))
             write(out/f'{args.label}-roles-private.json',result)
             print(json.dumps(result['completion_summary'] if args.action=='complete-contextual-roles' else result['context_summary']),flush=True)
             return

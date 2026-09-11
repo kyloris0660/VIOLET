@@ -359,11 +359,11 @@ def plan_contextual_role_completion(consumer,vocabulary,role_facts):
     for signal in adapted.signals:
         if signal.origin_type=='pixiv_tag_observation':
             grouped[signal.evidence_payload['aggregate_fingerprint']].append(signal)
-    units={};mapping={};skipped=0;target_count=0
+    units={};mapping={};skipped=0;target_count=0;prior_context_count=0
     for aggregate,signals in sorted(grouped.items()):
         if aggregate in role_facts.get('completion_by_aggregate',{}):skipped+=1;continue
         original_key=role_facts.get('context_by_aggregate',{}).get(aggregate)
-        if original_key not in role_facts.get('context_records',{}):continue
+        prior_context_count+=int(original_key in role_facts.get('context_records',{}))
         targets=sorted({signal.raw_value for signal in signals if signal.role_hint in {'unknown','person'}
             and signal.evidence_payload.get('production_non_identity_reason')!='accepted_general_search_term'
             and not is_meta_or_descriptive_rejection(signal.raw_value) and not popularity_suffix_prefix(signal.raw_value)},
@@ -383,14 +383,17 @@ def plan_contextual_role_completion(consumer,vocabulary,role_facts):
             deterministic_resolution='one_residual_context_completion',unit_group=group)
     return list(units.values()),mapping,{'residual_context_units':len(units),'aggregate_occurrences':len(mapping),
         'requested_tag_occurrences':target_count,'previously_completed_aggregates':skipped,
+        'existing_context_answers_available':prior_context_count,
         'identity_equivalence_authorized':False}
 
 
-def complete_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5):
+def complete_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5,unit_limit=0):
     if type(batch_size) is not int or not 1<=batch_size<=10:raise ValueError('production_context_batch_size_invalid')
+    if type(unit_limit) is not int or unit_limit<0:raise ValueError('production_context_unit_limit_invalid')
     units,mapping,plan=plan_contextual_role_completion(consumer,vocabulary,role_facts)
+    if unit_limit:units=units[:unit_limit]
     extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress)
     return {**role_facts,'completion_records':{**role_facts.get('completion_records',{}),**extracted['records']},
         'completion_by_aggregate':{**role_facts.get('completion_by_aggregate',{}),
             **{aggregate:key for aggregate,key in mapping.items() if key in extracted['records']}},
-        'completion_summary':{**extracted['summary'],**plan}}
+        'completion_summary':{**extracted['summary'],**plan,'selected_units':len(units)}}
