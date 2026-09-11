@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": null,
   "draft": false,
-  "candidate_head": "10c15bb46d5e1050b144eac5720b751e27600839",
+  "candidate_head": "e208fb12117967b3fcdcec75083b8f78d42b1e39",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -100,7 +100,7 @@
     "10c15bb原失败节点复验144 passed / 1 skipped，254.53秒；历史缺失AI evidence仍单列，完整non-E2E仍仅一次。",
     "恢复副本重放在已提交5307项后，进度JSON原子替换遭遇Windows并发读占用而停止。增加原位置替换的最多8次短暂重试，持续拒绝仍抛出并保留旧文件；29项相关回归通过。成功数据库与payload保留，接下来仅续跑未完成项；进度读取改用允许删除共享的文件句柄。"
   ],
-  "next_required_checkpoint": "持续完成固定metadata清单及上下文裁决，复核多语言碎裂，完成最终候选恢复副本生命周期、全量原生产物化与真实浏览器验收。",
+  "next_required_checkpoint": "固定metadata已全部核对，原库和恢复副本8565聚合输入一致。配对新请求补齐跨作品/角色步骤的鉴权、限流及连续传输失败暂停；13项相关回归通过。继续完成剩余名称及配对裁决，复核多语言质量，完成最终候选全量恢复副本生命周期、原生产物化和真实浏览器验收。",
   "durable_links": [
     {
       "label": "A2实施方案",

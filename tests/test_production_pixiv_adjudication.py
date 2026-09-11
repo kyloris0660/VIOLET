@@ -78,3 +78,50 @@ def test_failed_call_unknown_usage_is_charged_and_success_cache_survives(tmp_pat
     assert receipt['task_budget']['charged_or_reserved_usd']>0.00012
     _,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=config(tmp_path))
     assert provider.calls==3 and receipt['cache_hits']==1
+
+
+@pytest.mark.parametrize('status',[401,403,429])
+def test_authentication_or_rate_limit_pauses_later_pairs_but_reuses_saved_success(tmp_path,monkeypatch,status):
+    from app.services.llm_translation_provider import LLMHTTPStatusError
+    signals,edges=_eligible_llm_edges(4)
+    provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    selected=service.select_llm_adjudication_edges(edges,signals=signals,config=config(tmp_path))
+    service.run_bounded_llm_adjudication(selected[-1:],signals=signals,config=config(tmp_path))
+    class Rejected(MeteredProvider):
+        async def complete_json(self,*args,**kwargs):
+            self.calls+=1
+            raise LLMHTTPStatusError(status,'test upstream rejection')
+    rejected=Rejected()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(rejected,{}))
+    shared=replace(config(tmp_path),provider_pause_state={})
+    judgments,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=shared)
+    assert rejected.calls==1 and receipt['new_provider_call_count']==1
+    assert receipt['cache_hits']==1 and receipt['error_count']==1
+    assert len(receipt['budget_blocked_pairs'])==2
+    assert receipt['task_budget']['call_count']==2 and receipt['task_budget']['unknown_usage_count']==1
+    assert sum(row.get('cache_status')=='hit' for row in judgments)==1
+    later,later_edges=_eligible_llm_edges(5)
+    _,following=service.run_bounded_llm_adjudication(later_edges,signals=later,config=shared)
+    assert rejected.calls==1 and following['new_provider_call_count']==0
+    assert following['provider_pause_reason']=='adjudication_provider_authentication_or_rate_limit'
+
+
+@pytest.mark.parametrize('success_between',[False,True])
+def test_three_consecutive_transport_failures_pause_without_charging_unattempted_pairs(tmp_path,monkeypatch,success_between):
+    from app.services.llm_translation_provider import LLMTransportError
+    signals,edges=_eligible_llm_edges(8)
+    class Unstable(MeteredProvider):
+        async def complete_json(self,*args,**kwargs):
+            if success_between and self.calls==2:
+                return await super().complete_json(*args,**kwargs)
+            self.calls+=1
+            raise LLMTransportError('test transport failure')
+    provider=Unstable()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    _,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=config(tmp_path))
+    expected=6 if success_between else 3
+    assert provider.calls==expected==receipt['task_budget']['call_count']
+    assert receipt['new_provider_success_count']==int(success_between)
+    assert len(receipt['budget_blocked_pairs'])==8-expected
+    assert receipt['provider_pause_reason']=='adjudication_provider_repeated_transport_failure'

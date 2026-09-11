@@ -137,7 +137,7 @@ def main():
                 model_label=llm['model'],durable_cache_dir=str(out/'llm-cache'),semantic_cache_reuse=True,
                 semantic_cache_dirs=(str(Path(read(args.profile)['storage_root'])/'.local_manifests/source_concept_llm_adjudication_cache'),),
                 task_budget_path=str(out/'llm-budget-private.json'),input_price_per_million=0.4,output_price_per_million=1.6,
-                run_id=run.resolution.run_id)
+                run_id=run.resolution.run_id,provider_pause_state={})
             planned={'stage':'adjudication_plan','selected_pairs':len(select_llm_adjudication_edges(
                 run.resolution.edge_candidates,signals=run.resolution.signals,config=config)),
                 'candidate_edges':len(run.resolution.edge_candidates),'signals':len(run.resolution.signals)}

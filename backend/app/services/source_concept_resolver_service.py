@@ -296,6 +296,9 @@ class LLMAdjudicationConfig:
     output_price_per_million: float | None = None
     semantic_cache_reuse: bool = False
     semantic_cache_dirs: tuple[str, ...] = ()
+    # A production orchestration shares this across its work and other-name
+    # passes. Cache reads remain available after paid dispatch is paused.
+    provider_pause_state: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -3972,6 +3975,7 @@ def run_bounded_llm_adjudication(
     provider_successes = 0
     dispatched_calls = 0
     budget_blocked_pairs = []
+    provider_pause = config.provider_pause_state if config.provider_pause_state is not None else {}
     durable_cache_write_successes = 0
     semantic_prior_count = int(coverage.get("semantic_prior_judgment_count", 0) or 0)
     provider_identity = {
@@ -4051,6 +4055,9 @@ def run_bounded_llm_adjudication(
             durable_cache_write_successes += 1
             continue
         cache_misses += 1
+        if budget and provider_pause.get('reason'):
+            budget_blocked_pairs.append({'cache_key':metadata['cache_key'],'reason':provider_pause['reason']})
+            continue
         messages = [
             {
                 "role": "system",
@@ -4099,6 +4106,8 @@ def run_bounded_llm_adjudication(
                     raise RuntimeError(f"llm_provider_unavailable:{provider_summary.get('unavailable_reason')}")
             dispatched_calls += 1
             response = _run_async_json(provider, messages)
+            if budget:
+                provider_pause['transport_failures'] = 0
             normalized_confidence = source_confidence_score(response.get('confidence'),None) if isinstance(response,Mapping) else None
             if budget and (not isinstance(response, Mapping) or response.get('decision') not in {'must_link','cannot_link','needs_review'}
                 or isinstance(response.get('confidence'),bool) or normalized_confidence is None
@@ -4158,6 +4167,14 @@ def run_bounded_llm_adjudication(
                 budget.settle(reservation, getattr(provider,'last_usage',{}), success=False)
             if budget and isinstance(exc,AdjudicationBudgetBlocked):
                 raise
+            if budget:
+                from .llm_translation_provider import LLMHTTPStatusError, LLMTransportError
+                if isinstance(exc,LLMHTTPStatusError) and exc.status_code in {401,403,429}:
+                    provider_pause['reason']='adjudication_provider_authentication_or_rate_limit'
+                elif isinstance(exc,(LLMTransportError,TimeoutError)):
+                    provider_pause['transport_failures']=provider_pause.get('transport_failures',0)+1
+                    if provider_pause['transport_failures']>=3:
+                        provider_pause['reason']='adjudication_provider_repeated_transport_failure'
             _write_failure_cache_record(
                 durable_cache_root,
                 metadata=metadata,
@@ -4224,6 +4241,7 @@ def run_bounded_llm_adjudication(
         "cache_dir_public": "[private]",
         "task_budget": budget.summary() if budget else None,
         "budget_blocked_pairs": budget_blocked_pairs,
+        "provider_pause_reason": provider_pause.get('reason') if budget else None,
     }
 
 
