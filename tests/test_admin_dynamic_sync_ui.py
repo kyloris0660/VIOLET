@@ -89,7 +89,8 @@ def test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions() -> N
     assert "pending: true" in script
     assert "const retryReadyForImport = Number(outcomes.retry_source_ready_for_import || 0);" in script
     assert "const nextImportReadyCount = Number(execute.next_import_ready_count || 0) || ((Number(execute.unprocessed_import_planned_count || 0)) + retryReadyForImport);" in script
-    assert "待下一次导入=${nextImportReadyCount}" in script
+    assert "未执行导入=${Number(execute.unprocessed_import_planned_count || 0)}" in script
+    assert "源重试已恢复并继续本轮导入" in script
     assert "10 * 60 * 1000" not in script
     assert "/api/admin/dynamic-library-sync/manual-sync/gui-session" in script
     assert "POST /api/admin/dynamic-library-sync/check. This diagnostic path can scan the full root." in script

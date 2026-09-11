@@ -22,6 +22,10 @@ def validate(state, root):
     require(state.get('next_phase_started') is False, 'no_a3')
     for key in ('merge', 'push_main', 'additional_reviewer', 'original_file_mutation', 'confirmed_entity_write'):
         require(state['authorities'].get(key) is False, 'forbidden_' + key)
+    require(state['authorities']=={
+        'production':True,'additive_migration':True,'metadata_only_provider':True,
+        'bounded_llm_adjudication':True,'pixiv_apply':True,'merge':False,'push_main':False,
+        'additional_reviewer':False,'original_file_mutation':False,'confirmed_entity_write':False},'authority_map')
     require(not any(p.search(json.dumps(state, ensure_ascii=False)) for p in PUBLIC_FORBIDDEN), 'redaction')
     for link in state['durable_links']:
         path = Path(link['path'])

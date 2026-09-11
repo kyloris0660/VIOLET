@@ -1,4 +1,4 @@
-from dataclasses import make_dataclass
+from dataclasses import make_dataclass,replace
 import json
 
 from app.services.production_pixiv_role_extraction import plan_role_extraction,extract_production_roles
@@ -98,3 +98,31 @@ def test_later_case_variant_reuses_proven_original_question(tmp_path):
     result=extract_production_roles(next_units,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
     assert result['summary']['original_question_case_variant_cache_hits']==1
     assert len(provider.calls)==1 and result['records']==first['records']
+
+
+def test_contextual_supplement_is_cached_and_bound_to_real_aggregate(tmp_path):
+    from app.services.production_pixiv_role_extraction import extract_contextual_production_roles
+    def contextual_input(aggregate,other_tag):
+        inputs=[replace(source(name,'12345678'),evidence_payload={'work_id':'12345678','page_index':0,
+            'aggregate_fingerprint':aggregate}) for name in ['MysteryName',other_tag]]
+        signals=build_source_concept_signal_drafts(inputs)
+        return make_dataclass('Consumer',['signals','input_fingerprint'],frozen=True)(signals,'context-input')
+    first=contextual_input('first-frozen-aggregate','WorkName')
+    provider=Provider();budget=task_budget(tmp_path,provider);vocabulary=build_semantic_vocabulary([])
+    empty={'schema_version':'violet.production-pixiv-role-result.v1','records':{}}
+    result=extract_contextual_production_roles(first,vocabulary,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert len(provider.calls)==1 and len(provider.calls[0][0]['tags'])==2
+    assert result['context_summary']['completed_units']==1
+    replay=extract_contextual_production_roles(first,vocabulary,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert replay['context_summary']['cache_hits']==1 and len(provider.calls)==1
+    adapted=adapt_production_semantics(first,vocabulary,result)
+    assert next(s for s in adapted.signals if s.raw_value=='MysteryName').role_hint=='character'
+    other=adapt_production_semantics(contextual_input('different-aggregate','DifferentWork'),vocabulary,result)
+    assert next(s for s in other.signals if s.raw_value=='MysteryName').role_hint=='unknown'
+
+
+def test_generic_external_taxonomy_does_not_reject_pixiv_name_before_context():
+    vocabulary=build_semantic_vocabulary([], [{'raw_tag':'MysteryName','status':'resolved',
+        'candidate_namespace':'general','source_summary':{'selected_reason':'external_tag_category_lookup'}}])
+    units,_=plan_role_extraction(consumer(1),vocabulary)
+    assert len(units)==1 and units[0].llm_required

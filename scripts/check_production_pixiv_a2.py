@@ -54,12 +54,17 @@ def validation_evidence(private,record,candidate):
         gate=record[label];command=read(private,gate['command'])
         log=(private/gate['log']).read_text(encoding='utf-8')
         require(command['argv'][1:3]==['-m','pytest'],'validation_command')
+        require(command.get('status')=='finished','validation_finished')
         if label!='non_e2e':require(command['source_head']==candidate,'validation_candidate')
         actual={key:int((re.findall(r'(\d+) '+key+r'\b',log) or ['0'])[-1]) for key in ('passed','failed','skipped')}
         require(all(actual[key]==gate[key] for key in actual) and actual['passed']>0,'validation_counts')
         failures=set(re.findall(r'^FAILED (\S+)',log,re.MULTILINE))
         if label!='non_e2e':require(not failures and actual['failed']==0,'focused_or_postgresql_failure')
-        else:all_failures=failures
+        else:
+            all_failures=failures
+            require(command['argv'][3:]==['tests','--ignore=tests/e2e','-q'],'full_suite_command')
+            admission=read(private,'full-non-e2e-admission-private.json')
+            require(admission['source_head']==command['source_head'] and admission['full_suite_invocation']==1,'full_suite_admission')
         summary[label]={**actual,'source_head':command['source_head']}
     for item in record.get('remediation',[]):
         command=read(private,item['command']);log=(private/item['log']).read_text(encoding='utf-8')
@@ -129,6 +134,10 @@ def derive_result(private,repo=ROOT):
     require(quality['candidate_head']==workload['candidate_head']==head,'quality_candidate')
     require(quality['independent_answer_sources'] and all(row['passed'] for row in quality['cases']),'independent_quality')
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
+    baseline=read(private,manifest['workload_baseline'])
+    source_latency=workload['accepted_source_layer_latency_ms']
+    p95_gate=max(750,3*baseline['accepted_source_layer_latency_ms']['p95_ms'])
+    require(source_latency['p95_ms']<=p95_gate and source_latency['max_ms']<=3000,'full_scale_source_search_performance')
     validation=validation_evidence(private,read(private,manifest['validation']),head)
     value={'contract_id':CONTRACT,'target_met':True,'safe_to_merge':False,'route_approved':False,
         'project_lead_acceptance':'pending','candidate_head':head,
@@ -138,7 +147,8 @@ def derive_result(private,repo=ROOT):
         'budget':{'model':ledger['model'],'cap_usd':10,'charged_or_reserved_usd':budget['charged_or_reserved_usd'],
             'call_count':budget['call_count'],'unknown_usage_count':budget['unknown_usage_count']},
         'quality':{'case_count':len(quality['cases']),'failed_cases':0,'categories':quality['category_counts']},
-        'workload':{'query_count':len(workload['queries']),'failed_queries':0,**workload['latency_ms']},
+        'workload':{'query_count':len(workload['queries']),'failed_queries':0,**workload['latency_ms'],
+            'source_layer_latency_ms':source_latency,'applicable_source_layer_p95_gate_ms':p95_gate},
         'browser':{key:browser[key] for key in ('originals_loaded','thumbnails_loaded')},
         'launcher':{'new_process':True,'apply_enabled':launch['apply_enabled']},'validation':validation,
         'recovery':{'independent_restore':True,'owned_rollback_replay':True,'independent_support_preserved':True,'batch_business_equivalent':True}}

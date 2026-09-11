@@ -3409,7 +3409,7 @@ def _validate_scv2_px3_roadmaps(state: dict[str, Any], *, root: Path) -> None:
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
     if state.get('phase_id') == 'PRODUCTION-PIXIV-A2':
-        for name in ('docs/project-roadmap.md', 'docs/roadmap/current-mainline-roadmap.md'):
+        for name in ('docs/project-roadmap.md', 'docs/roadmap/current-mainline-roadmap.md', 'docs/phase-contracts.md'):
             content = (root / name).read_text(encoding='utf-8')
             if re.findall(r'<!-- CURRENT_PHASE: ([^ ]+) -->', content) != ['PRODUCTION-PIXIV-A2']:
                 raise DocumentationStateError('pixiv_a2_roadmap_marker')

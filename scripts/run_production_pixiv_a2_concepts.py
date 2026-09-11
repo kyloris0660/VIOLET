@@ -40,7 +40,7 @@ def peak_memory_bytes():
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=('roles','cluster','adjudicate'))
+    parser.add_argument('action',choices=('roles','contextual-roles','cluster','adjudicate'))
     parser.add_argument('--artifacts',required=True,type=Path)
     parser.add_argument('--profile',required=True,type=Path)
     parser.add_argument('--aggregates',required=True,type=Path)
@@ -84,6 +84,22 @@ def main():
     budget=AdjudicationBudget(out/'llm-budget-private.json',model=llm['model'],cap_usd=10,input_per_million=0.4,output_per_million=1.6)
     started=time.monotonic()
     with (exclusive(out/'llm-task.lock') if args.action!='cluster' else nullcontext()):
+        if args.action=='contextual-roles':
+            from app.services.production_pixiv_role_extraction import extract_contextual_production_roles,plan_contextual_role_extraction
+            if not facts:raise RuntimeError('existing_role_facts_required_for_contextual_supplement')
+            provider,summary=primary_openai_provider_from_settings()
+            if provider is None:raise RuntimeError('approved_primary_model_unavailable')
+            units,mapping,plan=plan_contextual_role_extraction(consumer,vocabulary,facts)
+            write(out/f'{args.label}-context-plan-private.json',plan)
+            print(json.dumps(plan),flush=True)
+            def context_progress(value):
+                write(out/f'{args.label}-context-progress-private.json',value)
+                print(json.dumps(value),flush=True)
+            result=extract_contextual_production_roles(consumer,vocabulary,facts,provider=provider,budget=budget,
+                cache_dir=out/'role-cache',progress=context_progress)
+            write(out/f'{args.label}-roles-private.json',result)
+            print(json.dumps(result['context_summary']),flush=True)
+            return
         if args.action=='roles':
             units,plan=plan_role_extraction(consumer,vocabulary)
             units.sort(key=lambda unit:(-len(unit.occurrences),unit.extraction_key))

@@ -447,6 +447,13 @@ def test_public_dirty_worktree_status_is_redacted() -> None:
 def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
     from scripts.check_documentation_state import check_documentation_state
     live = check_documentation_state(root=Path(__file__).resolve().parents[1])
+    if live['phase_id']=='PRODUCTION-PIXIV-A2':
+        assert live['passed']
+        handoff=(ROOT/'docs/current-handoff.md').read_text(encoding='utf-8')
+        assert 'PRODUCTION-PIXIV-A2' in handoff and 'PR #152' in handoff
+        assert '不合并、不推main' in handoff and 'USD 10' in handoff
+        assert 'ChatGPT review pack' in (ROOT/'docs/test-workflow.md').read_text(encoding='utf-8')
+        return
     if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
         assert live['passed']
         report = (Path(__file__).resolve().parents[1]/'docs/current-handoff.md').read_text(encoding='utf-8')

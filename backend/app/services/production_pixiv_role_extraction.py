@@ -5,6 +5,8 @@ enter prompts. Unit answers and raw replies survive interruption independently
 of batch composition, and every actual call uses the same A2 budget ledger.
 """
 from dataclasses import asdict, replace
+from collections import defaultdict
+import copy
 import asyncio
 import json
 from pathlib import Path
@@ -17,6 +19,7 @@ from .source_concept_budget import AdjudicationBudgetBlocked
 from .source_concept_resolver_service import _atomic_write_json
 from .source_name_candidate_extraction_service import (
     SourceCandidateInputGroup,build_extraction_units,deterministic_bundle_for_unit,
+    SourceExtractionUnit,
     group_prompt_payload,run_extraction_sync,validate_extraction_record,
     PROMPT_VERSION,EXTRACTOR_VERSION,SCHEMA_VERSION,
     SourceNameCandidateExtractionError,
@@ -96,6 +99,14 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         except (ValueError,TypeError):return
         for row in rows:
             if not isinstance(row,dict):continue
+            row=copy.deepcopy(row)
+            # Preserve raw replies while accepting the same named confidence
+            # vocabulary as production pair adjudication. Unknown values still
+            # follow F7a's downgrade guard.
+            for candidate in row.get('candidates') or []:
+                if isinstance(candidate,dict) and isinstance(candidate.get('confidence'),str):
+                    value={'high':0.9,'medium':0.7,'low':0.4}.get(candidate['confidence'].casefold())
+                    if value is not None:candidate['confidence']=value
             unit=self.units.get(row.get('group_key'))
             if not unit:continue
             try:
@@ -197,3 +208,48 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
         'cache_hits':cached,'deterministic_units':deterministic,'new_provider_calls':wrapped.calls,'raw_cache_hits':wrapped.raw_cache_hits,
         'original_question_case_variant_cache_hits':canonical_reuse,
         'blocked':blocked,'remaining_units':len(units)-len(records),'task_budget':budget.summary()}}
+
+
+def plan_contextual_role_extraction(consumer,vocabulary,role_facts):
+    """One supplementary question per distinct real metadata tag context.
+
+    Successful context-free answers remain reusable. Context answers apply
+    only to the frozen aggregates that actually supplied the complete tag set;
+    a same-name occurrence in another work cannot inherit them.
+    """
+    adapted=adapt_production_semantics(consumer,vocabulary,role_facts)
+    signals=defaultdict(list)
+    for signal in adapted.signals:
+        if signal.origin_type=='pixiv_tag_observation':
+            signals[signal.evidence_payload['aggregate_fingerprint']].append(signal)
+    units={};mapping={};skipped=0
+    for aggregate,rows in sorted(signals.items()):
+        # Explicit parenthetical/accepted roles are already grounded. The
+        # supplementary question addresses unresolved, generic-person or
+        # low-confidence/no-name single-string interpretations.
+        needs=any(row.role_hint in {'unknown','person'} and (
+            row.status!='rejected' or row.evidence_payload.get('production_non_identity_reason')=='existing_extractor_non_name_verdict')
+            for row in rows)
+        if not needs:skipped+=1;continue
+        selected=[row for row in rows if row.evidence_payload.get('production_non_identity_reason')!='accepted_general_search_term'
+            and row.evidence_payload.get('source_field')!='popularity_tag']
+        tags=tuple({'raw_tag':raw,'source_tag_kind':'provider_tag'} for raw in sorted({row.raw_value for row in selected},key=lambda raw:(canonical_source_key(raw),raw)))
+        if not tags:skipped+=1;continue
+        signature=canonical_fingerprint({'schema':'production_pixiv_contextual_roles_v1','tags':tags})
+        extraction_key='production-context:'+signature
+        mapping[aggregate]=extraction_key
+        group=SourceCandidateInputGroup(group_key='a2-context:'+signature[:24],provider='pixiv',tags=tags,
+            data_origin='production_metadata_contextual_supplement',source_work_id_present=True)
+        units[extraction_key]=SourceExtractionUnit(extraction_key=extraction_key,normalized_value='metadata context '+signature,
+            canonical_key=signature,raw_values=tuple(row['raw_tag'] for row in tags),provider='pixiv',source_field='pixiv_tag',
+            role_hint=None,context_key=signature,language_hint=None,script_hint=None,occurrences=(),llm_required=True,
+            deterministic_resolution='one_contextual_supplement',unit_group=group)
+    return list(units.values()),mapping,{'contextual_units':len(units),'aggregate_occurrences':len(mapping),
+        'already_grounded_aggregates':skipped,'context_derived_identity_equivalence':False}
+
+
+def extract_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None):
+    units,mapping,plan=plan_contextual_role_extraction(consumer,vocabulary,role_facts)
+    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=5,progress=progress)
+    return {**role_facts,'context_records':extracted['records'],'context_by_aggregate':mapping,
+        'context_summary':{**extracted['summary'],**plan}}
