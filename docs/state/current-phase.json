@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": null,
   "draft": false,
-  "candidate_head": "753fa74fdb459526a49a535dcc0cc59028e76cfc",
+  "candidate_head": "da155713742198f2aef545d1a6b8b176e010d5df",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -91,7 +91,9 @@
     "0553589恢复副本系统Edge新会话：三张原图与缩略图加载、source chip跳转、页面和API搜索集合一致，零页面脚本错误。副本只复制三份授权样本，其余图库缩略图显示占位，最终原生产浏览器验收仍待执行。",
     "ac4045a的集中292项与PostgreSQL14项通过。恢复副本509个剩余角色单元全部完成，8缓存、71新调用，后续作品优先配对正在执行；累计2730基础角色、970上下文和509补全记录已合并保存。",
     "剩余名称增加可选最多两个文本worker，独立provider usage、共享预算和全局错误暂停。隔离竞争测试发现并修复Windows锁字节在获得锁前被读取的问题；22项提取/预算测试通过，实际并行付费调用尚未启用。",
-    "753fa74的提取/预算/语义/裁决及resolver集中93项通过。作品阶段447对闭合：323缓存、124新调用、零错误；其他名称裁决继续。实际响应有些拼写仅保存在display/normalized字段，增加同一metadata组内角色读取，26项局部回归通过，本地恢复3个作品标签角色，其他未知保留。"
+    "753fa74的提取/预算/语义/裁决及resolver集中93项通过。作品阶段447对闭合：323缓存、124新调用、零错误；其他名称裁决继续。实际响应有些拼写仅保存在display/normalized字段，增加同一metadata组内角色读取，26项局部回归通过，本地恢复3个作品标签角色，其他未知保留。",
+    "da15571集中297 passed / 33.79秒、PostgreSQL14 passed / 20.17秒。恢复副本1214配对全部完成：1209缓存、5新调用、零剩余；实际534 Media/4066支持，单active。68例真实搜索63通过、5失败，角色遗漏及冲突判断已保存，不放宽unknown/cannot guard。",
+    "双worker实际32单元小批完成，8次新调用、2次传输失败保守计费，随后同一账本继续3740个剩余上下文单元。Metadata持续串行获取，原生产仍运行main 2b742ca，最终全量物化待执行。"
   ],
   "next_required_checkpoint": "持续完成固定metadata清单及上下文裁决，复核多语言碎裂，完成最终候选恢复副本生命周期、全量原生产物化与真实浏览器验收。",
   "durable_links": [
