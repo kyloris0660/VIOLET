@@ -301,6 +301,49 @@ def test_actual_tag_provenance_repair_does_not_promote_unobserved_provider_title
     assert _adapt_response_record(row,units[0])==row
 
 
+@pytest.mark.parametrize('role_field',['role','candidate_role'])
+def test_paid_context_role_stays_unknown_and_recovers_valid_siblings_without_repay(tmp_path,role_field):
+    from app.services.production_pixiv_role_extraction import _production_messages
+    from app.services.source_name_candidate_extraction_service import extraction_messages
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    unit=plan_role_extraction(consumer(1),build_semantic_vocabulary([]))[0][0]
+    unit=replace(unit,unit_group=replace(unit.unit_group,tags=(
+        {'raw_tag':'MysteryName','source_tag_kind':'provider_tag'},
+        {'raw_tag':'KnownCharacter','source_tag_kind':'provider_tag'})))
+    row={'group_key':unit.unit_group.group_key,'provider':'pixiv','verdict':'multiple_candidates_found',
+        'candidates':[
+            {'raw_value':'MysteryName',role_field:'work_context','status':'active_candidate',
+                'confidence':0.9,'source_field':'provider_tag','extraction_action':'direct_name'},
+            {'raw_value':'KnownCharacter','role':'character','status':'active_candidate',
+                'confidence':0.9,'source_field':'provider_tag','extraction_action':'direct_name'}],
+        'rejected_summary':{}}
+    provider=Provider();budget=task_budget(tmp_path,provider)
+    messages=_production_messages(extraction_messages([unit.unit_group]))
+    signature=canonical_fingerprint({'model':provider.model,'messages':messages,'temperature':0.0,'max_tokens':6000})
+    cache=tmp_path/'roles';raw=cache/'raw'/f'{signature}.json';raw.parent.mkdir(parents=True)
+    raw.write_text(json.dumps({'model':provider.model,'input_fingerprint':signature,
+        'content':json.dumps({'records':[row]})}),encoding='utf-8')
+    original=raw.read_bytes()
+    result=extract_production_roles([unit],provider=provider,budget=budget,cache_dir=cache)
+    record=result['records'][unit.extraction_key]
+    found={candidate['raw_value']:candidate for candidate in record['candidates']}
+    assert found['MysteryName']['candidate_role']=='unknown_name_like'
+    assert found['MysteryName']['candidate_status']=='needs_review'
+    assert found['KnownCharacter']['candidate_role']=='character'
+    assert record['validated_response']['candidates'][0]['production_reported_role']=='work_context'
+    assert row['candidates'][0][role_field]=='work_context' and raw.read_bytes()==original
+    assert result['summary']['paid_raw_units_recovered_locally']==1
+    assert not provider.calls and budget.summary()['call_count']==0
+
+
+def test_context_role_adapter_does_not_accept_an_unobserved_name_or_other_invalid_role():
+    from app.services.production_pixiv_role_extraction import _adapt_response_record
+    unit=plan_role_extraction(consumer(1),build_semantic_vocabulary([]))[0][0]
+    row={'candidates':[{'raw_value':'Unobserved','role':'work_context','status':'active_candidate'},
+        {'raw_value':'MysteryName','role':'invented_identity','status':'active_candidate'}]}
+    assert _adapt_response_record(row,unit)==row
+
+
 @pytest.mark.parametrize('size',[0,11,True])
 def test_context_batch_size_is_bounded_before_any_call(tmp_path,size):
     from app.services.production_pixiv_role_extraction import extract_contextual_production_roles

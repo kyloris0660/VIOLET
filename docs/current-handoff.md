@@ -4,8 +4,8 @@
 
 当前状态以 docs/state/current-phase.json 为准。
 
-- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_METADATA_ACQUISITION_AND_CONCEPT_IMPLEMENTATION`。
-- 分支：`codex/production-pixiv-a2`；PR：`None`。
+- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_FULL_SCOPE_CONCEPT_COMPLETION`。
+- 分支：`codex/production-pixiv-a2`；PR：`153`。
 - 已接受并合并基线：PR #152 / `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。
 - 工程目标完成：`False`；负责人接受：`pending_project_lead_review`。
 - 新LLM调用累计上限USD 10；原图不下载、不上传。
@@ -58,6 +58,12 @@
 - 固定metadata清单结束：8694个不同work各执行一次获取命令。原库本地重放修复2处旧标识误报，21个作品完整远端页域闭合29个缺失本地页；无新增请求。最终8623完整Media、850远端不可用、29缺失页，加1455冲突及27157不适用，精确覆盖38114个T0 Media；8385有效work/8565聚合，尾部0。恢复副本正复用保存payload。
 - 10c15bb原失败节点复验144 passed / 1 skipped，254.53秒；历史缺失AI evidence仍单列，完整non-E2E仍仅一次。
 - 恢复副本重放在已提交5307项后，进度JSON原子替换遭遇Windows并发读占用而停止。增加原位置替换的最多8次短暂重试，持续拒绝仍抛出并保留旧文件；29项相关回归通过。成功数据库与payload保留，接下来仅续跑未完成项；进度读取改用允许删除共享的文件句柄。
+- 恢复副本剩余3393项本地重放及缺失页闭合完成，最终8565聚合与原库逐项一致，无新provider请求。ae48841候选315 focused、14 PostgreSQL、原失败节点144 passed / 1 skipped通过；配对的两个步骤共用鉴权/限流/连续传输失败暂停，缓存仍可读取。
+- 唯一普通PR #153已建立，HEAD ae48841，Open且非Draft。GraphQL初查无review threads，未显示GitHub检查；未触发额外reviewer，不合并、不推main。原生产在文本计算期间仍健康且由既有launcher管理。
+- 较早累积检查点3740个角色单元实际结束，3732完成、8未完成，36缓存命中、530新调用，累计费用USD4.685073。完整8565聚合据此继续3791个剩余单元（含这8项），4353个已完成聚合保留，零重置预算。
+- ae48841现有测试日志已通过A2 validation_evidence函数对账：315 focused、14 PostgreSQL；144通过/1跳过的修复复验覆盖88个初始非历史失败，两个A1到A2节点改名明确映射，历史AI evidence缺失保留。未再次运行pytest完整套件。
+- 独立真实建议标签预期选定3个无来源/Entity支持的T0样本；当前候选实际/api/search正向、负向及已接受标签对照9项通过。两个同名Pixiv作者账号家族的并集预期已独立准备，最终全量仍待验证。原生产重新核对无active导入/标签工作、仍5 Media/51有效支持、无尾部。
+- 完整3791单元批次实际完成3788、剩余3，总账USD7.084118且无在途。仅对3项续跑命中raw缓存、零新调用；诊断9份相关响应均因work_context非标准角色失败，3份原单项问题指纹已核实。适配仅将来源确有的此类名称降为unknown_name_like/needs_review并保留原值，39项相关回归通过；原始raw不改写，有效兄弟候选将本地恢复。
 
 ## 后续执行
 

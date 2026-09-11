@@ -121,6 +121,16 @@ def _adapt_response_record(row,unit):
         # generic field label must not turn an explicit tag into a weak title.
         # No provider role or name is invented; F7a still validates the answer.
         if canonical_source_key(candidate.get('raw_value')) in supported:
+            reported_role=candidate.get('role') or candidate.get('candidate_role')
+            if reported_role=='work_context':
+                # A context label does not establish whether its name is a
+                # place, character or work. Preserve the source spelling as
+                # unresolved instead of discarding valid sibling answers or
+                # promoting it to a work identity.
+                candidate['production_reported_role']=reported_role
+                candidate['production_reported_status']=candidate.get('status') or candidate.get('candidate_status')
+                candidate['role']='unknown_name_like'
+                candidate['status']='needs_review'
             if candidate.get('source_field') in {'provider_tag','provider_field','pixiv_tag'}:
                 candidate['source_field']='source_tag_observation'
             if candidate.get('extraction_action')=='normal_tag':
