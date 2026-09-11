@@ -126,3 +126,59 @@ def test_generic_external_taxonomy_does_not_reject_pixiv_name_before_context():
         'candidate_namespace':'general','source_summary':{'selected_reason':'external_tag_category_lookup'}}])
     units,_=plan_role_extraction(consumer(1),vocabulary)
     assert len(units)==1 and units[0].llm_required
+
+
+def test_contextual_work_role_survives_unknown_popularity_prefix(tmp_path):
+    from app.services.production_pixiv_role_extraction import extract_contextual_production_roles
+    class ContextProvider(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            payload=json.loads(await super().complete_chat(messages,**kwargs))
+            candidate=payload['records'][0]['candidates'][0]
+            candidate.update(role='work_title',source_field='source_tag',confidence=0.9)
+            payload['records'][0]['candidates'].append({**candidate,'role':'unknown_name_like',
+                'status':'needs_review','confidence':0.68,'extraction_action':'popularity_suffix_stripped'})
+            return json.dumps(payload)
+    value=consumer(1)
+    value=replace(value,signals=tuple(replace(signal,evidence_payload={**signal.evidence_payload,
+        'aggregate_fingerprint':'frozen-role-context'}) for signal in value.signals))
+    provider=ContextProvider();budget=task_budget(tmp_path,provider)
+    vocabulary=build_semantic_vocabulary([])
+    empty={'schema_version':'violet.production-pixiv-role-result.v1','records':{}}
+    result=extract_contextual_production_roles(value,vocabulary,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    adapted=adapt_production_semantics(value,vocabulary,result)
+    assert adapted.signals[0].role_hint=='work'
+    # A conflicting explicit character answer is a real role disagreement.
+    record=next(iter(result['context_records'].values()))
+    record['candidates'].append({**record['candidates'][0],'candidate_role':'character'})
+    assert adapt_production_semantics(value,vocabulary,result).signals[0].role_hint=='unknown'
+
+
+def test_actual_tag_field_synonyms_recover_paid_raw_without_new_request(tmp_path):
+    from app.services.production_pixiv_role_extraction import _unit_path
+    class TagSynonyms(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            payload=json.loads(await super().complete_chat(messages,**kwargs))
+            for row in payload['records']:
+                row['candidates'][0].update(source_field='provider_tag',extraction_action='normal_tag')
+            return json.dumps(payload)
+    units,_=plan_role_extraction(consumer(1),build_semantic_vocabulary([]))
+    provider=TagSynonyms();budget=task_budget(tmp_path,provider)
+    cached=tmp_path/'roles'
+    first=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cached)
+    assert first['summary']['completed_units']==1 and len(provider.calls)==1
+    raw=next((cached/'raw').glob('*.json'))
+    assert 'provider_tag' in json.loads(raw.read_text(encoding='utf-8'))['content']
+    _unit_path(cached,units[0]).unlink()  # Simulate a crash after the raw reply.
+    resumed=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cached)
+    assert resumed['summary']['paid_raw_units_recovered_locally']==1
+    assert resumed['records']==first['records'] and len(provider.calls)==1
+
+
+def test_tag_synonym_adapter_cannot_invent_provenance(tmp_path):
+    from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
+    units,_=plan_role_extraction(consumer(1),build_semantic_vocabulary([]))
+    provider=Provider();wrapped=BudgetedExtractionProvider(provider,task_budget(tmp_path,provider),tmp_path/'roles',units)
+    raw=json.dumps({'records':[{'group_key':units[0].unit_group.group_key,
+        'candidates':[{'raw_value':'AbsentFromActualTags','source_field':'provider_tag','extraction_action':'normal_tag'}]}]})
+    candidate=json.loads(wrapped.adapted_content(raw))['records'][0]['candidates'][0]
+    assert candidate['source_field']=='provider_tag' and candidate['extraction_action']=='normal_tag'

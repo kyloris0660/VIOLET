@@ -6,7 +6,6 @@ of batch composition, and every actual call uses the same A2 budget ledger.
 """
 from dataclasses import asdict, replace
 from collections import defaultdict
-import copy
 import asyncio
 import json
 from pathlib import Path
@@ -20,7 +19,7 @@ from .source_concept_resolver_service import _atomic_write_json
 from .source_name_candidate_extraction_service import (
     SourceCandidateInputGroup,build_extraction_units,deterministic_bundle_for_unit,
     SourceExtractionUnit,
-    group_prompt_payload,run_extraction_sync,validate_extraction_record,
+    group_prompt_payload,extraction_messages,run_extraction_sync,validate_extraction_record,
     PROMPT_VERSION,EXTRACTOR_VERSION,SCHEMA_VERSION,
     SourceNameCandidateExtractionError,
 )
@@ -92,30 +91,80 @@ class BudgetedExtractionProvider(BaseLLMProvider):
     def get_provider_name(self):return self.provider.get_provider_name()
     async def translate_tags(self,tags):raise RuntimeError('role_extraction_has_no_translation_write_route')
 
-    def save_units(self,content):
+    def adapted_content(self,content):
         try:
             payload=json.loads(content)
             rows=payload.get('records',[]) if isinstance(payload,dict) else []
-        except (ValueError,TypeError):return
+        except (ValueError,TypeError):return content
         for row in rows:
             if not isinstance(row,dict):continue
-            row=copy.deepcopy(row)
+            unit=self.units.get(row.get('group_key'))
+            if not unit:continue
+            from .source_metadata_registry_service import parse_parenthetical_name
+            from .source_name_candidate_extraction_service import popularity_suffix_prefix
+            supported=set()
+            for tag in unit.unit_group.tags:
+                raw=tag.get('raw_tag') or ''
+                supported.add(canonical_source_key(raw))
+                parsed=parse_parenthetical_name(raw)
+                if parsed:supported.update(canonical_source_key(value) for value in parsed)
+                popularity=popularity_suffix_prefix(raw)
+                if popularity:supported.add(canonical_source_key(popularity.get('extracted_prefix')))
             # Preserve raw replies while accepting the same named confidence
             # vocabulary as production pair adjudication. Unknown values still
             # follow F7a's downgrade guard.
             for candidate in row.get('candidates') or []:
-                if isinstance(candidate,dict) and isinstance(candidate.get('confidence'),str):
+                if not isinstance(candidate,dict):continue
+                if isinstance(candidate.get('confidence'),str):
                     value={'high':0.9,'medium':0.7,'low':0.4}.get(candidate['confidence'].casefold())
                     if value is not None:candidate['confidence']=value
+                # These are observed schema synonyms, not new role judgments.
+                # Correct only names proven present in the actual question.
+                if canonical_source_key(candidate.get('raw_value')) in supported:
+                    if candidate.get('source_field')=='provider_tag':
+                        candidate['source_field']='source_tag_observation'
+                    if candidate.get('extraction_action')=='normal_tag':
+                        candidate['extraction_action']='normal_tag_candidate'
+        return json.dumps(payload,ensure_ascii=False)
+
+    def save_units(self,content):
+        try:
+            payload=json.loads(self.adapted_content(content))
+            rows=payload.get('records',[]) if isinstance(payload,dict) else []
+        except (ValueError,TypeError):return
+        for row in rows:
+            if not isinstance(row,dict):continue
             unit=self.units.get(row.get('group_key'))
             if not unit:continue
+            path=_unit_path(self.cache_dir,unit)
+            if path.exists():
+                _read_unit_cache(path,unit,self.model)
+                continue
             try:
                 verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
             except (ValueError,SourceNameCandidateExtractionError):continue
             if verdict.extraction_verdict.startswith('extraction_error'):continue
-            _atomic_write_json(_unit_path(self.cache_dir,unit),
+            _atomic_write_json(path,
                 {**_record(unit,self.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
                  'validated_response':row})
+
+    def replay_saved_raw(self):
+        recovered_before=sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())
+        for path in sorted((self.cache_dir/'raw').glob('*.json')):
+            saved=json.loads(path.read_text(encoding='utf-8'))
+            if saved.get('model')!=self.model or saved.get('input_fingerprint')!=path.stem:continue
+            try:
+                rows=json.loads(saved['content'])['records']
+                groups=[self.units[row['group_key']].unit_group for row in rows]
+            except (ValueError,KeyError,TypeError):continue
+            # Old raw envelopes predate stored request identities. Rebuild the
+            # exact F7a question and prove its hash before accepting any row.
+            messages=extraction_messages(groups)
+            expected=canonical_fingerprint({'model':self.model,'messages':messages,
+                'temperature':0.0,'max_tokens':6000})
+            if expected==saved['input_fingerprint']:
+                self.save_units(saved['content'])
+        return sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())-recovered_before
 
     async def complete_chat(self,messages,*,temperature=0.0,max_tokens=6000):
         # F7a may split a partially invalid batch. Preserve the valid units
@@ -150,7 +199,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 raise ValueError('role_raw_cache_identity_mismatch')
             self.raw_cache_hits+=1
             self.save_units(cached['content'])
-            return cached['content']
+            return self.adapted_content(cached['content'])
         reservation=self.budget.reserve('role-extraction:'+signature,messages,max_output_tokens=max_tokens)
         self.provider.last_usage={}
         try:
@@ -170,7 +219,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                     raise ProductionRoleProviderPaused('role_provider_repeated_transport_failure') from exc
             raise
         self.budget.settle(reservation,self.last_usage,success=True)
-        return content
+        return self.adapted_content(content)
 
 
 def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,progress=None):
@@ -178,6 +227,9 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
         raise ValueError('production_role_batch_size_invalid')
     cache_dir=Path(cache_dir)
     wrapped=BudgetedExtractionProvider(provider,budget,cache_dir,units)
+    # A crash or a fixed response adapter may leave good paid raw replies
+    # without a unit cache. Replay those first, including changed batch shapes.
+    raw_recovered=wrapped.replay_saved_raw()
     records={};pending=[];cached=0;deterministic=0;blocked=None;canonical_reuse=0
     for unit in units:
         path=_unit_path(cache_dir,unit)
@@ -206,6 +258,7 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
         if blocked:break
     return {'schema_version':ROLE_SCHEMA,'records':records,'summary':{'total_units':len(units),'completed_units':len(records),
         'cache_hits':cached,'deterministic_units':deterministic,'new_provider_calls':wrapped.calls,'raw_cache_hits':wrapped.raw_cache_hits,
+        'paid_raw_units_recovered_locally':raw_recovered,
         'original_question_case_variant_cache_hits':canonical_reuse,
         'blocked':blocked,'remaining_units':len(units)-len(records),'task_budget':budget.summary()}}
 

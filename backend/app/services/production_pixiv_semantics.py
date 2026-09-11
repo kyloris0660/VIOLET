@@ -14,6 +14,19 @@ from .source_metadata_registry_service import canonical_source_key, parse_parent
 VOCABULARY_SCHEMA = 'violet.production-pixiv-semantic-vocabulary.v1'
 
 
+def _specific_role_candidates(candidates):
+    """An unknown prefix observation cannot contradict a typed name answer.
+
+    F7a preserves deterministic popularity-prefix candidates alongside the
+    model's contextual answer. Keep real disagreements between typed roles;
+    only remove non-specific observations when a typed answer exists.
+    """
+    from .source_concept_resolver_service import role_from_source_role
+    typed=[row for row in candidates if role_from_source_role(row['candidate_role'])
+        in {'character','person','work','artist'}]
+    return typed or candidates
+
+
 def build_semantic_vocabulary(translation_rows, taxonomy_rows=()):
     from ..utils.search_parser import _translation_alias_trusted_for_search
     hints=defaultdict(list)
@@ -98,7 +111,8 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
                 if fact:
                     from .source_concept_resolver_service import role_from_source_role,_trust_for_f7a_candidate
                     from types import SimpleNamespace
-                    matching=[row for row in fact['candidates'] if canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)]
+                    matching=_specific_role_candidates([row for row in fact['candidates']
+                        if canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)])
                     inferred_roles={role_from_source_role(row['candidate_role']) for row in matching}
                     evidence['production_role_extraction']=fact
                     if len(inferred_roles)==1 and next(iter(inferred_roles)) in ('character','person','work'):
@@ -114,15 +128,16 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
                 context_key=role_facts['context_by_aggregate'].get(signal.evidence_payload.get('aggregate_fingerprint'))
                 contextual=role_facts.get('context_records',{}).get(context_key)
             if contextual and not candidates:
-                matches=[row for row in contextual['candidates']
-                    if canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)]
+                matches=_specific_role_candidates([row for row in contextual['candidates']
+                    if canonical_source_key(row['raw_value'])==canonical_source_key(signal.raw_value)])
                 from .source_concept_resolver_service import role_from_source_role,_trust_for_f7a_candidate
                 from types import SimpleNamespace
                 roles={role_from_source_role(row['candidate_role']) for row in matches}
                 if len(roles)==1 and next(iter(roles)) in {'character','person','work'}:
                     best=max(matches,key=lambda row:row['confidence'])
                     role=next(iter(roles));trust,status=_trust_for_f7a_candidate(SimpleNamespace(**{**best,'status':'active'}))
-                    contexts={canonical_source_key(row.get('work_context_key')) for row in matches if row.get('work_context_key')}
+                    contexts={canonical_source_key(row.get('work_context_key') or row.get('parenthetical_context'))
+                        for row in matches if row.get('work_context_key') or row.get('parenthetical_context')}
                     if not context and len(contexts)==1:context=next(iter(contexts))
                     evidence['production_contextual_role_extraction']=contextual
             if role=='work':context=None
