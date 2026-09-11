@@ -64,9 +64,19 @@ outside the automated contract.
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: PRODUCTION-IMPORT-RECOVERY -->
+<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A2 -->
 
-当前修复契约为 `production_import_recovery_v1`，入口为
+当前契约为 `production_pixiv_a2_v1`，入口为
+`scripts/check_production_pixiv_a2.py`，统一检查器使用 `--a2-evidence`。
+它核对固定T0全量Media/work/page归宿、真实原库物化、共享USD10预算、
+独立恢复和owned rollback/replay、独立多语言答案、240-query工作量、
+正常launcher和新浏览器实际媒体证据，以及同候选focused/PostgreSQL和
+一次完整non-E2E的精确失败对账。公开结果仅表示工程交付，负责人接受、
+合并和A3授权均独立。本任务23号授权允许全量原库落地，不要求重复逐步审批。
+
+### 上一已接受阶段：PR #152 / 导入恢复
+
+上一修复契约为 `production_import_recovery_v1`，入口为
 `scripts/check_production_import_recovery.py`，统一检查器使用
 `--import-recovery-evidence`。它核对同候选 focused/PostgreSQL 原始测试结果、
 逐项恢复附件、日常启动锚点和重启身份、有界面 Edge 与原五样本/51绑定。

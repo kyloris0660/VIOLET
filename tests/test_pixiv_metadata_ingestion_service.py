@@ -593,7 +593,6 @@ def test_bounded_acquisition_deduplicates_manifest_and_checkpoints(db) -> None:
     [
         ("401 authentication expired", "retryable_authentication"),
         ("429 rate limit", "retryable_rate_limit"),
-        ("network connection timeout", "retryable_network_transport"),
     ],
 )
 def test_systemic_failure_stops_all_later_main_and_conflict_calls(db, stderr: str, expected_error: str) -> None:
@@ -1329,7 +1328,7 @@ def test_persistent_spacing_fails_closed_on_malformed_state(tmp_path) -> None:
         gate.wait_before_request("123456789")
 
 
-def test_rate_limit_retry_is_bounded_spaced_and_checkpointed(db) -> None:
+def test_network_retry_is_bounded_spaced_and_checkpointed(db) -> None:
     queue_media_for_pixiv_metadata(
         db,
         {"id": 13, "filename": "123456789_p0.jpg", "path": "media/original/123456789_p0.jpg"},
@@ -1342,7 +1341,7 @@ def test_rate_limit_retry_is_bounded_spaced_and_checkpointed(db) -> None:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
-            return subprocess.CompletedProcess(command, 1, stdout="", stderr="429 rate limit")
+            return subprocess.CompletedProcess(command, 1, stdout="", stderr="network connection timeout")
         payload = [[3, "url", {"id": 123456789, "num": 0, "title": "Work", "user": {"id": 42, "name": "Display"}}]]
         return subprocess.CompletedProcess(command, 0, stdout=json.dumps(payload), stderr="")
 

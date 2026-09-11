@@ -1,6 +1,96 @@
 {
   "schema_version": "violet.current-phase.v2",
   "repository": "kyloris0660/VIOLET",
+  "phase_id": "PRODUCTION-PIXIV-A2",
+  "phase_title": "固定全量Pixiv metadata与概念链进入生产",
+  "branch": "codex/production-pixiv-a2",
+  "pr_number": null,
+  "draft": false,
+  "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
+  "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
+  "previous_phase_pr_number": 152,
+  "previous_phase_status": "project_lead_accepted_merged_and_production_entry_aligned",
+  "previous_phase_acceptance": {
+    "accepted_head": "a286855c0ad525b680b9b01cb98eadd90ee913f5",
+    "authority": "项目所有者39号任务单所载负责人裁决",
+    "accepted_implementation_and_real_ui": true,
+    "product_owner_personal_use_claimed": false
+  },
+  "previous_phase_release_alignment": {
+    "pr_merged": true,
+    "merge_commit": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
+    "merged_at": "2026-09-09T14:27:44Z",
+    "main_head": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
+    "accepted_tree": "b3ce911b112d21f253abfa4bfe37924a8407eddb",
+    "completed": true,
+    "state_projection_branch": "codex/production-import-recovery",
+    "main_tracked_documents_unchanged": true,
+    "legacy_main_documentation_check": "a1_live_branch",
+    "legacy_permission_fields": "原执行代理阶段字段保留；不否定39号已接受、已合并及发布对齐授权，也不授予再次merge或推main权限。"
+  },
+  "current_status": "PRODUCTION_PIXIV_A2_METADATA_ACQUISITION_AND_CONCEPT_IMPLEMENTATION",
+  "target_met": false,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "next_phase_started": false,
+  "planning_authorized": true,
+  "planning_completed": true,
+  "planning_approved": true,
+  "manual_acceptance_status": "pending_project_lead_review",
+  "llm_budget_usd": 10,
+  "authorities": {
+    "production": true,
+    "additive_migration": true,
+    "metadata_only_provider": true,
+    "bounded_llm_adjudication": true,
+    "pixiv_apply": true,
+    "merge": false,
+    "push_main": false,
+    "additional_reviewer": false,
+    "original_file_mutation": false,
+    "confirmed_entity_write": false
+  },
+  "completed_checkpoints": [
+    "项目所有者明确要求全量执行23号任务；39号负责人接受、PR151/152实际合并及日常入口对齐已核实。",
+    "可信fetch后main与origin/main均为2b742ca，无本地独有提交或工作树漂移；从该基线建立隔离A2分支，原工作区保持。",
+    "现场生产运行main 2b742ca，认证后server-identity与持久profile一致；Python身份预检通过。",
+    "T0数据库只读快照完成：38114 Media，9460无歧义先验Media/9167 works/9370 pages，1497多先验Media；先验尚不等同于已确认绑定。A1仍5 Media/51绑定/1 active。",
+    "可信来源优先的固定映射：9502 Media、9209 works；1455 Media先验冲突保留，27157不适用。467可信绑定中的12个作者context兼容问题已在生产适配层处理。",
+    "原生产备份完成，独立任务数据库恢复通过；原库未覆盖恢复。副本及原库均完成队列准备，66页复用完整事实，6份预检输出本地重放未新增网络调用。",
+    "项目所有者确认令牌未轮换并明确授权本轮A2全部批次、重试与续跑使用；任务私有凭据许可已记录，未设置或宣称rotation confirmed，正常认证预检通过。",
+    "获取回归111项通过；固定Media/work/page绑定及累计事务替换已加入实现。原库有限清单获取运行中，进程级和HTTP请求级间隔至少2秒，CLI内部重试关闭，三次上限由持久日志统一控制。",
+    "已核查6429条历史持久裁决，角色/context/模型/版本相容性决定复用；初始42个候选完成缓存闭合，实际46次调用与失败均已计费保留，随后缓存重放未新增调用。",
+    "实际gpt-4.1-mini名称提取运行中，复用F7a验证及逐单元缓存；首批20单元完成并成功续跑。所有提取与配对裁决共用USD10账本，不重置预算。",
+    "共享概念的跨消费者upsert归属问题已修复：生产支持使用跨批次固定键空间，事务替换保留独立消费者。搜索/详情与所有权回归12项、局部失败及认证/网络暂停回归10项通过。",
+    "真实累计预览1733个有效work/page聚合、19086信号、102999候选边，构建22.796秒、峰值内存约1.20GB；角色提取尚未全部纳入，不能据此宣称最终全量质量或性能。",
+    "首组953名称单元全部完成。恢复副本531聚合的564配对已闭合：首轮319新调用、245缓存，4次传输失败保守计费；有界续跑561缓存、3新调用，最终无错误。随后累计2730名称单元继续缓存优先处理。",
+    "恢复副本已通过正常事务承接A1五样本，实际物化534 Media/3671支持，单active run；原生产仍为A1投影，尚未宣称全量生产完成。",
+    "固定范围、共享支持、分批顺序/续跑业务一致性等独立PostgreSQL9项通过；最新集中开发回归200项通过。嵌套系列ID误报及大小写代表值变化均已补回归，不新增重复获取或重复付费。",
+    "A2可执行契约已注册，6项失败关闭回归通过。独立多语言答案及既有240-query已保留，最终真实质量、性能、浏览器及完整non-E2E仍待执行。"
+  ],
+  "next_required_checkpoint": "持续获取固定清单，完成完整裁决与累计USD10控制、PostgreSQL恢复/搜索验证，再进行全量生产物化与真实浏览器验收。",
+  "durable_links": [
+    {
+      "label": "A2实施方案",
+      "path": "docs/plans/production-pixiv-a2.md"
+    },
+    {
+      "label": "执行runbook",
+      "path": "docs/development/agent-runbook.md"
+    },
+    {
+      "label": "生产启动器",
+      "path": "docs/production-launcher.md"
+    },
+    {
+      "label": "阶段契约",
+      "path": "docs/phase-contracts.md"
+    },
+    {
+      "label": "当前主线路线",
+      "path": "docs/roadmap/current-mainline-roadmap.md"
+    }
+  ],
   "deferred_debt": [
     {
       "id": "FL1_I2_LISTED_MEMBER_VALIDATION_GATE",
@@ -201,6 +291,17 @@
       "requirements": [
         "prove cross-worker atomic apply admission before enabling concurrent execution"
       ]
+    },
+    {
+      "id": "PR152_TASK39_DEFERRED_OPERATIONAL_BOUNDARIES",
+      "owner": "A3及Linux入口负责人",
+      "reason": "39号裁决：常规Windows增量入口已接受；不在本轮重新修正新增六条意见。",
+      "due_before": "A3相关能力实际使用之前；Linux fork问题在Linux使用该入口之前",
+      "requirements": [
+        "A3处理互补历史donor、恢复写入竞争、复制子进程未回收及源端ENOSPC/EDQUOT边界",
+        "本轮不执行advanced_full_rescan，不在同步检查/执行期间同时改变恢复处置",
+        "Linux入口使用前处理fork边界，不扩展本轮Windows发布收尾"
+      ]
     }
   ],
   "resolved_debt": [
@@ -217,103 +318,5 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "phase_id": "PRODUCTION-IMPORT-RECOVERY",
-  "phase_title": "生产导入可靠性修复与实际恢复",
-  "branch": "codex/production-import-recovery",
-  "pr_number": 152,
-  "draft": false,
-  "accepted_mainline_base": "ea4bdd740943b2dad8c4eace88d0b33819d86cb8",
-  "previous_phase": "PRODUCTION-PIXIV-A1",
-  "previous_phase_pr_number": 151,
-  "previous_phase_merge_commit": "ea4bdd740943b2dad8c4eace88d0b33819d86cb8",
-  "previous_phase_final_head": "c08c84d77535d7b54494729526210c1bc11e694d",
-  "previous_phase_final_tree": "f1ed086101b46b1d657e8939985fa2eda7246dfe",
-  "previous_phase_status": "owner_accepted_and_merged",
-  "current_status": "PRODUCTION_IMPORT_RECOVERY_ENGINEERING_COMPLETE_PENDING_LEAD_REVIEW_AND_MERGE",
-  "target_met": true,
-  "safe_to_merge": false,
-  "route_approved": false,
-  "planning_authorized": true,
-  "planning_completed": true,
-  "planning_approved": true,
-  "next_phase_started": false,
-  "manual_acceptance_status": "pending_project_lead_review",
-  "route_scope": "33号续接：同一PR152修正恢复处置跨更新持久性、真实版本绑定、历史优先路径有界解析、哈希消费者诊断落库；保留旧恢复与下游，隔离验证后受控生产复验。",
-  "authorities": {
-    "production": true,
-    "additive_migration": true,
-    "source_read": true,
-    "import_copy": true,
-    "bounded_existing_downstream": true,
-    "merge": false,
-    "push_main": false,
-    "additional_reviewer": false,
-    "pixiv_apply": false,
-    "new_provider": false,
-    "original_file_mutation": false
-  },
-  "completed_checkpoints": [
-    "36号验收交付核对：PR152仍OPEN/CLEAN，未关闭线程现为14；新增3条P2涉及互补donor、恢复并发及复制子进程退出，已只读核对并保留原文，未扩展本次按钮验收执行范围，待负责人裁决。",
-    "36号验收续接完成：普通无参数EXE经Windows UI Automation InvokePattern执行停止→启动（自动preflight）→重启；服务48388→停止→25608→37528，监听81304，窗口与只读身份最终健康一致。537来源SQL记录不变，五类业务任务新增0；原525/147不重跑，历史CDP拒绝保持未执行，返回负责人复审。",
-    "36号限定实现与验证：81ea89e旧Media下游与新源失败独立保存，27条新增接入和原22条通过；focused 525 passed /3 skipped，PostgreSQL 147 passed。原537来源/315Media逐项保护，生产写入新增补做0，controller重启/生产Edge/A1通过；EXE按钮CDP门槛被策略阻断，不能宣称全量完成。",
-    "36号执行器写入与成功/去重路径已修正，新增27条生命周期接入矩阵及原22条等定向回归84通过；旧Media完成事实、新来源失败/未落地、部分目标下游复用与新Session恢复覆盖，冻结候选进入focused/PostgreSQL和原production复验。",
-    "36号执行版已完整读取并获授权：可信fetch核实69a28c6、main仍ea4bdd7，独立候选目录仅落后四份文档并已安全快进。R1至R5、R7至R9和两条不适用意见沿用负责人裁决；本轮仅关闭R6执行器生命周期缺口。",
-    "33号R6至R9完成：a8aeda5 focused 498 passed /3 skipped、PostgreSQL 120 passed，两套均含22条实际接入回归；跨更新处置/列表/待导入口径、阻塞优先路径及哈希消费者落库通过，原537来源/315Media与下游逐项保护，原EXE启动重启和CDP/A1复验通过，待负责人复审合并。",
-    "33号R6待导入口径同步修正：暂缓/忽略/终止及冷却中的未导入来源保持不可导入；真实版本变化仍重入。108条接入及更新检查预验证通过，5b225bd已通过独立Edge但完整测试中止，未部署。新候选重新绑定最终验证。",
-    "33号R6至R9实现及真实接入回归已补齐；141条相关回归、44条新增接入与契约预验证通过。独立Edge发现并修正更新后恢复列表隐藏处置的问题，49b4f7d验证已中止且未部署，原始失败保留。冻结新候选进入最终focused/PostgreSQL/CDP验证。",
-    "33号续接已授权并完整阅读；可信fetch核实6b1695e与PR152远端一致、main仍ea4bdd7。独立候选目录从83d5eda安全快进到6b1695e，原production行为未修改。",
-    "30号续接完成：R1至R5修正、一次独立元数据及全部保存历史对账；83d5eda focused 475 passed / 3 skipped、PostgreSQL 98 passed；实际#31新增19、关联20、旧到期重试失败10并暂缓，原498完整保留，合计537身份/346成功来源下游完整；原production正常EXE启动重启与无参数启动、CDP原5样本/51绑定/19搜索/2新Media及恢复列表复核通过；加强后的原注册契约通过，待负责人复审合并。",
-    "30号续接已授权；可信fetch核实PR152仍OPEN，受审HEAD eca27fa与远端一致、main仍ea4bdd7。独立工作目录修正，不修改当前运行的生产行为；旧target_met为历史弱契约结果，本轮重新验证。",
-    "已通读28号任务并记录三个连续实施步骤；A1历史证据保持不变。",
-    "可信fetch确认PR151已合并；main无本地独有提交，仅落后88提交，隔离main工作区以--ff-only安全同步，preflight_remote_sync=self_healed_by_fast_forward。",
-    "保留旧规划目录和A1生产工作区；修复分支从已接受主线建立。",
-    "现场profile/controller核实生产健康，仍运行A1候选，Pixiv读取开启、apply关闭。",
-    "26号历史覆盖补查和27号接受记录尚未在已查本机位置找到；不推定补查结论。",
-    "失败隔离、逐项诊断、跨cap公平轮转、历史真实尝试计数及私有恢复入口已实现；复用既有JSON账本，无新增schema。",
-    "提交前预验证：受影响focused 327 passed / 2 skipped，隔离PostgreSQL 80 passed；后续界面复核修正仍需最终候选验证。",
-    "独立有界面Edge已验证4个测试导入、1个版本排除及三个恢复动作；截图复核补上单项失败总览与下游待补做列表。",
-    "314d028聚焦438 passed / 3 skipped、隔离PostgreSQL 83 passed；真实控制器文件入口发现包导入路径缺陷，旧生产已恢复，启动锚点尚未切换；补充独立子进程回归后冻结新候选。",
-    "b14417c最终聚焦439 passed / 3 skipped，隔离PostgreSQL83 passed；正常便携启动器界面启动和重启通过，原production8012运行修复候选，原库/存储/认证和5 Media / 51绑定核实，apply关闭。",
-    "真实恢复#28完整处理493候选：40新增、263关联、190读取失败；原108和82全部实际尝试，下游42分类/36标签及本地化覆盖，无下游失败。",
-    "精确关联修复#29完成四行；总计267关联修复，剩余1个来源缺失且无可靠哈希。最终界面与缺口观察已在隔离副本预验证，确认所有生产任务结束后进入最终候选维护窗口。",
-    "最终行为候选1888b82：441 focused passed / 3 skipped、85 PostgreSQL passed；原日常启动器实际启动/重启成功，原production8012健康，5 Media / 51绑定保持。",
-    "最终独立有界面Edge：原5样本、19普通搜索、本轮2个新增Media详情/全屏通过，30截图，0页面脚本错误；启动器已无调试参数重新打开。",
-    "#30正常cap=5续接完成，5次读取超时按实际历史进入暂缓；最终498项对账为40新增、267关联、174可重试、16暂缓、1来源缺失未执行。",
-    "最终现场分页验证发现263个已完成关联仍列入计划观察；补齐skipped_existing_media/skipped_duplicate过滤并扩展同类回归，所有生产任务结束后冻结文档后续之前的最终行为候选。",
-    "现场缺失来源与计划观察分页已核实；补齐隐藏/空文件策略排除显示的同类回归，另将当前额外四个stat缺失身份作为元数据附件单列，旧诊断未保存身份，不能推定一一对应。该次修正不执行新来源重试。",
-    "最终候选2b3c075：441 focused passed / 3 skipped、85 PostgreSQL passed；原日常入口实际启动/重启通过，默认195个读取或缺失来源与189条计划观察核实，隐藏/空文件策略正确分流。",
-    "production_import_recovery_v1注册契约通过，0错误/0警告；最终498项恢复账本及额外4个历史stat缺失、173策略观察私有附件已核实，等待正常PR负责人复审合并。",
-    "正常修复PR #152已创建，非Draft；工程候选已在原production运行，负责人接受/合并及合并后最终主线对齐仍待完成。"
-  ],
-  "candidate_head": "81ea89e9bc21eeaff1988d858a24b1243d451e3c",
-  "production_candidate_head": "81ea89e9bc21eeaff1988d858a24b1243d451e3c",
-  "next_required_checkpoint": "36号原R6修正及普通EXE真实UIA停止/启动/重启验收已完成，原525/147与生产保护证据保留；返回负责人复审更新私有包与同一PR152，并裁决新增3条P2意见。实际接受并合并后按原授权对齐main/profile/持久入口，不自行合并或启动A2。",
-  "durable_links": [
-    {
-      "label": "实施与恢复方案",
-      "path": "docs/plans/production-import-recovery.md"
-    },
-    {
-      "label": "工程与恢复报告",
-      "path": "docs/reports/production-import-recovery.md"
-    },
-    {
-      "label": "执行runbook",
-      "path": "docs/development/agent-runbook.md"
-    },
-    {
-      "label": "生产启动器",
-      "path": "docs/production-launcher.md"
-    },
-    {
-      "label": "阶段契约",
-      "path": "docs/phase-contracts.md"
-    },
-    {
-      "label": "当前主线路线",
-      "path": "docs/roadmap/current-mainline-roadmap.md"
-    }
-  ],
-  "updated_at": "2026-09-09T13:51:54.187412+00:00",
-  "result_path": "docs/reports/production-import-recovery-summary.json"
+  "updated_at": "2026-09-11T14:29:35.418987+00:00"
 }

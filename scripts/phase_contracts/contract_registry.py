@@ -3337,3 +3337,14 @@ CONTRACTS['production_import_recovery_v1'] = PhaseContract(
     custom_checks=('production_import_recovery',),
     description='核对本次实际恢复、隔离回归、日常启动器及原五样本；不授予接受或合并。',
 )
+
+CONTRACTS['production_pixiv_a2_v1'] = PhaseContract(
+    contract_id='production_pixiv_a2_v1',contract_version='1',phase_kind='production_pixiv_a2',
+    required_summary_fields=('candidate_head','target_met','coverage','production','budget','quality','validation','safe_to_merge','route_approved'),
+    db_write_policy='本轮固定Media/work/page范围，已有来源队列和owned产品投影',
+    provider_policy='metadata-only，持久两秒间隔和单作品三次上限',
+    llm_policy='既有gpt-4.1-mini，所有提取、配对和重试共享USD10',
+    mutation_policy='保留原图、人工整理、确认Entity和独立消费者支持',
+    custom_checks=('production_pixiv_a2',),
+    description='核对实际全量生产、固定范围归宿、预算、恢复及真实使用；不授予负责人接受、合并或A3。',
+)
