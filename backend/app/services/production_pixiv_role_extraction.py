@@ -55,11 +55,51 @@ def _unit_path(cache_dir,unit):
     return Path(cache_dir)/'units'/f'{canonical_fingerprint(unit.extraction_key)}.json'
 
 
+def _adapt_response_record(row,unit):
+    from .source_metadata_registry_service import parse_parenthetical_name
+    from .source_name_candidate_extraction_service import popularity_suffix_prefix
+    row=json.loads(json.dumps(row))
+    supported=set()
+    for tag in unit.unit_group.tags:
+        raw=tag.get('raw_tag') or ''
+        supported.add(canonical_source_key(raw))
+        parsed=parse_parenthetical_name(raw)
+        if parsed:supported.update(canonical_source_key(value) for value in parsed)
+        popularity=popularity_suffix_prefix(raw)
+        if popularity:supported.add(canonical_source_key(popularity.get('extracted_prefix')))
+    for candidate in row.get('candidates') or []:
+        if not isinstance(candidate,dict):continue
+        if isinstance(candidate.get('confidence'),str):
+            value={'high':0.9,'medium':0.7,'low':0.4}.get(candidate['confidence'].casefold())
+            if value is not None:candidate['confidence']=value
+        # The actual input proves these names came from source tags. A model's
+        # generic field label must not turn an explicit tag into a weak title.
+        # No provider role or name is invented; F7a still validates the answer.
+        if canonical_source_key(candidate.get('raw_value')) in supported:
+            if candidate.get('source_field') in {'provider_tag','provider_field','pixiv_tag'}:
+                candidate['source_field']='source_tag_observation'
+            if candidate.get('extraction_action')=='normal_tag':
+                candidate['extraction_action']='normal_tag_candidate'
+    return row
+
+
+def _revalidate_cached_response(cached,unit):
+    previous=cached.get('validated_response')
+    if not previous:return cached
+    adapted=_adapt_response_record(previous,unit)
+    if adapted==previous:return cached
+    verdict,candidates,*_=validate_extraction_record(adapted,unit.unit_group)
+    return {**cached,'verdict':verdict.extraction_verdict,
+        'candidates':[asdict(candidate) for candidate in candidates],
+        'validated_response':adapted,'response_adapter_version':'production_tag_provenance_v2',
+        'original_cached_response_fingerprint':canonical_fingerprint(previous)}
+
+
 def _read_unit_cache(path,unit,model):
     cached=json.loads(path.read_text(encoding='utf-8'))
     expected=_identity(unit,model)
     changed={key for key,value in expected.items() if cached.get(key)!=value}
-    if not changed:return cached,False
+    if not changed:return _revalidate_cached_response(cached,unit),False
     # F7a deduplicates case variants under the same extraction key, but its
     # representative spelling can change when more occurrences arrive. Reuse
     # the original question only when reconstructing it proves the exact
@@ -69,7 +109,7 @@ def _read_unit_cache(path,unit,model):
         original=replace(unit,normalized_value=cached['raw_value'],unit_group=replace(unit.unit_group,
             tags=tuple({**tag,'raw_tag':cached['raw_value']} for tag in unit.unit_group.tags)))
         if _identity(original,model)['input_fingerprint']==cached['input_fingerprint']:
-            return cached,True
+            return _revalidate_cached_response(cached,original),True
     raise ValueError('production_role_unit_cache_identity_changed')
 
 
@@ -96,35 +136,11 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             payload=json.loads(content)
             rows=payload.get('records',[]) if isinstance(payload,dict) else []
         except (ValueError,TypeError):return content
-        for row in rows:
+        for index,row in enumerate(rows):
             if not isinstance(row,dict):continue
             unit=self.units.get(row.get('group_key'))
             if not unit:continue
-            from .source_metadata_registry_service import parse_parenthetical_name
-            from .source_name_candidate_extraction_service import popularity_suffix_prefix
-            supported=set()
-            for tag in unit.unit_group.tags:
-                raw=tag.get('raw_tag') or ''
-                supported.add(canonical_source_key(raw))
-                parsed=parse_parenthetical_name(raw)
-                if parsed:supported.update(canonical_source_key(value) for value in parsed)
-                popularity=popularity_suffix_prefix(raw)
-                if popularity:supported.add(canonical_source_key(popularity.get('extracted_prefix')))
-            # Preserve raw replies while accepting the same named confidence
-            # vocabulary as production pair adjudication. Unknown values still
-            # follow F7a's downgrade guard.
-            for candidate in row.get('candidates') or []:
-                if not isinstance(candidate,dict):continue
-                if isinstance(candidate.get('confidence'),str):
-                    value={'high':0.9,'medium':0.7,'low':0.4}.get(candidate['confidence'].casefold())
-                    if value is not None:candidate['confidence']=value
-                # These are observed schema synonyms, not new role judgments.
-                # Correct only names proven present in the actual question.
-                if canonical_source_key(candidate.get('raw_value')) in supported:
-                    if candidate.get('source_field')=='provider_tag':
-                        candidate['source_field']='source_tag_observation'
-                    if candidate.get('extraction_action')=='normal_tag':
-                        candidate['extraction_action']='normal_tag_candidate'
+            rows[index]=_adapt_response_record(row,unit)
         return json.dumps(payload,ensure_ascii=False)
 
     def save_units(self,content):
@@ -252,7 +268,7 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
             blocked=str(exc)
         for unit in batch:
             path=_unit_path(cache_dir,unit)
-            if path.exists():records[unit.extraction_key]=json.loads(path.read_text(encoding='utf-8'))
+            if path.exists():records[unit.extraction_key]=_read_unit_cache(path,unit,wrapped.model)[0]
         if progress:progress({'completed_units':len(records),'total_units':len(units),'provider_calls':wrapped.calls,
             'budget':budget.summary(),'blocked':blocked})
         if blocked:break

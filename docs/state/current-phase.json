@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": null,
   "draft": false,
-  "candidate_head": "ec6a1abf5f6348d2bbc0d13a0976790ad4abb88d",
+  "candidate_head": "823102921b32a7c368f4f13bd58e701fd13e0e90",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -78,7 +78,8 @@
     "ec6a1ab的完整测试失败节点复验为144通过、1跳过；对应88个初始非历史失败，节点改名已保留映射。未再次执行完整套件，历史AI证据缺失继续单列。",
     "实际模型返回中的provider_tag字段及normal_tag动作造成重复拆分。适配仅接受真实问题里可证明的标签/括号/前缀；原始响应保留，并重建完整请求指纹后本地恢复paid raw。17项相关回归通过。",
     "名称进程暂停修正后本地恢复6个单元，零新调用；中断的一次结果未知请求按原预留保守计费，共享账本保留。名称任务从同一缓存和label续跑，metadata与原生产未停止。",
-    "作品角色与弱未知人气前缀共存时保留明确角色；不同明确角色仍为冲突。没有把弱前缀当作身份证据或改写原来源事实。"
+    "作品角色与弱未知人气前缀共存时保留明确角色；不同明确角色仍为冲突。没有把弱前缀当作身份证据或改写原来源事实。",
+    "8231029集中219项及PostgreSQL13项通过。缓存中3个上下文记录的真实标签被provider_field弱标题降级，现按原问题证明来源并本地重新验证，恢复2个作品信号；原缓存及原始响应不覆盖、零新调用。13项角色/语义回归通过，不把局部修复视为全部碎裂已解决。"
   ],
   "next_required_checkpoint": "持续完成固定metadata清单及上下文裁决，复核多语言碎裂，完成最终候选恢复副本生命周期、全量原生产物化与真实浏览器验收。",
   "durable_links": [
@@ -330,5 +331,5 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-09-11T17:17:13.067083+00:00"
+  "updated_at": "2026-09-11T17:47:09.356392+00:00"
 }

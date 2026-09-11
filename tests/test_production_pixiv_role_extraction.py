@@ -1,5 +1,6 @@
 from dataclasses import make_dataclass,replace
 import json
+import pytest
 
 from app.services.production_pixiv_role_extraction import plan_role_extraction,extract_production_roles
 from app.services.production_pixiv_semantics import build_semantic_vocabulary,adapt_production_semantics
@@ -182,3 +183,39 @@ def test_tag_synonym_adapter_cannot_invent_provenance(tmp_path):
         'candidates':[{'raw_value':'AbsentFromActualTags','source_field':'provider_tag','extraction_action':'normal_tag'}]}]})
     candidate=json.loads(wrapped.adapted_content(raw))['records'][0]['candidates'][0]
     assert candidate['source_field']=='provider_tag' and candidate['extraction_action']=='normal_tag'
+
+
+@pytest.mark.parametrize('reported_origin',['provider_field','pixiv_tag'])
+def test_saved_context_work_answer_recovers_actual_tag_provenance_without_repay(tmp_path,reported_origin):
+    from app.services.production_pixiv_role_extraction import (
+        plan_contextual_role_extraction,_unit_path,_record,validate_extraction_record,
+    )
+    value=consumer(1)
+    value=replace(value,signals=tuple(replace(signal,evidence_payload={**signal.evidence_payload,
+        'aggregate_fingerprint':'frozen-tag-provenance'}) for signal in value.signals))
+    empty={'schema_version':'violet.production-pixiv-role-result.v1','records':{}}
+    units,_,_=plan_contextual_role_extraction(value,build_semantic_vocabulary([]),empty)
+    unit=units[0];provider=Provider();budget=task_budget(tmp_path,provider)
+    response={'group_key':unit.unit_group.group_key,'provider':'pixiv','verdict':'work_candidate_found',
+        'candidates':[{'raw_value':'MysteryName','role':'work_title','status':'active_candidate',
+            'confidence':0.9,'source_field':reported_origin,'extraction_action':'direct_name'}],
+        'rejected_summary':{}}
+    verdict,candidates,*_=validate_extraction_record(response,unit.unit_group)
+    assert candidates[0].candidate_role=='source_title'
+    old={**_record(unit,provider.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
+        'validated_response':response}
+    cached=tmp_path/'roles';path=_unit_path(cached,unit);path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(old),encoding='utf-8');original=path.read_bytes()
+    result=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cached)
+    recovered=next(iter(result['records'].values()))
+    assert recovered['candidates'][0]['candidate_role']=='work_title'
+    assert recovered['candidates'][0]['origin_type']=='source_tag_observation'
+    assert recovered['response_adapter_version']=='production_tag_provenance_v2'
+    assert path.read_bytes()==original and not provider.calls and budget.summary()['call_count']==0
+
+
+def test_actual_tag_provenance_repair_does_not_promote_unobserved_provider_title(tmp_path):
+    from app.services.production_pixiv_role_extraction import _adapt_response_record
+    units,_=plan_role_extraction(consumer(1),build_semantic_vocabulary([]))
+    row={'candidates':[{'raw_value':'UnobservedTitle','source_field':'provider_field','role':'work_title'}]}
+    assert _adapt_response_record(row,units[0])==row
