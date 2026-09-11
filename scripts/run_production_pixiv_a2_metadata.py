@@ -31,7 +31,16 @@ def write(path, value):
     with temporary.open('w',encoding='utf-8') as stream:
         json.dump(value,stream,ensure_ascii=False,indent=2)
         stream.flush();os.fsync(stream.fileno())
-    os.replace(temporary,path)
+    # Windows readers may briefly deny replacement even when the writer has
+    # normal directory access. Retry this same atomic publication only; a
+    # persistent denial still fails and leaves the previous checkpoint intact.
+    for attempt in range(8):
+        try:
+            os.replace(temporary,path)
+            break
+        except PermissionError:
+            if attempt==7:raise
+            time.sleep(0.05*(attempt+1))
 
 
 def append(path,value):

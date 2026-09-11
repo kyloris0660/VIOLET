@@ -1,9 +1,32 @@
 import json
 import subprocess
+import pytest
 
 from test_pixiv_metadata_ingestion_service import db
 from app.models import SourceMetadataRecord
 from app.services.pixiv_metadata_ingestion_service import queue_media_for_pixiv_metadata, run_bounded_acquisition
+
+
+@pytest.mark.parametrize('denials',[0,2,8])
+def test_progress_publication_retries_transient_denial_and_preserves_old_checkpoint(tmp_path,monkeypatch,denials):
+    from scripts import run_production_pixiv_a2_metadata as runner
+    path=tmp_path/'progress.json';path.write_text('{"completed": 10}',encoding='utf-8')
+    replace=runner.os.replace;calls=[];waits=[]
+    def guarded(source,target):
+        calls.append((source,target))
+        assert json.loads(path.read_text(encoding='utf-8'))=={'completed':10}
+        if len(calls)<=denials:raise PermissionError('simulated reader sharing denial')
+        return replace(source,target)
+    monkeypatch.setattr(runner.os,'replace',guarded)
+    monkeypatch.setattr(runner.time,'sleep',waits.append)
+    if denials==8:
+        with pytest.raises(PermissionError):runner.write(path,{'completed':11})
+        assert json.loads(path.read_text(encoding='utf-8'))=={'completed':10}
+        assert json.loads(path.with_suffix('.json.tmp').read_text(encoding='utf-8'))=={'completed':11}
+    else:
+        runner.write(path,{'completed':11})
+        assert json.loads(path.read_text(encoding='utf-8'))=={'completed':11}
+    assert len(calls)==min(denials+1,8) and len(waits)==min(denials,7)
 
 
 def prepare(db):
