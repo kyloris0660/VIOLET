@@ -101,3 +101,40 @@ def test_only_materialized_work_aliases_supply_character_context(work_decision,s
     result=resolve_source_concepts(adapted,run_id='test-work-no-character-truth',llm_judgments=judgments)
     assert not any({signal.signal_key for signal in characters}<={signal.signal_key for signal in concept.signals}
         for concept in result.concepts)
+
+
+@pytest.mark.parametrize('origin',['records','context_records','completion_records'])
+@pytest.mark.parametrize('context,retained',[('Uniform',False),('ObservedGame',True),('OtherGame',False)])
+def test_model_context_requires_typed_work_in_same_artwork(origin,context,retained):
+    from dataclasses import make_dataclass
+    from copy import deepcopy
+    inputs=[replace(source('LongCharacterName','12345678'),evidence_payload={
+        'work_id':'12345678','page_index':0,'aggregate_fingerprint':'exact-group'}),
+        replace(source('Uniform','12345678'),role_hint='general'),
+        replace(source('ObservedGame','12345678'),role_hint='work',status='active'),
+        replace(source('OtherGame','87654321'),role_hint='work',status='active')]
+    signals=build_source_concept_signal_drafts(inputs)
+    consumer=make_dataclass('Consumer',['signals','input_fingerprint'],frozen=True)(signals,'input')
+    candidate={'raw_value':'LongCharacterName','candidate_role':'character','confidence':0.9,
+        'origin_type':'source_tag_observation','extraction_action':'normal_tag_candidate','candidate_status':'active_candidate',
+        'evidence_payload':{},'work_context_key':context}
+    fact={'raw_value':'LongCharacterName','verdict':'explicit_name_found','candidates':[candidate]}
+    facts={'schema_version':'violet.production-pixiv-role-result.v1','records':{}}
+    facts[origin]={'answer':fact}
+    if origin!='records':facts[origin.replace('_records','_by_aggregate')]={'exact-group':'answer'}
+    saved=deepcopy(facts)
+    adapted=adapt_production_semantics(consumer,build_semantic_vocabulary([]),facts)
+    character=next(s for s in adapted.signals if s.raw_value=='LongCharacterName')
+    assert character.role_hint=='character'
+    assert character.work_context_key==(context.casefold() if retained else None)
+    assert ('production_rejected_model_context' in character.evidence_payload) is not retained
+    assert facts==saved
+
+
+def test_source_parenthetical_context_is_not_rejected_as_a_model_guess():
+    from dataclasses import make_dataclass
+    signals=build_source_concept_signal_drafts([source('Aster (UnlistedSeries)','12345678')])
+    consumer=make_dataclass('Consumer',['signals','input_fingerprint'],frozen=True)(signals,'input')
+    adapted=adapt_production_semantics(consumer,build_semantic_vocabulary([]))
+    assert adapted.signals[0].work_context_key=='UnlistedSeries'
+    assert 'production_rejected_model_context' not in adapted.signals[0].evidence_payload

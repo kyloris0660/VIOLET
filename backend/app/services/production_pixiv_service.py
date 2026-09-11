@@ -23,7 +23,7 @@ from .pixiv_metadata_projection_service import (
 )
 from .source_concept_resolver_service import LLMAdjudicationConfig, resolve_source_concepts
 
-PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v5'
+PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v6'
 SUPPORT_NAMESPACE = 'production_pixiv'
 SCOPE_SCHEMA = 'violet.production-pixiv-fixed-scope.v1'
 SELECTION_SCHEMA = 'violet.production-pixiv-fixed-scope-selection.v1'

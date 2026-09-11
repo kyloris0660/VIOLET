@@ -128,7 +128,8 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
                         role=next(iter(inferred_roles))
                         trust,status=_trust_for_f7a_candidate(SimpleNamespace(**{**matching[0],'status':'active'}))
                         proposed={canonical_source_key(row.get('work_context_key')) for row in matching if row.get('work_context_key')}
-                        if not context and len(proposed)==1:context=next(iter(proposed))
+                        if not context and len(proposed)==1:
+                            context=next(iter(proposed));evidence['production_model_proposed_context']=context
                     elif fact['verdict'] in ('rejected_general_only','rejected_popularity_or_meta_only','no_explicit_name'):
                         trust=status='rejected'
                         evidence['production_non_identity_reason']='existing_extractor_non_name_verdict'
@@ -152,10 +153,30 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
                     role=next(iter(roles));trust,status=_trust_for_f7a_candidate(SimpleNamespace(**{**best,'status':'active'}))
                     contexts={canonical_source_key(row.get('work_context_key') or row.get('parenthetical_context'))
                         for row in matches if row.get('work_context_key') or row.get('parenthetical_context')}
-                    if not context and len(contexts)==1:context=next(iter(contexts))
+                    if not context and len(contexts)==1:
+                        context=next(iter(contexts));evidence['production_model_proposed_context']=context
                     evidence['production_contextual_role_extraction']=contextual
             if role=='work':context=None
         adapted.append(replace(signal,role_hint=role,work_context_key=context,trust_tier=trust,status=status,evidence_payload=evidence))
+    # A tag's presence proves source provenance, not that it names a work.
+    # Saved model answers can use clothing/general tags as work_context.
+    # Require a typed work observation in the same artwork before retaining
+    # that proposed context. Source parentheses and accepted vocabulary
+    # contexts are independent evidence and are not model proposals.
+    works_by_scope=defaultdict(set)
+    for signal in adapted:
+        if signal.role_hint=='work' and signal.status!='rejected' and signal.trust_tier!='rejected':
+            works_by_scope[signal.evidence_payload['work_id']].add(canonical_source_key(signal.raw_value))
+    verified=[]
+    for signal in adapted:
+        evidence=signal.evidence_payload
+        proposed=evidence.get('production_model_proposed_context')
+        if proposed and signal.work_context_key==proposed and proposed not in works_by_scope[evidence['work_id']]:
+            evidence={**evidence,'production_rejected_model_context':{
+                'value':proposed,'reason':'no_typed_work_observation_in_same_artwork'}}
+            signal=replace(signal,work_context_key=None,evidence_payload=evidence)
+        verified.append(signal)
+    adapted=verified
     identity=[{'key':s.signal_key,'role':s.role_hint,'context':s.work_context_key,'trust':s.trust_tier,
                'status':s.status,'evidence':s.evidence_payload} for s in adapted]
     return replace(consumer,signals=tuple(adapted),input_fingerprint=canonical_fingerprint({
