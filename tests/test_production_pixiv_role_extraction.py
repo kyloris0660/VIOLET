@@ -56,6 +56,61 @@ def task_budget(tmp_path,provider):
     return AdjudicationBudget(tmp_path/'budget.json',model=provider.model,cap_usd=10,input_per_million=0.4,output_per_million=1.6)
 
 
+def test_two_text_workers_overlap_with_independent_usage_and_resume_without_repay(tmp_path):
+    from threading import Barrier
+    barrier=Barrier(2);providers=[]
+    class Overlap(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            if not self.calls:barrier.wait(timeout=5)
+            return await super().complete_chat(messages,**kwargs)
+    def factory():
+        provider=Overlap();providers.append(provider);return provider
+    baseline=Provider();budget=task_budget(tmp_path,baseline)
+    facts=extract_production_roles(multiple_units(),provider=baseline,provider_factory=factory,workers=2,
+        budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
+    assert facts['summary']['completed_units']==3 and facts['summary']['text_workers']==2
+    assert sorted(len(provider.calls) for provider in providers)==[1,2]
+    assert budget.summary()['call_count']==3 and budget.summary()['charged_or_reserved_usd']==0.0006
+    resumed=extract_production_roles(list(reversed(multiple_units())),provider=baseline,provider_factory=factory,
+        workers=2,budget=budget,cache_dir=tmp_path/'roles',batch_size=2)
+    assert resumed['records']==facts['records'] and resumed['summary']['cache_hits']==3
+    assert budget.summary()['call_count']==3
+
+
+def test_one_worker_rate_limit_pauses_both_and_preserves_other_inflight_success(tmp_path):
+    import asyncio
+    from threading import Barrier
+    from app.services.llm_translation_provider import LLMHTTPStatusError
+    barrier=Barrier(2);providers=[]
+    class Limited(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            barrier.wait(timeout=5)
+            self.calls.append(messages)
+            raise LLMHTTPStatusError(429,'rate limited')
+    class Successful(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            barrier.wait(timeout=5)
+            await asyncio.sleep(0.1)
+            return await super().complete_chat(messages,**kwargs)
+    def factory():
+        provider=Limited() if not providers else Successful();providers.append(provider);return provider
+    baseline=Provider();budget=task_budget(tmp_path,baseline)
+    facts=extract_production_roles(multiple_units(),provider=baseline,provider_factory=factory,workers=2,
+        budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
+    assert facts['summary']['blocked']=='role_provider_authentication_or_rate_limit'
+    assert facts['summary']['completed_units']==1 and facts['summary']['remaining_units']==2
+    assert sum(len(provider.calls) for provider in providers)==2
+    assert budget.summary()['unknown_usage_count']==1 and budget.summary()['success_count']==1
+
+
+def test_parallel_text_workers_reject_shared_mutable_provider(tmp_path):
+    provider=Provider()
+    with pytest.raises(ValueError,match='shared_mutable_provider_forbidden'):
+        extract_production_roles(multiple_units(),provider=provider,provider_factory=lambda:provider,workers=2,
+            budget=task_budget(tmp_path,provider),cache_dir=tmp_path/'roles')
+    assert not provider.calls
+
+
 def test_partial_invalid_batch_never_repays_already_valid_units(tmp_path):
     class Partial(Provider):
         async def complete_chat(self,messages,**kwargs):

@@ -9,6 +9,7 @@ from collections import defaultdict
 import asyncio
 import json
 from pathlib import Path
+from threading import Lock
 
 from .llm_translation_provider import BaseLLMProvider, LLMHTTPStatusError, LLMTransportError
 from .pixiv_metadata_projection_service import canonical_fingerprint
@@ -41,6 +42,26 @@ COMPLETION_PROMPT=(
 
 class ProductionRoleProviderPaused(RuntimeError):
     pass
+
+
+class ExtractionDispatchGate:
+    """At most two owned text workers share one systemic-failure pause."""
+    def __init__(self):
+        self.lock=Lock();self.reason=None;self.transport_failures=0
+
+    def check(self):
+        with self.lock:
+            if self.reason:raise ProductionRoleProviderPaused(self.reason)
+
+    def returned(self,error=None):
+        with self.lock:
+            if error is None:self.transport_failures=0
+            elif isinstance(error,LLMHTTPStatusError) and error.status_code in {401,403,429}:
+                self.reason='role_provider_authentication_or_rate_limit'
+            elif isinstance(error,(LLMTransportError,TimeoutError,asyncio.CancelledError)):
+                self.transport_failures+=1
+                if self.transport_failures>=3:self.reason='role_provider_repeated_transport_failure'
+            if self.reason:raise ProductionRoleProviderPaused(self.reason) from error
 
 
 def plan_role_extraction(consumer,vocabulary):
@@ -144,12 +165,12 @@ def _record(unit,model,verdict,candidates,*,origin):
 
 
 class BudgetedExtractionProvider(BaseLLMProvider):
-    def __init__(self,provider,budget,cache_dir,units):
+    def __init__(self,provider,budget,cache_dir,units,gate=None):
         self.provider=provider;self.budget=budget;self.model=provider.model
         if self.model!=budget.identity['model']:
             raise ValueError('production_role_actual_model_mismatch')
         self.cache_dir=Path(cache_dir);self.units={unit.unit_group.group_key:unit for unit in units}
-        self.last_usage={};self.calls=0;self.raw_cache_hits=0;self.transport_failures=0
+        self.last_usage={};self.calls=0;self.raw_cache_hits=0;self.gate=gate or ExtractionDispatchGate()
 
     def is_available(self):return self.provider.is_available()
     def get_provider_name(self):return self.provider.get_provider_name()
@@ -241,33 +262,34 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             self.raw_cache_hits+=1
             self.save_units(cached['content'])
             return self.adapted_content(cached['content'])
+        self.gate.check()
         reservation=self.budget.reserve('role-extraction:'+signature,messages,max_output_tokens=max_tokens)
         self.provider.last_usage={}
         try:
             self.calls+=1
             content=await self.provider.complete_chat(messages,temperature=temperature,max_tokens=max_tokens)
-            self.transport_failures=0
             self.last_usage=dict(getattr(self.provider,'last_usage',{}))
             _atomic_write_json(path,{'input_fingerprint':signature,'model':self.model,'content':content,'usage':self.last_usage})
             self.save_units(content)
         except BaseException as exc:
             self.budget.settle(reservation,getattr(self.provider,'last_usage',{}),success=False)
-            if isinstance(exc,LLMHTTPStatusError) and exc.status_code in {401,403,429}:
-                raise ProductionRoleProviderPaused('role_provider_authentication_or_rate_limit') from exc
-            if isinstance(exc,(LLMTransportError,TimeoutError,asyncio.CancelledError)):
-                self.transport_failures+=1
-                if self.transport_failures>=3:
-                    raise ProductionRoleProviderPaused('role_provider_repeated_transport_failure') from exc
+            self.gate.returned(exc)
             raise
         self.budget.settle(reservation,self.last_usage,success=True)
+        self.gate.returned()
         return self.adapted_content(content)
 
 
-def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,progress=None):
+def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,progress=None,workers=1,provider_factory=None,_gate=None):
     if type(batch_size) is not int or not 1 <= batch_size <= 50:
         raise ValueError('production_role_batch_size_invalid')
+    if type(workers) is not int or workers not in (1,2):raise ValueError('production_role_workers_invalid')
+    if workers==2:
+        if provider_factory is None:raise ValueError('independent_provider_factory_required')
+        return _extract_roles_two_workers(units,provider=provider,provider_factory=provider_factory,budget=budget,
+            cache_dir=cache_dir,batch_size=batch_size,progress=progress)
     cache_dir=Path(cache_dir)
-    wrapped=BudgetedExtractionProvider(provider,budget,cache_dir,units)
+    wrapped=BudgetedExtractionProvider(provider,budget,cache_dir,units,gate=_gate)
     # A crash or a fixed response adapter may leave good paid raw replies
     # without a unit cache. Replay those first, including changed batch shapes.
     raw_recovered=wrapped.replay_saved_raw()
@@ -302,6 +324,37 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
         'paid_raw_units_recovered_locally':raw_recovered,
         'original_question_case_variant_cache_hits':canonical_reuse,
         'blocked':blocked,'remaining_units':len(units)-len(records),'task_budget':budget.summary()}}
+
+
+def _extract_roles_two_workers(units,*,provider,provider_factory,budget,cache_dir,batch_size,progress):
+    from concurrent.futures import ThreadPoolExecutor
+    if len({unit.extraction_key for unit in units})!=len(units):raise ValueError('duplicate_parallel_role_unit')
+    # Recover a paid envelope before partitioning: its original request may
+    # contain units assigned to both workers. Each unit then has one writer.
+    recovered=BudgetedExtractionProvider(provider,budget,cache_dir,units).replay_saved_raw()
+    gate=ExtractionDispatchGate();lock=Lock();latest={}
+    providers=[provider_factory(),provider_factory()]
+    if providers[0] is providers[1]:raise ValueError('shared_mutable_provider_forbidden')
+    def report(index,value):
+        with lock:
+            latest[index]=value
+            if progress:progress({'completed_units':sum(row['completed_units'] for row in latest.values()),
+                'total_units':len(units),'provider_calls':sum(row['provider_calls'] for row in latest.values()),
+                'budget':budget.summary(),'blocked':next((row['blocked'] for row in latest.values() if row['blocked']),None),
+                'text_workers':2})
+    def run(index):
+        return extract_production_roles(units[index::2],provider=providers[index],budget=budget,cache_dir=cache_dir,
+            batch_size=batch_size,progress=lambda value:report(index,value),_gate=gate)
+    with ThreadPoolExecutor(max_workers=2,thread_name_prefix='pixiv-role') as executor:
+        results=list(executor.map(run,range(2)))
+    records={key:value for result in results for key,value in result['records'].items()}
+    counters=('total_units','completed_units','cache_hits','deterministic_units','new_provider_calls',
+        'raw_cache_hits','paid_raw_units_recovered_locally','original_question_case_variant_cache_hits','remaining_units')
+    summary={key:sum(result['summary'][key] for result in results) for key in counters}
+    summary['paid_raw_units_recovered_locally']+=recovered
+    summary.update(blocked=next((result['summary']['blocked'] for result in results if result['summary']['blocked']),None),
+        text_workers=2,task_budget=budget.summary())
+    return {'schema_version':ROLE_SCHEMA,'records':records,'summary':summary}
 
 
 def plan_contextual_role_extraction(consumer,vocabulary,role_facts):
@@ -387,12 +440,13 @@ def plan_contextual_role_completion(consumer,vocabulary,role_facts):
         'identity_equivalence_authorized':False}
 
 
-def complete_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5,unit_limit=0):
+def complete_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5,unit_limit=0,workers=1,provider_factory=None):
     if type(batch_size) is not int or not 1<=batch_size<=10:raise ValueError('production_context_batch_size_invalid')
     if type(unit_limit) is not int or unit_limit<0:raise ValueError('production_context_unit_limit_invalid')
     units,mapping,plan=plan_contextual_role_completion(consumer,vocabulary,role_facts)
     if unit_limit:units=units[:unit_limit]
-    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress)
+    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress,
+        workers=workers,provider_factory=provider_factory)
     return {**role_facts,'completion_records':{**role_facts.get('completion_records',{}),**extracted['records']},
         'completion_by_aggregate':{**role_facts.get('completion_by_aggregate',{}),
             **{aggregate:key for aggregate,key in mapping.items() if key in extracted['records']}},

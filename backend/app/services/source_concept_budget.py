@@ -30,7 +30,10 @@ class AdjudicationBudget:
             lock.seek(0)
             if os.name=='nt':
                 import msvcrt
-                if not lock.read(1):
+                # Reading byte zero before acquiring it is denied while a
+                # sibling worker owns the Windows byte-range lock. Metadata
+                # inspection does not read the locked region.
+                if os.fstat(lock.fileno()).st_size==0:
                     lock.write(b'0'); lock.flush()
                 lock.seek(0)
                 msvcrt.locking(lock.fileno(),msvcrt.LK_LOCK,1)

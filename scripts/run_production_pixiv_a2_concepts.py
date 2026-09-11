@@ -51,6 +51,8 @@ def main():
     parser.add_argument('--limit',type=int,default=0,help='bounded role/completion batch; 0 processes all remaining units')
     parser.add_argument('--context-batch-size',type=int,choices=range(1,11),default=5,
                         help='context groups per request; shared token and USD limits remain unchanged')
+    parser.add_argument('--text-workers',type=int,choices=(1,2),default=1,
+                        help='bounded residual-role workers with independent clients and one shared budget/pause')
     args=parser.parse_args()
     sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'backend'))
     from scripts.check_python_env import run_checks
@@ -104,7 +106,9 @@ def main():
                 print(json.dumps(value),flush=True)
             result=extract_contextual_production_roles(consumer,vocabulary,facts,provider=provider,budget=budget,
                 cache_dir=out/'role-cache',progress=context_progress,batch_size=args.context_batch_size,
-                **({'unit_limit':args.limit} if args.action=='complete-contextual-roles' else {}))
+                **({'unit_limit':args.limit,'workers':args.text_workers,
+                    'provider_factory':lambda:primary_openai_provider_from_settings()[0]}
+                    if args.action=='complete-contextual-roles' else {}))
             write(out/f'{args.label}-roles-private.json',result)
             print(json.dumps(result['completion_summary'] if args.action=='complete-contextual-roles' else result['context_summary']),flush=True)
             return
