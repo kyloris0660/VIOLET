@@ -1132,6 +1132,22 @@ def test_provider_identity_mismatch_is_counted_as_unfinished_work(db) -> None:
     assert acquisition_work_lifecycle_counts(db) == {"provider_identity_mismatch": 1}
 
 
+@pytest.mark.parametrize('raw,expected', [('[', PixivMetadataState.NORMALIZATION_FAILED.value),
+    (json.dumps([[6, 'error', {'message':'404 not found'}]]), PixivMetadataState.NORMALIZATION_FAILED.value)])
+def test_identity_replay_failure_updates_the_previously_mismatched_record(db, raw, expected):
+    queue_media_for_pixiv_metadata(db, {'id':111,'filename':'123456789_p0.jpg','path':'media/111.jpg'})
+    db.flush()
+    row=db.query(SourceMetadataRecord).filter_by(media_id=111).one()
+    row.status=PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value
+    db.commit()
+    result=run_bounded_acquisition(db,['123456789'],entrypoint=('gallery-dl',),authentication_passed=True,
+        env={'VIOLET_CREDENTIAL_ROTATION_CONFIRMED':'true'},allow_normalization_replay=True,
+        metadata_replay_outputs={'123456789':raw},command_runner=lambda *a,**k: pytest.fail('network called'))
+    db.refresh(row)
+    assert row.status==result[0].state==expected
+    assert result[0].request_attempted is False
+
+
 def test_success_invalidates_source_metadata_search_cache_after_commit(db, monkeypatch) -> None:
     queue_media_for_pixiv_metadata(
         db, {"id": 112, "filename": "123456789_p0.jpg", "path": "media/112.jpg"}
@@ -1295,6 +1311,7 @@ def test_persistent_spacing_survives_new_instance_and_does_not_reset(tmp_path) -
         state_path,
         phase_manifest_fingerprint="a" * 64,
         clock=clock,
+        monotonic_clock=clock,
         sleeper=sleeper,
     )
     first.wait_before_request("123456789")
@@ -1305,14 +1322,46 @@ def test_persistent_spacing_survives_new_instance_and_does_not_reset(tmp_path) -
         state_path,
         phase_manifest_fingerprint="b" * 64,
         clock=clock,
+        monotonic_clock=clock,
         sleeper=sleeper,
     )
     resumed.wait_before_request("223456789")
-    assert sleeps == [pytest.approx(1.5)]
+    assert sleeps == [pytest.approx(2.0)]
     persisted = json.loads(state_path.read_text(encoding="utf-8"))
-    assert persisted["last_request_epoch"] == pytest.approx(102.0)
+    assert persisted["last_request_epoch"] == pytest.approx(102.5)
     assert persisted["manifest_fingerprints_seen"] == ["a" * 64, "b" * 64]
     assert resumed.public_evidence()["minimum_spacing_seconds"] == 2.0
+
+
+@pytest.mark.parametrize('wall_jump', [-10000, 10000])
+def test_spacing_rechecks_early_wake_and_wall_clock_jumps(tmp_path, wall_jump):
+    wall, mono, sleeps = [100.0], [0.0], []
+    def sleep(delay):
+        sleeps.append(delay)
+        mono[0] += min(delay, 0.75)
+    path = tmp_path / 'spacing.json'
+    gate = PersistentRequestSpacing(path, phase_manifest_fingerprint='a' * 64,
+        clock=lambda: wall[0], monotonic_clock=lambda: mono[0], sleeper=sleep)
+    gate.wait_before_request('123456789')
+    wall[0] += wall_jump
+    gate.wait_before_request('123456789')
+    assert mono[0] == 2.0 and len(sleeps) == 3
+    assert json.loads(path.read_text())['last_request_epoch'] == wall[0]
+    resumed = PersistentRequestSpacing(path, phase_manifest_fingerprint='a' * 64,
+        clock=lambda: wall[0], monotonic_clock=lambda: mono[0], sleeper=sleep)
+    resumed.wait_before_request('123456789')
+    assert mono[0] == 4.0
+
+
+def test_spacing_no_elapsed_time_does_not_publish_admission(tmp_path):
+    path = tmp_path / 'spacing.json'
+    gate = PersistentRequestSpacing(path, phase_manifest_fingerprint='a' * 64,
+        clock=lambda: 100.0, monotonic_clock=lambda: 0.0, sleeper=lambda _: None)
+    gate.wait_before_request('123456789')
+    before = path.read_bytes()
+    with pytest.raises(PixivMetadataGateError, match='wait_did_not_complete'):
+        gate.wait_before_request('123456789')
+    assert path.read_bytes() == before
 
 
 def test_persistent_spacing_fails_closed_on_malformed_state(tmp_path) -> None:

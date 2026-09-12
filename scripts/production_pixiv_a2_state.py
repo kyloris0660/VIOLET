@@ -17,7 +17,11 @@ def validate(state, root):
     require(state.get('branch') == 'codex/production-pixiv-a2', 'branch')
     require(state.get('accepted_mainline_base') == BASE, 'base')
     require(state.get('planning_approved') is True, 'authorization')
-    require(state.get('llm_budget_usd') == 10, 'budget')
+    require(state.get('llm_budget_usd') in (10, 30), 'budget')
+    if state.get('llm_budget_usd') == 30:
+        require(state.get('budget_authorization') == {
+            'source': '43-CODEX-A2-QUALITY-CLOSEOUT.zh-CN.md',
+            'previous_cap_usd': 10, 'cumulative_cap_usd': 30}, 'budget_authorization')
     require(state.get('safe_to_merge') is False and state.get('route_approved') is False, 'owner_boundary')
     require(state.get('next_phase_started') is False, 'no_a3')
     for key in ('merge', 'push_main', 'additional_reviewer', 'original_file_mutation', 'confirmed_entity_write'):
@@ -42,7 +46,7 @@ def render(state):
              f"- 分支：`{state['branch']}`；PR：`{state.get('pr_number')}`。",
              f'- 已接受并合并基线：PR #152 / `{BASE}`。',
              f"- 工程目标完成：`{state['target_met']}`；负责人接受：`{state['manual_acceptance_status']}`。",
-             '- 新LLM调用累计上限USD 10；原图不下载、不上传。', '', '## 已完成检查点', '']
+             f"- 新LLM调用累计上限USD {state['llm_budget_usd']}；既有消费不清零，原图不下载、不上传。", '', '## 已完成检查点', '']
     lines += ['- ' + item for item in state['completed_checkpoints']]
     lines += ['', '## 后续执行', '',
               '1. 固定T0、兼容输入和累计所有权。',

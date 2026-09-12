@@ -56,6 +56,49 @@ def task_budget(tmp_path,provider):
     return AdjudicationBudget(tmp_path/'budget.json',model=provider.model,cap_usd=10,input_per_million=0.4,output_per_million=1.6)
 
 
+def test_role_raw_saved_before_settlement_resumes_without_repay(tmp_path,monkeypatch):
+    import asyncio
+    from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
+    from app.services.source_name_candidate_extraction_service import extraction_messages
+    provider=Provider();budget=task_budget(tmp_path,provider);units=multiple_units()[:1]
+    wrapped=BudgetedExtractionProvider(provider,budget,tmp_path/'roles',units)
+    settle=budget.settle
+    def crash(*args,**kwargs):raise SystemExit('crash after raw and unit persistence')
+    monkeypatch.setattr(budget,'settle',crash)
+    with pytest.raises(SystemExit):asyncio.run(wrapped.complete_chat(extraction_messages([units[0].unit_group])))
+    assert json.loads(budget.path.read_text())['calls'][0]['status']=='reserved'
+    monkeypatch.setattr(budget,'settle',settle)
+    resumed=extract_production_roles(units,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert resumed['summary']['completed_units']==1 and len(provider.calls)==1
+    assert budget.summary()['charged_or_reserved_usd']==0.0002
+    extract_production_roles(units,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert budget.summary()['call_count']==1
+
+
+def test_paid_invalid_role_retries_only_invalid_unit_and_keeps_raw(tmp_path):
+    import asyncio
+    from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
+    from app.services.source_name_candidate_extraction_service import extraction_messages
+    class Partial(Provider):
+        async def complete_chat(self,messages,**kwargs):
+            answer=json.loads(await super().complete_chat(messages,**kwargs))
+            if len(self.calls)==1:answer['records'][-1]['candidates'][0]['role']='invalid-role'
+            return json.dumps(answer)
+    provider=Partial();budget=task_budget(tmp_path,provider);units=multiple_units()[:2]
+    wrapped=BudgetedExtractionProvider(provider,budget,tmp_path/'roles',units)
+    messages=extraction_messages([u.unit_group for u in units])
+    asyncio.run(wrapped.complete_chat(messages))
+    first_raw=next((tmp_path/'roles'/'raw').glob('*.json'));original=first_raw.read_bytes()
+    answer=json.loads(asyncio.run(wrapped.complete_chat(messages)))
+    assert len(answer['records'])==2 and len(provider.calls)==2
+    assert len(provider.calls[1])==1
+    assert provider.calls[1][0]['group_key']==provider.calls[0][-1]['group_key']
+    assert first_raw.read_bytes()==original
+    rows=json.loads(budget.path.read_text())['calls']
+    assert [r['business_valid'] for r in rows]==[False,True]
+    assert budget.summary()['charged_or_reserved_usd']==0.0004
+
+
 def test_two_text_workers_overlap_with_independent_usage_and_resume_without_repay(tmp_path):
     from threading import Barrier
     barrier=Barrier(2);providers=[]

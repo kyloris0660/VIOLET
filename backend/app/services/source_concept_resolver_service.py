@@ -4012,6 +4012,14 @@ def run_bounded_llm_adjudication(
         decision_input_key = _decision_input_key(block_payload)
         exact_record = _load_exact_cache_record(durable_cache_root, metadata=metadata, config=config)
         if exact_record is not None:
+            if budget:
+                saved=exact_record.get('budget_response')
+                if saved:
+                    budget.recover_response(key=saved['key'],reservation=saved['reservation'],
+                        usage=saved['usage'],business_valid=True)
+                else:
+                    old_key='decision-input:'+decision_input_key if config.semantic_cache_reuse else metadata['cache_key']
+                    budget.recover_response(key=old_key,usage={},business_valid=True)
             cache_hits += 1
             exact_cache_hits += 1
             cached = _judgment_from_cache_record(
@@ -4049,6 +4057,10 @@ def run_bounded_llm_adjudication(
             continue
         compatible = decision_cache.get(decision_input_key)
         if compatible:
+            if budget and compatible.get('budget_response'):
+                saved=compatible['budget_response']
+                budget.recover_response(key=saved['key'],reservation=saved['reservation'],
+                    usage=saved['usage'],business_valid=True)
             cached = _judgment_from_cache_record(compatible,block_payload=block_payload,
                 selected_pair_id=selected_pair_id,cache_status='hit',reuse_level='same_decision_input_new_occurrence')
             migrated = _durable_cache_record_from_judgment(cached,metadata=metadata,block_payload=block_payload,
@@ -4159,6 +4171,9 @@ def run_bounded_llm_adjudication(
                 provider_summary=provider_summary,
                 provider_model=getattr(provider, "model", None),
             )
+            if budget:
+                durable_record['budget_response']={**budget.response_identity(reservation),
+                    'usage':dict(getattr(provider,'last_usage',{}))}
             _write_durable_cache_record(durable_cache_root, durable_record)
             if config.semantic_cache_reuse:
                 decision_cache[decision_input_key]=durable_record

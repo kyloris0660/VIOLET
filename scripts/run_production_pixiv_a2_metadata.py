@@ -49,6 +49,57 @@ def append(path,value):
         stream.flush();os.fsync(stream.fileno())
 
 
+def valid_raw_payload(path, work_id):
+    """A nonempty or orphan file is not proof of a reusable provider result."""
+    from app.services.pixiv_metadata_ingestion_service import parse_gallery_dl_stdout, PixivMetadataGateError
+    try:
+        pages = parse_gallery_dl_stdout(path.read_text(encoding='utf-8'), work_id)
+        return bool(pages)
+    except (OSError, UnicodeError, ValueError, TypeError, KeyError, PixivMetadataGateError):
+        return False
+
+
+def recover_raw_payloads(out, events, scope_fingerprint):
+    attempts = Counter()
+    candidates = {}
+    failed_paths = set()
+    for event in events:
+        if event['event'] == 'returned' and event['returncode'] != 0:
+            failed_paths.add((out / event['stdout']).resolve())
+    for event in events:
+        work = event['work_id']
+        if event['event'] == 'dispatch':
+            if event.get('scope') != scope_fingerprint:
+                raise RuntimeError('dispatch_scope_mismatch')
+            attempts[work] += 1
+            path = out / 'metadata-raw' / f"{work}-attempt-{event['attempt']}.json"
+        elif event['event'] == 'returned' and event['returncode'] == 0:
+            path = out / event['stdout']
+        else:
+            continue
+        path = path.resolve()
+        if not path.is_relative_to(out.resolve()):
+            raise RuntimeError('raw_payload_outside_artifacts')
+        if path not in failed_paths and valid_raw_payload(path, work):
+            candidates[work] = path
+    return attempts, candidates
+
+
+def publish_raw_response(raw_dir, work, attempt, result):
+    """Only validated success is atomically admitted as a replayable payload."""
+    temporary = raw_dir / f'{work}-attempt-{attempt}.pending'
+    with temporary.open('x', encoding='utf-8') as stream:
+        stream.write(result.stdout or '')
+        stream.flush(); os.fsync(stream.fileno())
+    valid = result.returncode == 0 and valid_raw_payload(temporary, work)
+    suffix = 'json' if valid else 'diagnostic'
+    destination = raw_dir / f'{work}-attempt-{attempt}.{suffix}'
+    if destination.exists():
+        raise RuntimeError('immutable_raw_response_already_exists')
+    temporary.rename(destination)
+    return destination, valid
+
+
 @contextmanager
 def exclusive(path):
     with path.open('a+b') as stream:
@@ -82,6 +133,8 @@ def main():
     parser.add_argument('--limit',type=int,default=0,help='0 consumes the finite remaining manifest')
     parser.add_argument('--replay-only',action='store_true')
     args=parser.parse_args()
+    if args.limit < 0:
+        parser.error('--limit must be nonnegative')
     sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'backend'))
     from scripts.check_python_env import run_checks
     if not run_checks(args.expected_python,str(ROOT))['pass']:
@@ -178,20 +231,7 @@ def main():
                 if not any(row.get('event')=='returned' and row.get('stdout')==str(raw.relative_to(out)) for row in prior_events):
                     append(journal,{'event':'returned','work_id':work,'attempt':1,'returncode':call['returncode'],'stdout':str(raw.relative_to(out))})
         events=[json.loads(line) for line in journal.read_text(encoding='utf-8').splitlines()]
-        attempts=Counter();cached={}
-        for event in events:
-            if event['event']=='dispatch':
-                if event.get('scope')!=scope['canonical_fingerprint']:raise RuntimeError('dispatch_scope_mismatch')
-                attempts[event['work_id']]+=1
-                # A process can stop after fsync of stdout, before its returned
-                # journal line. Recover this exact dispatched payload locally.
-                raw=out/'metadata-raw'/f"{event['work_id']}-attempt-{event['attempt']}.json"
-                if raw.exists() and raw.stat().st_size:
-                    cached[event['work_id']]=raw
-            elif event['event']=='returned' and event['returncode']==0:
-                path=(out/event['stdout']).resolve(strict=True)
-                if not path.is_relative_to(out):raise RuntimeError('raw_payload_outside_artifacts')
-                cached[event['work_id']]=path
+        attempts,cached=recover_raw_payloads(out,events,scope['canonical_fingerprint'])
         if args.action=='close-page-mismatches':
             outcomes=[]
             for work in sorted(selected,key=int):
@@ -244,11 +284,12 @@ def main():
             except (subprocess.TimeoutExpired,OSError) as exc:
                 append(journal,{'event':'transport_failure','work_id':work,'attempt':attempt,'exception':type(exc).__name__})
                 raise
-            stdout=raw_dir/f'{work}-attempt-{attempt}.json';stderr=raw_dir/f'{work}-attempt-{attempt}.stderr'
-            for path,value in ((stdout,result.stdout),(stderr,result.stderr)):
-                with path.open('x',encoding='utf-8') as stream:
-                    stream.write(value or '');stream.flush();os.fsync(stream.fileno())
-            append(journal,{'event':'returned','work_id':work,'attempt':attempt,'returncode':result.returncode,'stdout':str(stdout.relative_to(out))})
+            stdout,replayable=publish_raw_response(raw_dir,work,attempt,result)
+            stderr=raw_dir/f'{work}-attempt-{attempt}.stderr'
+            with stderr.open('x',encoding='utf-8') as stream:
+                stream.write(result.stderr or '');stream.flush();os.fsync(stream.fileno())
+            append(journal,{'event':'returned','work_id':work,'attempt':attempt,'returncode':result.returncode,
+                'stdout':str(stdout.relative_to(out)),'replayable':replayable})
             return result
         def checkpoint(result):
             value=asdict(result);results_count[result.state]+=1

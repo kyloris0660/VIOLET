@@ -164,6 +164,19 @@ def test_production_snapshot_accounts_missing_page_without_poisoning_valid_page(
     assert {row.media_id for row in database.query(SourceConceptProductMediaBinding)}=={1,3,4}
 
 
+def test_partial_release_admission_leaves_existing_projection_unchanged(database):
+    from app.services.production_pixiv_service import build_production_inputs
+    from app.services.production_pixiv_release_inputs import verify_full_input
+    scope=scope_for(database)
+    apply(database,build(database),scope)
+    before=[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    live,coverage=build_production_inputs(database,scope)
+    with pytest.raises(ValueError,match='complete_source_snapshot_changed'):
+        verify_full_input(live[:1],live,coverage)
+    assert before==[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    verify_full_input(live,live,coverage)
+
+
 def test_batch_order_and_resume_receipts_do_not_change_business_identity(database):
     aggregates=build_canonical_pixiv_aggregates_from_session(database)
     initial=build_production_clustering(production_consumer(aggregates))

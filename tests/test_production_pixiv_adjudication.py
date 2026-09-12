@@ -56,6 +56,22 @@ def test_actual_model_mismatch_blocks_before_dispatch(tmp_path,monkeypatch):
     assert provider.calls==0
 
 
+def test_paid_pair_cache_recovers_unsettled_attempt_once(tmp_path,monkeypatch):
+    from app.services.source_concept_budget import AdjudicationBudget
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    settle=AdjudicationBudget.settle
+    def crash(*args,**kwargs):raise SystemExit('crash after durable pair cache')
+    monkeypatch.setattr(AdjudicationBudget,'settle',crash)
+    with pytest.raises(SystemExit):service.run_bounded_llm_adjudication(edges,signals=signals,config=config(tmp_path))
+    monkeypatch.setattr(AdjudicationBudget,'settle',settle)
+    judgments,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=config(tmp_path))
+    assert receipt['cache_hits']==1 and provider.calls==1
+    assert receipt['task_budget']['charged_or_reserved_usd']==0.00012
+    _,again=service.run_bounded_llm_adjudication(edges,signals=signals,config=config(tmp_path))
+    assert again['task_budget']==receipt['task_budget'] and provider.calls==1
+
+
 def test_existing_named_confidence_remains_compatible_with_budget_gate(tmp_path,monkeypatch):
     signals,edges=_eligible_llm_edges(1)
     class NamedConfidence(MeteredProvider):

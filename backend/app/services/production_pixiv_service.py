@@ -242,7 +242,10 @@ def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role
                 llm_config=LLMAdjudicationConfig(enabled=False, max_calls=0), llm_judgments=judgments,
                 concept_namespace=SUPPORT_NAMESPACE)
     run = finish_pixiv_clustering(consumer, result)
-    return replace(run, business_projection_fingerprint=canonical_fingerprint({
+    return replace(run, diagnostics={**run.diagnostics,'production_llm_inheritance':{
+        'current_clustering_provider_calls':0,'upstream_judgment_count':len(judgments),
+        'upstream_valid_judgment_count':sum(not row.get('error_state') for row in judgments),
+        'upstream_cost_is_accounted_in_shared_task_ledger':True}}, business_projection_fingerprint=canonical_fingerprint({
         'resolved_business':run.business_projection_fingerprint,'production_policy':PRODUCTION_POLICY,
         'judgments_fingerprint':canonical_fingerprint(semantic)}))
 

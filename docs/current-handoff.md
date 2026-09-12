@@ -4,11 +4,11 @@
 
 当前状态以 docs/state/current-phase.json 为准。
 
-- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_DELIVERED_WITH_BUDGET_AND_QUALITY_GAPS`。
+- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_TASK43_QUALITY_CLOSEOUT_IN_PROGRESS`。
 - 分支：`codex/production-pixiv-a2`；PR：`153`。
 - 已接受并合并基线：PR #152 / `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。
 - 工程目标完成：`False`；负责人接受：`pending_project_lead_review`。
-- 新LLM调用累计上限USD 10；原图不下载、不上传。
+- 新LLM调用累计上限USD 30；既有消费不清零，原图不下载、不上传。
 
 ## 已完成检查点
 
@@ -26,6 +26,8 @@
 - 原生产2026-09-12 13:46:51 +08全量apply提交，8623 Media/66572支持/1 active/0重复，全部revision有效，保护表保持，尾部0、无active工作。正常exe发布44db0da，新API PID79764/venv父90360健康，read开/apply关；本轮9134调试关闭，普通无参数launcher已重开。
 - 全量副本与原生产各80独立案例70通过/10正向失败，36应分离例全部通过。各240固定+44风险HTTP全200，原生产来源p50/p95/max 21.942/54.972/505.266ms；真实Edge原图/缩略图/chip/API集合及截图核对通过。10个缺项保留，不硬合并unknown/title/cannot。
 - 实际A2契约以a2_independent_quality失败，target/safe/route均false。最终账本6110次/USD9.998387、0reserved；8768配对预算未发出和1传输错误保留。命令日志间隔不足以验证每个HTTP间隔，未伪造证据。报告、本地操作记录与唯一普通PR #153交付负责人；18个未解决自动线程、无CI，不自行修正审查范围/resolve/合并/A3。
+- 43号质量收口已正式下达，累计额度10→30获授权；保留旧6110次/USD9.998387账本，先修恢复/追加/完整输入和证据门禁再新付费。同一工作树/PR153/生产继续，新增19条有界审查范围，不merge/main push/reviewer/关闭线程/A3。
+- 43号第一步已实现并通过378项focused开发回归；原6110调用/USD9.998387账本已原子追加至累计USD30。已本地核对1666份raw，29份身份不匹配或坏文件保留诊断，未冒认成功。生产仍为旧候选；完整质量、最终契约、新版发布和人工指南仍在续做。
 
 ## 后续执行
 
@@ -56,7 +58,7 @@
 - 不合并、不推main、不触发额外reviewer、不进入A3。
 - 自动验证、负责人接受及产品用户体验分别记账。
 
-下一检查点：项目负责人复审唯一普通PR #153、实际生产与质量缺项及18个未解决审查线程，给出有界修正或追加预算裁决；不合并、不推main、不进入A3。
+下一检查点：完成43号有界续做：恢复与生产门禁回归、完整有效判断及十例/80例副本质量，再生产更新/完整契约/人工验收指南和证据ZIP交负责人。
 
 ## 持久入口
 

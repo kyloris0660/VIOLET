@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import subprocess
 import time
+import uuid
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from sqlalchemy.orm import Session
@@ -292,6 +294,7 @@ class PersistentRequestSpacing:
         provider: str = "pixiv",
         min_spacing_seconds: float = MIN_REQUEST_SPACING_SECONDS,
         clock: Callable[[], float] = time.time,
+        monotonic_clock: Callable[[], float] = time.monotonic,
         sleeper: Callable[[float], None] = time.sleep,
         lock_timeout_seconds: float = 30.0,
     ) -> None:
@@ -309,6 +312,9 @@ class PersistentRequestSpacing:
         self.provider = provider_value
         self.min_spacing_seconds = float(min_spacing_seconds)
         self.clock = clock
+        self.monotonic_clock = monotonic_clock
+        self._last_monotonic = None
+        self._admission_token = None
         self.sleeper = sleeper
         self.lock_timeout_seconds = float(lock_timeout_seconds)
         self.wait_count = 0
@@ -331,7 +337,8 @@ class PersistentRequestSpacing:
         last_epoch = value.get("last_request_epoch")
         if last_epoch is not None:
             try:
-                float(last_epoch)
+                if not math.isfinite(float(last_epoch)):
+                    raise ValueError("nonfinite_epoch")
             except (TypeError, ValueError) as exc:
                 raise PixivMetadataGateError("persistent_spacing_last_request_invalid") from exc
         return dict(value)
@@ -345,6 +352,7 @@ class PersistentRequestSpacing:
             "version": PERSISTENT_SPACING_STATE_VERSION,
             "provider": self.provider,
             "last_request_epoch": float(request_epoch),
+            "admission_token": self._admission_token,
             "minimum_spacing_seconds": self.min_spacing_seconds,
             "manifest_fingerprints_seen": sorted(seen),
         }
@@ -377,14 +385,34 @@ class PersistentRequestSpacing:
                 time.sleep(0.05)
         try:
             state = self._read_state()
-            now = float(self.clock())
-            last_epoch = float(state.get("last_request_epoch") or 0.0)
-            elapsed = max(0.0, now - last_epoch) if last_epoch else self.min_spacing_seconds
-            delay = max(0.0, self.min_spacing_seconds - elapsed)
-            if delay:
-                self.sleeper(delay)
-            request_epoch = max(float(self.clock()), last_epoch + self.min_spacing_seconds)
+            started = float(self.monotonic_clock())
+            if not math.isfinite(started):
+                raise PixivMetadataGateError("persistent_spacing_clock_invalid")
+            # Monotonic timestamps are never persisted or compared across
+            # processes. A different writer/restart waits a full interval while
+            # holding the durable lock, even if the wall clock jumped forward.
+            own_previous = (self._last_monotonic is not None
+                            and state.get("admission_token") == self._admission_token)
+            deadline = (self._last_monotonic + self.min_spacing_seconds if own_previous
+                        else started + (self.min_spacing_seconds if state else 0.0))
+            observed = started
+            for _ in range(100):
+                if observed >= deadline:
+                    break
+                self.sleeper(deadline - observed)
+                current = float(self.monotonic_clock())
+                if not math.isfinite(current) or current < observed:
+                    raise PixivMetadataGateError("persistent_spacing_clock_invalid")
+                observed = current
+            else:
+                raise PixivMetadataGateError("persistent_spacing_wait_did_not_complete")
+            request_epoch = float(self.clock())
+            if not math.isfinite(request_epoch):
+                raise PixivMetadataGateError("persistent_spacing_clock_invalid")
+            delay = observed - started
+            self._admission_token = uuid.uuid4().hex
             self._write_state(request_epoch=request_epoch)
+            self._last_monotonic = observed
             self.wait_count += 1
             self.total_sleep_seconds += delay
             self.last_observed_delay_seconds = delay
@@ -408,6 +436,8 @@ class PersistentRequestSpacing:
             "total_sleep_seconds": round(self.total_sleep_seconds, 6),
             "last_observed_delay_seconds": round(self.last_observed_delay_seconds, 6),
             "state_path_redacted": True,
+            "boundary": "external_command_admission_not_internal_http",
+            "restart_policy": "full_interval_under_durable_lock",
         }
 
 
@@ -2493,6 +2523,7 @@ def run_bounded_acquisition(
                     attempted_record_ids=attempted_record_ids,
                     allow_conflict_resolution=allow_conflict_resolution,
                     allow_normalization_replay=allow_normalization_replay,
+                    allow_identity_replay=is_replay and allow_normalization_replay,
                 )
                 session.commit()
                 systemic_stop = exc.reason in {"retryable_authentication", "retryable_rate_limit"}
@@ -2551,6 +2582,7 @@ def run_bounded_acquisition(
                     },
                     allow_conflict_resolution=allow_conflict_resolution,
                     allow_normalization_replay=allow_normalization_replay,
+                    allow_identity_replay=is_replay and allow_normalization_replay,
                 )
                 session.commit()
                 result = AcquisitionResult(work_id, failure_state, not is_replay, 0, failure_code, cumulative_attempt)

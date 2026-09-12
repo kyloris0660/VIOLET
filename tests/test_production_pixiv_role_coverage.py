@@ -111,7 +111,7 @@ def test_explicit_unknown_and_non_name_are_accounted_without_identity_invention(
     assert result['role_response_coverage']['counts']=={'candidate':2,'non_name':1,'unknown':1,'unaccounted':0}
 
 
-def test_still_partial_repair_is_reported_and_never_reasked_as_new_semantic_round(tmp_path):
+def test_still_partial_repair_requests_only_missing_targets_and_retains_answers(tmp_path):
     value,vocabulary,facts,_,budget=partial_facts(tmp_path,
         ['MysteryKnown','MysteryMissing','MysteryUnknown','MysteryOther'])
     provider=Responses(lambda group:([candidate('MysteryMissing')],[]))
@@ -120,10 +120,36 @@ def test_still_partial_repair_is_reported_and_never_reasked_as_new_semantic_roun
     assert result['role_response_coverage']['counts']['unaccounted']==1
     assert result['role_response_coverage']['unaccounted_targets'][0]['raw_tags']==['MysteryOther']
     assert result['role_response_coverage']['unaccounted_targets'][0]['repair_attempted'] is True
-    assert plan_role_coverage_repair(value,vocabulary,result)[0]==[]
-    resumed=repair_missing_role_coverage(value,vocabulary,result,provider=provider,budget=budget,
+    assert plan_role_coverage_repair(value,vocabulary,result)[0][0].raw_values==('MysteryOther',)
+    remaining=Responses(lambda group:([candidate('MysteryOther')],[]))
+    resumed=repair_missing_role_coverage(value,vocabulary,result,provider=remaining,budget=budget,
         cache_dir=tmp_path/'roles')
-    assert resumed['role_response_coverage']['counts']['unaccounted']==1 and len(provider.calls)==1
+    assert resumed['role_response_coverage']['counts']['unaccounted']==0 and len(provider.calls)==1
+    assert len(remaining.calls)==1
+    assert json.loads(remaining.calls[0][0]['data_type_label'].split(': ',1)[1])==['MysteryOther']
+    roles={row.raw_value:row.role_hint for row in adapt_production_semantics(value,vocabulary,resumed).signals}
+    assert roles['MysteryMissing']==roles['MysteryOther']=='character'
+    assert roles['MysteryUnknown']=='unknown'
+    assert not plan_role_coverage_repair(value,vocabulary,resumed)[0]
+
+
+def test_invalid_candidate_sibling_is_preserved_and_only_invalid_target_is_repaired(tmp_path):
+    value=context(['MysteryGood','MysteryBad']);vocab=build_semantic_vocabulary([])
+    provider=Responses(lambda group:([candidate('MysteryGood'),candidate('MysteryBad','invented_role')],[]))
+    budget=task_budget(tmp_path,provider)
+    facts=complete_contextual_production_roles(value,vocab,{'schema_version':ROLE_SCHEMA,'records':{}},
+        provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert len(facts['completion_records'])==1
+    units,_,_=plan_role_coverage_repair(value,vocab,facts)
+    assert units[0].raw_values==('MysteryBad',)
+    old_raw={p.name:p.read_bytes() for p in (tmp_path/'roles/raw').glob('*.json')}
+    repaired=repair_missing_role_coverage(value,vocab,facts,provider=Responses(
+        lambda group:([candidate('MysteryBad')],[])),budget=budget,cache_dir=tmp_path/'roles')
+    assert repaired['role_response_coverage']['counts']['unaccounted']==0
+    assert all((tmp_path/'roles/raw'/name).read_bytes()==data for name,data in old_raw.items())
+    ledger=json.loads(budget.path.read_text())
+    assert ledger['calls'][0]['business_valid'] is False
+    assert budget.summary()['charged_or_reserved_usd']>0
 
 
 def test_target_accounting_rejects_aggregate_counts_duplicates_and_unsupported_claims(tmp_path):

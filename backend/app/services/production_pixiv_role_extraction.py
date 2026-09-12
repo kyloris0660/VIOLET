@@ -213,6 +213,63 @@ class BudgetedExtractionProvider(BaseLLMProvider):
     def get_provider_name(self):return self.provider.get_provider_name()
     async def translate_tags(self,tags):raise RuntimeError('role_extraction_has_no_translation_write_route')
 
+    @staticmethod
+    def logical_keys(groups):
+        keys=[]
+        for group in groups:
+            targets=[tag.get('raw_tag','') for tag in group.tags]
+            if group.data_type_label and ': ' in group.data_type_label:
+                try:targets=json.loads(group.data_type_label.split(': ',1)[1])
+                except (ValueError,TypeError):pass
+            context=sorted(canonical_source_key(tag.get('raw_tag','')) for tag in group.tags)
+            keys.extend('role-target:'+canonical_fingerprint({'raw':canonical_source_key(raw),'context':context}) for raw in targets)
+        return sorted(set(keys))
+
+    def validate_saved(self,saved):
+        """Rebuild the paid question, including groups absent from this resume batch."""
+        from types import SimpleNamespace
+        if saved.get('request_messages') is not None:
+            expected=canonical_fingerprint({'model':self.model,'messages':saved['request_messages'],
+                'temperature':saved['temperature'],'max_tokens':saved['max_tokens']})
+            if expected!=saved['input_fingerprint']:raise ValueError('role_raw_question_identity_mismatch')
+            groups=[SourceCandidateInputGroup(**row) for row in saved['request_groups']]
+        else:
+            rows=json.loads(saved['content'])['records']
+            groups=[self.units[row['group_key']].unit_group for row in rows]
+            expected=canonical_fingerprint({'model':self.model,'messages':_production_messages(extraction_messages(groups)),
+                'temperature':0.0,'max_tokens':6000})
+            if expected!=saved['input_fingerprint']:raise ValueError('role_raw_question_identity_mismatch')
+        if saved.get('wire_messages'):
+            wire=canonical_fingerprint(saved['wire_messages'])
+            if wire!=saved.get('wire_fingerprint'):raise ValueError('role_raw_wire_identity_mismatch')
+        error=None
+        try:
+            rows=json.loads(saved['content'])['records']
+            if not isinstance(rows,list) or len(rows)!=len(groups):raise ValueError('role_response_group_count')
+            by_key={row['group_key']:row for row in rows}
+            if set(by_key)!={g.group_key for g in groups}:raise ValueError('role_response_group_identity')
+            for group in groups:
+                row=_adapt_response_record(by_key[group.group_key],SimpleNamespace(unit_group=group))
+                verdict,candidates,*_=validate_extraction_record(row,group)
+                if verdict.extraction_verdict.startswith('extraction_error'):raise ValueError('role_response_error_verdict')
+                if group.data_origin in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN}:
+                    targets=json.loads(group.data_type_label.split(': ',1)[1])
+                    coverage=role_target_coverage(SimpleNamespace(raw_values=targets),{
+                        'verdict':verdict.extraction_verdict,'candidates':[asdict(c) for c in candidates],
+                        'validated_response':row})
+                    if coverage['missing_raw_tags']:raise ValueError('role_response_missing_target_dispositions')
+        except (ValueError,TypeError,KeyError,SourceNameCandidateExtractionError) as exc:error=str(exc)
+        return groups,error
+
+    def recover_saved(self,saved):
+        groups,error=self.validate_saved(saved)
+        response=saved.get('budget_response',{})
+        self.budget.recover_response(key=response.get('key','role-extraction:'+saved['input_fingerprint']),
+            reservation=response.get('reservation'),usage=saved.get('usage',{}),business_valid=error is None,
+            logical_keys=self.logical_keys(groups))
+        self.save_units(saved['content'])
+        return error
+
     def adapted_content(self,content):
         try:
             payload=json.loads(content)
@@ -240,7 +297,22 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 continue
             try:
                 verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
-            except (ValueError,SourceNameCandidateExtractionError):continue
+            except (ValueError,SourceNameCandidateExtractionError) as original_error:
+                # Validate siblings individually through the same F7a schema.
+                # No malformed target is converted into a positive or unknown
+                # answer. Missing targets remain available to bounded repair.
+                valid=[]
+                for candidate in row.get('candidates',[]) if isinstance(row.get('candidates'),list) else []:
+                    try:
+                        validate_extraction_record({**row,'candidates':[candidate]},unit.unit_group)
+                    except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
+                    valid.append(candidate)
+                if not valid:continue
+                partial={**row,'candidates':valid}
+                try:verdict,candidates,*_=validate_extraction_record(partial,unit.unit_group)
+                except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
+                partial['partial_validation_error']=str(original_error)
+                row=partial
             if verdict.extraction_verdict.startswith('extraction_error'):continue
             _atomic_write_json(path,
                 {**_record(unit,self.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
@@ -248,9 +320,13 @@ class BudgetedExtractionProvider(BaseLLMProvider):
 
     def replay_saved_raw(self):
         recovered_before=sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())
-        for path in sorted((self.cache_dir/'raw').glob('*.json')):
+        paths=[*(self.cache_dir/'raw').glob('*.json'),*(self.cache_dir/'raw'/'attempts').glob('*.json')]
+        for path in sorted(paths):
             saved=json.loads(path.read_text(encoding='utf-8'))
-            if saved.get('model')!=self.model or saved.get('input_fingerprint')!=path.stem:continue
+            if saved.get('model')!=self.model:continue
+            if saved.get('request_messages') is not None:
+                self.recover_saved(saved)
+                continue
             try:
                 rows=json.loads(saved['content'])['records']
                 groups=[self.units[row['group_key']].unit_group for row in rows]
@@ -261,7 +337,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             expected=canonical_fingerprint({'model':self.model,'messages':messages,
                 'temperature':0.0,'max_tokens':6000})
             if expected==saved['input_fingerprint']:
-                self.save_units(saved['content'])
+                self.recover_saved(saved)
         return sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())-recovered_before
 
     async def complete_chat(self,messages,*,temperature=0.0,max_tokens=6000):
@@ -292,27 +368,45 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             return json.dumps({'records':[known.get(row['group_key'],{'group_key':row['group_key'],'verdict':'extraction_error'}) for row in requested]},ensure_ascii=False)
         signature=canonical_fingerprint({'model':self.model,'messages':messages,'temperature':temperature,'max_tokens':max_tokens})
         path=self.cache_dir/'raw'/f'{signature}.json'
-        if path.exists():
-            cached=json.loads(path.read_text(encoding='utf-8'))
+        previous=[json.loads(p.read_text(encoding='utf-8')) for p in
+            ([path] if path.exists() else [])+list((self.cache_dir/'raw'/'attempts').glob(signature+'.*.json'))]
+        feedback=None
+        if previous:
+            cached=max(previous,key=lambda row:row.get('budget_response',{}).get('attempt',0))
             if cached.get('input_fingerprint')!=signature or cached.get('model')!=self.model:
                 raise ValueError('role_raw_cache_identity_mismatch')
-            self.raw_cache_hits+=1
-            self.save_units(cached['content'])
-            return self.adapted_content(cached['content'])
+            feedback=self.recover_saved(cached)
+            if feedback is None:
+                self.raw_cache_hits+=1
+                return self.adapted_content(cached['content'])
+            if any(_unit_path(self.cache_dir,self.units[row['group_key']]).exists() for row in requested):
+                return await self.complete_chat(messages,temperature=temperature,max_tokens=max_tokens)
         self.gate.check()
-        reservation=self.budget.reserve('role-extraction:'+signature,messages,max_output_tokens=max_tokens)
+        groups=[self.units[row['group_key']].unit_group for row in requested]
+        wire=messages if feedback is None else [*messages,{'role':'user','content':
+            'The previous response failed schema validation: '+feedback[:500]+'. Return the requested records using the allowed roles, source fields and exact supported raw names. Preserve uncertainty; do not invent identity.'}]
+        reservation=self.budget.reserve('role-extraction:'+signature,wire,max_output_tokens=max_tokens,
+            logical_keys=self.logical_keys(groups))
         self.provider.last_usage={}
+        response_saved=False
         try:
             self.calls+=1
-            content=await self.provider.complete_chat(messages,temperature=temperature,max_tokens=max_tokens)
+            content=await self.provider.complete_chat(wire,temperature=temperature,max_tokens=max_tokens)
             self.last_usage=dict(getattr(self.provider,'last_usage',{}))
-            _atomic_write_json(path,{'input_fingerprint':signature,'model':self.model,'content':content,'usage':self.last_usage})
+            saved={'input_fingerprint':signature,'model':self.model,'content':content,'usage':self.last_usage,
+                'request_messages':messages,'request_groups':[asdict(g) for g in groups],
+                'temperature':temperature,'max_tokens':max_tokens,'wire_messages':wire,
+                'wire_fingerprint':canonical_fingerprint(wire),'budget_response':self.budget.response_identity(reservation)}
+            destination=path if not path.exists() else self.cache_dir/'raw'/'attempts'/f'{signature}.{reservation}.json'
+            _atomic_write_json(destination,saved)
+            response_saved=True
             self.save_units(content)
+            _,validation_error=self.validate_saved(saved)
         except BaseException as exc:
-            self.budget.settle(reservation,getattr(self.provider,'last_usage',{}),success=False)
+            if not response_saved:self.budget.settle(reservation,getattr(self.provider,'last_usage',{}),success=False)
             self.gate.returned(exc)
             raise
-        self.budget.settle(reservation,self.last_usage,success=True)
+        self.budget.settle(reservation,self.last_usage,success=validation_error is None)
         self.gate.returned()
         return self.adapted_content(content)
 
@@ -556,10 +650,16 @@ def plan_role_coverage_repair(consumer,vocabulary,role_facts):
     units={};mapping={};parents={};target_occurrences=0;already_attempted=0
     for aggregate,parent in sorted(role_facts.get('completion_by_aggregate',{}).items()):
         if aggregate in grounded:continue
-        if aggregate in role_facts.get('coverage_repair_by_aggregate',{}):
-            already_attempted+=1;continue
         original=originals[parent];record=role_facts['completion_records'][parent]
         targets=role_target_coverage(original,record)['missing_raw_tags']
+        previous_key=role_facts.get('coverage_repair_by_aggregate',{}).get(aggregate)
+        previous=role_facts.get('coverage_repair_records',{}).get(previous_key)
+        if previous:
+            already_attempted+=1
+            if previous.get('parent_extraction_key')!=parent:
+                raise ValueError('role_coverage_repair_parent_changed')
+            answered=previous.get('target_coverage',{}).get('outcomes',{})
+            targets=[raw for raw in targets if raw not in answered]
         if not targets:continue
         signature=canonical_fingerprint({'schema':COVERAGE_REPAIR_ORIGIN,'parent':parent,
             'parent_response':canonical_fingerprint(record),'tags':original.unit_group.tags,'targets':targets})
@@ -572,7 +672,7 @@ def plan_role_coverage_repair(consumer,vocabulary,role_facts):
             data_type_label='Requested unresolved raw tags: '+json.dumps(targets,ensure_ascii=False))
         units[key]=replace(original,extraction_key=key,normalized_value='missing role dispositions '+signature,
             canonical_key=signature,raw_values=tuple(targets),context_key=signature,unit_group=group,
-            deterministic_resolution='one_target_coverage_repair')
+            deterministic_resolution='bounded_missing_target_coverage_repair')
     ordered=sorted(units.values(),key=lambda unit:(-priority[unit.extraction_key],unit.extraction_key))
     return ordered,mapping,{'repair_units':len(units),'aggregate_occurrences':len(mapping),
         'requested_tag_occurrences':target_occurrences,'already_attempted_aggregates':already_attempted,
@@ -620,6 +720,21 @@ def repair_missing_role_coverage(consumer,vocabulary,role_facts,*,provider,budge
     by_key={unit.extraction_key:unit for unit in units}
     records={key:{**record,'parent_extraction_key':plan['parent_extraction_keys'][key],
         'target_coverage':role_target_coverage(by_key[key],record)} for key,record in extracted['records'].items()}
+    # Keep previously answered siblings in the effective record, while every
+    # immutable original response remains individually inspectable in caches.
+    for aggregate,key in mapping.items():
+        previous_key=role_facts.get('coverage_repair_by_aggregate',{}).get(aggregate)
+        previous=role_facts.get('coverage_repair_records',{}).get(previous_key)
+        if key in records and previous and key!=previous_key:
+            current=records[key]
+            candidates={canonical_fingerprint(row):row for row in [*previous.get('candidates',[]),*current['candidates']]}
+            current['candidates']=list(candidates.values())
+            current['target_coverage']['outcomes']={**previous.get('target_coverage',{}).get('outcomes',{}),
+                **current['target_coverage']['outcomes']}
+            current['target_coverage']['requested_raw_tags']=sorted(set(
+                previous.get('target_coverage',{}).get('requested_raw_tags',[])) |
+                set(current['target_coverage']['requested_raw_tags']))
+            current['inherited_valid_response_keys']=[*previous.get('inherited_valid_response_keys',[]),previous_key]
     result={**role_facts,'coverage_repair_records':{**role_facts.get('coverage_repair_records',{}),**records},
         'coverage_repair_by_aggregate':{**role_facts.get('coverage_repair_by_aggregate',{}),
             **{aggregate:key for aggregate,key in mapping.items() if key in records}},

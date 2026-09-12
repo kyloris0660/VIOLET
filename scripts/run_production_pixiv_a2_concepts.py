@@ -54,6 +54,8 @@ def main():
     parser.add_argument('--text-workers',type=int,choices=(1,2),default=1,
                         help='bounded residual-role workers with independent clients and one shared budget/pause')
     args=parser.parse_args()
+    if args.limit < 0:
+        parser.error('--limit must be nonnegative')
     sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'backend'))
     from scripts.check_python_env import run_checks
     from scripts.run_production_pixiv_a2_metadata import read,write,exclusive
@@ -85,7 +87,15 @@ def main():
     identity_path=out/f'{args.label}-input-identity-private.json'
     if identity_path.exists() and read(identity_path)!=identity:raise RuntimeError('label_frozen_input_changed')
     write(identity_path,identity)
-    budget=AdjudicationBudget(out/'llm-budget-private.json',model=llm['model'],cap_usd=10,input_per_million=0.4,output_per_million=1.6)
+    # The explicit atomic amendment is performed separately on the existing
+    # ledger. This runner never resets spending or silently increases a cap.
+    ledger=read(out/'llm-budget-private.json')
+    cap=ledger['cap_microusd']/1000000
+    if cap not in (10,30) or (cap==30 and not any(
+        row['previous_cap_microusd']==10000000 and row['cap_microusd']==30000000
+        for row in ledger.get('cap_amendments',[]))):
+        raise RuntimeError('authorized_task_budget_amendment_required')
+    budget=AdjudicationBudget(out/'llm-budget-private.json',model=llm['model'],cap_usd=cap,input_per_million=0.4,output_per_million=1.6)
     started=time.monotonic()
     with (exclusive(out/'llm-task.lock') if args.action!='cluster' else nullcontext()):
         if args.action in {'contextual-roles','complete-contextual-roles','repair-role-coverage'}:
@@ -141,7 +151,7 @@ def main():
         run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts)
         judgments=[];receipt=None
         if args.action=='adjudicate':
-            config=LLMAdjudicationConfig(enabled=True,max_calls=1000000,max_budget_usd=10,selection_policy='all_eligible',
+            config=LLMAdjudicationConfig(enabled=True,max_calls=1000000,max_budget_usd=cap,selection_policy='all_eligible',
                 model_label=llm['model'],durable_cache_dir=str(out/'llm-cache'),semantic_cache_reuse=True,
                 semantic_cache_dirs=(str(Path(read(args.profile)['storage_root'])/'.local_manifests/source_concept_llm_adjudication_cache'),),
                 task_budget_path=str(out/'llm-budget-private.json'),input_price_per_million=0.4,output_price_per_million=1.6,
@@ -168,6 +178,13 @@ def main():
             write(out/f'{args.label}-judgments-private.json',judgments)
             write(out/f'{args.label}-adjudication-private.json',receipt)
             run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=judgments)
+            from app.services.production_pixiv_release_inputs import semantic_input_identity
+            import subprocess
+            write(out/f'{args.label}-semantic-manifest-private.json',{
+                'input_identity':semantic_input_identity(aggregates,vocabulary,facts,judgments),
+                'candidate_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
+                'processing':{key:receipt[key] for key in ('selected_pair_count','judgment_count','error_count','remaining_missing_pair_count')},
+                'adjudication_receipt':f'{args.label}-adjudication-private.json'})
         result={'input_identity':identity,'run_id':run.resolution.run_id,'seconds':time.monotonic()-started,
                 'peak_memory_bytes':peak_memory_bytes(),
                 'signal_count':len(run.resolution.signals),'edge_count':len(run.resolution.edge_candidates),

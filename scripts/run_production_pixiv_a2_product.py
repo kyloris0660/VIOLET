@@ -48,6 +48,8 @@ def main():
     parser.add_argument('--vocabulary',type=Path)
     parser.add_argument('--role-facts',type=Path)
     parser.add_argument('--judgments',type=Path)
+    parser.add_argument('--semantic-manifest',type=Path)
+    parser.add_argument('--allow-partial-copy',action='store_true')
     parser.add_argument('--accepted-plan',type=Path)
     parser.add_argument('--run-key')
     args=parser.parse_args()
@@ -60,7 +62,7 @@ def main():
     out=args.artifacts.resolve(strict=True)
     if not out.is_relative_to((ROOT/'.local_manifests').resolve()) or not re.fullmatch('[a-z0-9-]+',args.label):
         raise RuntimeError('private_product_artifact_location_invalid')
-    for path in (args.aggregates,args.vocabulary,args.role_facts,args.judgments,args.accepted_plan):
+    for path in (args.aggregates,args.vocabulary,args.role_facts,args.judgments,args.accepted_plan,args.semantic_manifest):
         if path and not path.resolve(strict=True).is_relative_to(out):
             raise RuntimeError('product_input_outside_task')
     profile=read(args.profile);cfg=profile['db']
@@ -70,6 +72,8 @@ def main():
         or cfg['host'] not in {'localhost','127.0.0.1'}):
         raise RuntimeError('product_target_outside_verified_backup_restore')
     production=args.database==cfg['name']
+    if production and args.allow_partial_copy:
+        raise RuntimeError('partial_experiments_require_isolated_database')
     os.environ.update(_profile_to_env(profile,repo_root=ROOT))
     os.environ.update(POSTGRES_DB=args.database,TAG_TRANSLATION_LLM_ENABLED='false',
         TAG_TRANSLATION_LLM_FALLBACK_ENABLED='false')
@@ -83,17 +87,24 @@ def main():
     from app.services.pixiv_product_integration_service import rollback_pixiv_product_run
     from app.services.pixiv_metadata_projection_service import canonical_fingerprint
     scope=read(out/'fixed-scope-private.json')
+    from app.services.production_pixiv_release_inputs import verify_t0_scope,verify_full_input,verify_semantic_manifest
+    t0_identity=verify_t0_scope(scope,read(out/'t0-inventory-private.json'),cfg['name'],args.expected_system_id)
+    source_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    if not candidate_behavior_carry_forward(ROOT,source_head):
+        raise RuntimeError('candidate_has_uncommitted_behavior_changes')
+    if production and args.action in {'plan','apply'} and not all((args.role_facts,args.judgments,args.semantic_manifest)):
+        raise RuntimeError('production_complete_semantic_artifacts_required')
     url=URL.create('postgresql+psycopg2',username=cfg['user'],password=cfg['password'],
         host=cfg['host'],port=cfg['port'],database=args.database)
     readonly=args.action in {'snapshot','plan'}
     options='-c statement_timeout=120000 -c lock_timeout=5000'
     if readonly:options+=' -c default_transaction_read_only=on'
     engine=create_engine(url,connect_args={'options':options})
-    source_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip()
     receipt={'schema_version':'violet.production-pixiv-execution.v1','action':args.action,
         'database':args.database,'system_identifier':args.expected_system_id,'production':production,
         'scope_fingerprint':scope['canonical_fingerprint'],'source_head':source_head,'policy_version':PRODUCTION_POLICY,
-        'started_at':datetime.now(timezone.utc).isoformat()}
+        'started_at':datetime.now(timezone.utc).isoformat(),'t0_identity':t0_identity}
     started=time.monotonic()
     with exclusive(out/'product-runner.lock'),Session(engine) as session:
         if readonly:session.execute(text('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ'))
@@ -122,9 +133,15 @@ def main():
             if not args.aggregates or not args.vocabulary:
                 raise RuntimeError('frozen_aggregates_and_vocabulary_required')
             aggregates=read(args.aggregates)
-            live,_=build_production_inputs(session,scope,work_ids={row['work_id'] for row in aggregates})
-            if canonical_fingerprint(live)!=canonical_fingerprint(aggregates):
+            live,coverage=build_production_inputs(session,scope,
+                work_ids={row['work_id'] for row in aggregates} if args.allow_partial_copy else None)
+            if not args.allow_partial_copy:verify_full_input(aggregates,live,coverage)
+            elif canonical_fingerprint(live)!=canonical_fingerprint(aggregates):
                 raise RuntimeError('selected_source_snapshot_changed_refresh_required')
+            receipt['tail_media_ids']=coverage['tail_media_ids']
+            if args.semantic_manifest:
+                receipt['semantic_input_identity']=verify_semantic_manifest(read(args.semantic_manifest),
+                    aggregates,read(args.vocabulary),read(args.role_facts),read(args.judgments),source_head)
             run=build_production_clustering(production_consumer(aggregates),
                 vocabulary=read(args.vocabulary),role_facts=read(args.role_facts) if args.role_facts else None,
                 judgments=read(args.judgments) if args.judgments else ())
@@ -136,7 +153,9 @@ def main():
                 if not args.accepted_plan:raise RuntimeError('actual_target_plan_required')
                 accepted=read(args.accepted_plan)
                 if (accepted['database']!=args.database or accepted['system_identifier']!=args.expected_system_id
-                    or accepted['scope_fingerprint']!=scope['canonical_fingerprint'] or accepted['action']!='plan'):
+                    or accepted['scope_fingerprint']!=scope['canonical_fingerprint'] or accepted['action']!='plan'
+                    or accepted['source_head']!=source_head
+                    or accepted.get('semantic_input_identity')!=receipt.get('semantic_input_identity')):
                     raise RuntimeError('accepted_plan_target_mismatch')
                 receipt['result']=compact_result(replace_production_projection(session,run,scope=scope,apply=True,
                     accepted_plan=accepted['result']))
