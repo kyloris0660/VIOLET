@@ -55,9 +55,16 @@ def verify_launcher_action(launch,repo,candidate):
 
 
 def pytest_outcome(command, log, xml_path=None):
-    counts={key:int((re.findall(r'(\d+) '+key+r'\b',log) or ['0'])[-1])
+    # Parametrized node IDs and captured application logs can themselves say
+    # "1 error". Only pytest's final summary is an outcome count.
+    kinds=r'passed|failed|skipped|xfailed|xpassed|errors?|warnings?|deselected'
+    summaries=[line.strip('= \r') for line in log.splitlines() if re.fullmatch(
+        rf'\d+ (?:{kinds})(?:, \d+ (?:{kinds}))*(?: in .+)?',line.strip('= \r'))]
+    if not summaries:raise ValueError('a2_pytest_summary_missing')
+    summary=summaries[-1]
+    counts={key:int((re.findall(r'(\d+) '+key+r'\b',summary) or ['0'])[-1])
             for key in ('passed','failed','skipped')}
-    counts['errors']=int((re.findall(r'(\d+) errors?\b',log) or ['0'])[-1])
+    counts['errors']=int((re.findall(r'(\d+) errors?\b',summary) or ['0'])[-1])
     failures=set(re.findall(r'^FAILED (\S+)',log,re.MULTILINE))
     errors=set(re.findall(r'^ERROR (\S+)',log,re.MULTILINE))
     if xml_path:

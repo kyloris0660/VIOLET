@@ -24,6 +24,13 @@ def test_xml_teardown_error_cannot_hide_behind_success_summary(tmp_path):
         pytest_outcome({'status':'finished','exit_code':0},'1 passed',path)
 
 
+def test_parametrized_error_text_is_not_a_pytest_outcome(tmp_path):
+    path=tmp_path/'tests.xml';path.write_text('<testsuite><testcase name="sample"/></testsuite>')
+    log='tests/test_guard.py::test_error[1 passed, 1 error] PASSED\n=== 1 passed in 0.01s ==='
+    counts,failures=pytest_outcome({'status':'finished','exit_code':0},log,path)
+    assert counts=={'passed':1,'failed':0,'skipped':0,'errors':0} and not failures
+
+
 def test_latency_recomputed_from_each_measurement_and_rejects_nonfinite():
     stats=latency_statistics([{'ms':v} for v in range(100)])
     assert stats=={'p50_ms':49.5,'p95_ms':95,'max_ms':99}
