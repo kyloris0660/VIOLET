@@ -40,7 +40,7 @@ def latency_statistics(rows):
             'p95_ms':round(values[math.ceil((len(values)-1)*.95)],3),'max_ms':round(max(values),3)}
 
 
-def recompute_quality(quality, oracle):
+def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None):
     from app.services.source_metadata_registry_service import canonical_source_key as key
     projection=quality.get('projection_rows')
     if not isinstance(projection,list) or not projection:
@@ -80,9 +80,27 @@ def recompute_quality(quality, oracle):
             checks=[[ids(f'id:{s["media_id"]} '+quote(n)) for n in family['names']] for s in case['samples']]
             passed=bool(checks) and any(bool(row[0]) for row in checks) and all(all(x==row[0] for x in row) for row in checks)
         elif 'expected_ids' in case and 'actual_ids' in case:
-            passed=set(case['expected_ids'])==set(case['actual_ids'])
+            samples=(suggestion_oracle or {}).get('samples',[])
+            sample=next((r for r in samples if r['media_id']==case['media_id']),None)
+            if not sample:raise ValueError('a2_frozen_suggestion_sample_missing')
+            kind=case['kind'];mid=sample['media_id']
+            expected=[] if kind=='suggested_positive' else [mid]
+            tag=sample['accepted_control_tag'] if kind=='accepted_positive_control' else sample['suggested_tag']
+            query=f'id:{mid} '+('-' if kind=='suggested_negative' else '')+json.dumps(tag)
+            if (kind not in {'suggested_positive','suggested_negative','accepted_positive_control'}
+                or case['query']!=query or case['expected_ids']!=expected):
+                raise ValueError('a2_frozen_suggestion_expectation_changed')
+            passed=set(expected)==set(case['actual_ids']) and case['total']==len(expected)
         elif 'expected_account_union_media_ids' in case:
+            family=next((r for r in (creator_oracle or {}).get('selected_families',[]) if r['query']==case['query']),None)
+            if not family or set(case['expected_account_union_media_ids'])!=set(family['expected_union_media_ids']):
+                raise ValueError('a2_frozen_creator_expectation_changed')
             accounts=case['accounts'];concepts=[set(a['concept_ids']) for a in accounts]
+            source={r['provider_creator_id']:set(r['expected_media_ids']) for r in family['creators']}
+            if {r['provider_creator_id'] for r in accounts}!=set(source):raise ValueError('a2_creator_account_missing')
+            for account in accounts:
+                missing=source[account['provider_creator_id']]-set(account['bound_media_ids'])
+                if missing!=set(account['missing_bound_media_ids']):raise ValueError('a2_creator_support_summary_changed')
             passed=(set(case['expected_account_union_media_ids'])<=set(case['actual_api_media_ids'])
                 and all(len(c)==1 for c in concepts) and len(set.union(*concepts))==len(concepts)
                 and not any(a['missing_bound_media_ids'] for a in accounts))
@@ -92,6 +110,8 @@ def recompute_quality(quality, oracle):
     # Keep the original independent denominator; absence cannot silently remove
     # a formerly present case from release admission.
     required={pair for pair in expected_pairs if all(n in names for n in pair)}
+    if baseline:
+        required|={tuple(sorted(key(n) for n in c['names'])) for c in baseline['cases'] if 'expected' in c and 'names' in c}
     if not required<=seen:raise ValueError('a2_quality_case_missing')
     return {'case_count':len(results),'failed_cases':sum(not r for r in results),
             'categories':dict(Counter(c['category'] for c in quality['cases']))}

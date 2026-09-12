@@ -132,15 +132,33 @@ def _adapt_response_record(row,unit):
     from .source_name_candidate_extraction_service import popularity_suffix_prefix
     row=json.loads(json.dumps(row))
     supported=set()
+    compound_prefixes=defaultdict(list)
     for tag in unit.unit_group.tags:
         raw=tag.get('raw_tag') or ''
         supported.add(canonical_source_key(raw))
+        for delimiter in (':','：'):
+            if delimiter in raw:
+                prefix,suffix=raw.split(delimiter,1)
+                if prefix.strip() and suffix.strip():
+                    compound_prefixes[canonical_source_key(prefix)].append(raw)
         parsed=parse_parenthetical_name(raw)
         if parsed:supported.update(canonical_source_key(value) for value in parsed)
         popularity=popularity_suffix_prefix(raw)
         if popularity:supported.add(canonical_source_key(popularity.get('extracted_prefix')))
     for candidate in row.get('candidates') or []:
         if not isinstance(candidate,dict):continue
+        raw_key=canonical_source_key(candidate.get('raw_value'))
+        compound=sorted(set(compound_prefixes.get(raw_key,[])))
+        if len(compound)==1 and (candidate.get('role') or candidate.get('candidate_role')) in {'character','person'}:
+            # A model-extracted character prefix is grounded in this literal
+            # compound tag. Keep the full observed spelling as provenance and
+            # its reported display name; no outfit suffix becomes a franchise
+            # and no identity-equivalence judgment is supplied here.
+            prefix=candidate['raw_value']
+            candidate.setdefault('display_name',prefix)
+            candidate.setdefault('normalized_value',prefix)
+            candidate['raw_value']=compound[0]
+            candidate['production_original_extracted_span']=prefix
         if isinstance(candidate.get('confidence'),str):
             value={'high':0.9,'medium':0.7,'low':0.4}.get(candidate['confidence'].casefold())
             if value is not None:candidate['confidence']=value
@@ -199,6 +217,11 @@ def _record(unit,model,verdict,candidates,*,origin):
     return {**_identity(unit,model),'raw_value':unit.normalized_value,'origin':origin,
         'verdict':verdict.extraction_verdict,'candidates':[asdict(candidate) for candidate in candidates],
         'identity_equivalence_authorized':False,'entity_truth_written':False}
+
+
+def _unit_answer_complete(unit,record):
+    return (unit.unit_group.data_origin not in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN}
+        or not role_target_coverage(unit,record)['missing_raw_tags'])
 
 
 class BudgetedExtractionProvider(BaseLLMProvider):
@@ -292,9 +315,10 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             unit=self.units.get(row.get('group_key'))
             if not unit:continue
             path=_unit_path(self.cache_dir,unit)
+            previous=None
             if path.exists():
-                _read_unit_cache(path,unit,self.model)
-                continue
+                previous,_=_read_unit_cache(path,unit,self.model)
+                if _unit_answer_complete(unit,previous):continue
             try:
                 verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
             except (ValueError,SourceNameCandidateExtractionError) as original_error:
@@ -314,6 +338,18 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 partial['partial_validation_error']=str(original_error)
                 row=partial
             if verdict.extraction_verdict.startswith('extraction_error'):continue
+            if previous:
+                # The immutable raw envelope remains the original evidence.
+                # A mutable unit cache can gain valid missing answers without
+                # losing siblings already accepted from an earlier response.
+                old=previous.get('validated_response',{})
+                merged={**row,'candidates':list({canonical_fingerprint(c):c for c in
+                    [*old.get('candidates',[]),*row.get('candidates',[])]}.values()),
+                    'target_dispositions':list({r['raw_value']:r for r in
+                    [*old.get('target_dispositions',[]),*row.get('target_dispositions',[])]}.values())}
+                try:verdict,candidates,*_=validate_extraction_record(merged,unit.unit_group)
+                except (ValueError,SourceNameCandidateExtractionError):continue
+                row=merged
             _atomic_write_json(path,
                 {**_record(unit,self.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
                  'validated_response':row})
@@ -353,7 +389,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             path=_unit_path(self.cache_dir,unit) if unit else None
             if path and path.exists():
                 cached,_=_read_unit_cache(path,unit,self.model)
-                if cached.get('validated_response'):known[row['group_key']]=cached['validated_response']
+                if cached.get('validated_response') and _unit_answer_complete(unit,cached):
+                    known[row['group_key']]=cached['validated_response']
         if known:
             missing=[row for row in requested if row['group_key'] not in known]
             if missing:
@@ -379,7 +416,9 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             if feedback is None:
                 self.raw_cache_hits+=1
                 return self.adapted_content(cached['content'])
-            if any(_unit_path(self.cache_dir,self.units[row['group_key']]).exists() for row in requested):
+            if any((lambda unit: _unit_path(self.cache_dir,unit).exists() and
+                    _unit_answer_complete(unit,_read_unit_cache(_unit_path(self.cache_dir,unit),unit,self.model)[0]))
+                    (self.units[row['group_key']]) for row in requested):
                 return await self.complete_chat(messages,temperature=temperature,max_tokens=max_tokens)
         self.gate.check()
         groups=[self.units[row['group_key']].unit_group for row in requested]
@@ -431,6 +470,7 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
             value,variant=_read_unit_cache(path,unit,wrapped.model)
             canonical_reuse+=int(variant)
             records[unit.extraction_key]=value;cached+=1
+            if not _unit_answer_complete(unit,value):pending.append(unit)
         elif not unit.llm_required:
             bundle=deterministic_bundle_for_unit(unit,run_id='production-pixiv-roles',run_label='production-pixiv-roles')
             value=_record(unit,wrapped.model,bundle.record_verdicts[0],bundle.candidates,origin='existing_f7a_deterministic')
@@ -660,6 +700,8 @@ def plan_role_coverage_repair(consumer,vocabulary,role_facts):
                 raise ValueError('role_coverage_repair_parent_changed')
             answered=previous.get('target_coverage',{}).get('outcomes',{})
             targets=[raw for raw in targets if raw not in answered]
+        targets=[raw for raw in targets if raw not in role_facts.get('role_terminal_targets',{}).get(aggregate,{})]
+        targets=[raw for raw in targets if raw not in role_facts.get('role_reused_target_answers',{}).get(aggregate,{})]
         if not targets:continue
         signature=canonical_fingerprint({'schema':COVERAGE_REPAIR_ORIGIN,'parent':parent,
             'parent_response':canonical_fingerprint(record),'tags':original.unit_group.tags,'targets':targets})
@@ -695,6 +737,12 @@ def summarize_role_response_coverage(consumer,vocabulary,role_facts):
             if repair.get('parent_extraction_key')!=parent:raise ValueError('role_coverage_repair_parent_changed')
             for raw,value in repair.get('target_coverage',{}).get('outcomes',{}).items():
                 if raw in coverage['missing_raw_tags']:outcomes[raw]=value
+        for raw,terminal in role_facts.get('role_terminal_targets',{}).get(aggregate,{}).items():
+            if raw in originals[parent].raw_values and raw not in outcomes:
+                outcomes[raw]={'disposition':'attempt_limit_reached','reason_code':terminal['reason_code']}
+        for raw,reused in role_facts.get('role_reused_target_answers',{}).get(aggregate,{}).items():
+            if raw in originals[parent].raw_values and (raw not in outcomes or outcomes[raw]['disposition']=='attempt_limit_reached'):
+                outcomes[raw]={'disposition':reused['disposition'],'reason_code':reused['reason_code']}
         missing=[raw for raw in originals[parent].raw_values if raw not in outcomes]
         for value in outcomes.values():counts[value['disposition']]+=1
         counts['unaccounted']+=len(missing)
@@ -709,19 +757,7 @@ def summarize_role_response_coverage(consumer,vocabulary,role_facts):
         'unaccounted_targets':remaining,'response_completion_does_not_assert_identity':True}
 
 
-def repair_missing_role_coverage(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,
-    batch_size=5,unit_limit=0,workers=1,provider_factory=None):
-    if type(batch_size) is not int or not 1<=batch_size<=10:raise ValueError('production_context_batch_size_invalid')
-    if type(unit_limit) is not int or unit_limit<0:raise ValueError('production_context_unit_limit_invalid')
-    units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
-    if unit_limit:units=units[:unit_limit]
-    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,
-        batch_size=batch_size,progress=progress,workers=workers,provider_factory=provider_factory)
-    by_key={unit.extraction_key:unit for unit in units}
-    records={key:{**record,'parent_extraction_key':plan['parent_extraction_keys'][key],
-        'target_coverage':role_target_coverage(by_key[key],record)} for key,record in extracted['records'].items()}
-    # Keep previously answered siblings in the effective record, while every
-    # immutable original response remains individually inspectable in caches.
+def _merge_coverage_records(role_facts,records,mapping):
     for aggregate,key in mapping.items():
         previous_key=role_facts.get('coverage_repair_by_aggregate',{}).get(aggregate)
         previous=role_facts.get('coverage_repair_records',{}).get(previous_key)
@@ -735,10 +771,86 @@ def repair_missing_role_coverage(consumer,vocabulary,role_facts,*,provider,budge
                 previous.get('target_coverage',{}).get('requested_raw_tags',[])) |
                 set(current['target_coverage']['requested_raw_tags']))
             current['inherited_valid_response_keys']=[*previous.get('inherited_valid_response_keys',[]),previous_key]
-    result={**role_facts,'coverage_repair_records':{**role_facts.get('coverage_repair_records',{}),**records},
+    return {**role_facts,'coverage_repair_records':{**role_facts.get('coverage_repair_records',{}),**records},
         'coverage_repair_by_aggregate':{**role_facts.get('coverage_repair_by_aggregate',{}),
-            **{aggregate:key for aggregate,key in mapping.items() if key in records}},
+            **{aggregate:key for aggregate,key in mapping.items() if key in records}}}
+
+
+def _reuse_existing_target_answers(consumer,vocabulary,facts):
+    """Account for valid non-name answers already applied by this adapter."""
+    reused={aggregate:dict(rows) for aggregate,rows in facts.get('role_reused_target_answers',{}).items()}
+    records={canonical_source_key(row['raw_value']):row for row in facts['records'].values()}
+    for signal in adapt_production_semantics(consumer,vocabulary,facts).signals:
+        if (signal.origin_type!='pixiv_tag_observation' or signal.status!='rejected'
+            or signal.evidence_payload.get('production_non_identity_reason')!='existing_extractor_non_name_verdict'):
+            continue
+        record=records.get(canonical_source_key(signal.raw_value))
+        if not record or record['candidates'] or record.get('model')!='gpt-4.1-mini':continue
+        if (record.get('schema_version')!=ROLE_SCHEMA or record.get('prompt_version')!=PROMPT_VERSION
+            or record.get('extractor_version')!=EXTRACTOR_VERSION):continue
+        reused.setdefault(signal.evidence_payload['aggregate_fingerprint'],{})[signal.raw_value]={
+            'disposition':'non_name','reason_code':'compatible_single_spelling_non_name_already_applied',
+            'extraction_key':record['extraction_key'],'response_fingerprint':canonical_fingerprint(record),
+            'original_context_response_claimed_complete':False,'new_provider_calls':0}
+    return {**facts,'role_reused_target_answers':reused}
+
+
+def repair_missing_role_coverage(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,
+    batch_size=5,unit_limit=0,workers=1,provider_factory=None):
+    if type(batch_size) is not int or not 1<=batch_size<=10:raise ValueError('production_context_batch_size_invalid')
+    if type(unit_limit) is not int or unit_limit<0:raise ValueError('production_context_unit_limit_invalid')
+    units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
+    # Settle saved envelopes before any unit-cache shortcut, including a
+    # response whose final attempt reached the limit before the crash.
+    recovered=BudgetedExtractionProvider(provider,budget,cache_dir,units).replay_saved_raw()
+    cached={}
+    for unit in units:
+        path=_unit_path(cache_dir,unit)
+        if path.is_file():
+            record,_=_read_unit_cache(path,unit,provider.model)
+            cached[unit.extraction_key]={**record,'parent_extraction_key':plan['parent_extraction_keys'][unit.extraction_key],
+                'target_coverage':role_target_coverage(unit,record)}
+    if cached:role_facts=_merge_coverage_records(role_facts,cached,mapping)
+    units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
+    # Exhaustion belongs to the actual target, not to every other unit sharing
+    # its next transport batch. Keep the finite denominator and paid attempts;
+    # only this unresolved target receives an explicit terminal disposition.
+    index=budget.logical_attempt_index()
+    terminal={aggregate:dict(values) for aggregate,values in role_facts.get('role_terminal_targets',{}).items()}
+    by_key={unit.extraction_key:unit for unit in units}
+    for aggregate,key in mapping.items():
+        unit=by_key[key]
+        for raw in unit.raw_values:
+            group=replace(unit.unit_group,data_type_label='Requested unresolved raw tags: '+json.dumps([raw],ensure_ascii=False))
+            logical=BudgetedExtractionProvider.logical_keys([group])[0]
+            attempts=index.get(logical,[])
+            if len(attempts)>=3 and all(row['status']!='reserved' for row in attempts):
+                terminal.setdefault(aggregate,{})[raw]={'reason_code':'three_prior_logical_attempts_exhausted',
+                    'logical_key':logical,'attempt_ids':[row['id'] for row in attempts],
+                    'identity_confirmed':False,'unknown_rejudged':False}
+    role_facts={**role_facts,'role_terminal_targets':terminal}
+    units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
+    recovered+=BudgetedExtractionProvider(provider,budget,cache_dir,units).replay_saved_raw()
+    extra_cached={}
+    for unit in units:
+        path=_unit_path(cache_dir,unit)
+        if path.is_file():
+            record,_=_read_unit_cache(path,unit,provider.model)
+            extra_cached[unit.extraction_key]={**record,'parent_extraction_key':plan['parent_extraction_keys'][unit.extraction_key],
+                'target_coverage':role_target_coverage(unit,record)}
+    if extra_cached:role_facts=_merge_coverage_records(role_facts,extra_cached,mapping)
+    cached.update(extra_cached)
+    role_facts=_reuse_existing_target_answers(consumer,vocabulary,role_facts)
+    units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
+    if unit_limit:units=units[:unit_limit]
+    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,
+        batch_size=batch_size,progress=progress,workers=workers,provider_factory=provider_factory)
+    by_key={unit.extraction_key:unit for unit in units}
+    records={key:{**record,'parent_extraction_key':plan['parent_extraction_keys'][key],
+        'target_coverage':role_target_coverage(by_key[key],record)} for key,record in extracted['records'].items()}
+    result={**_merge_coverage_records(role_facts,records,mapping),
         'coverage_repair_summary':{**extracted['summary'],**{key:value for key,value in plan.items()
-            if key!='parent_extraction_keys'},'selected_units':len(units)}}
+            if key!='parent_extraction_keys'},'selected_units':len(units),'prior_valid_unit_cache_reused':len(cached),
+            'prior_paid_raw_units_recovered_locally':recovered}}
     result['role_response_coverage']=summarize_role_response_coverage(consumer,vocabulary,result)
     return result

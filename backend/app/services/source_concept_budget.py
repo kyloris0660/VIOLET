@@ -181,6 +181,15 @@ class AdjudicationBudget:
             return {'reservation':reservation,'key':row['key'],
                     'attempt':next(i+1 for i,r in enumerate(same) if r['id']==reservation)}
 
+    def logical_attempt_index(self):
+        with self._locked() as state:
+            index={}
+            for row in state['calls']:
+                for key in row.get('logical_keys',[]):
+                    index.setdefault(key,[]).append({'id':row['id'],'status':row['status'],
+                        'business_valid':row.get('business_valid',row['status']=='success')})
+            return index
+
     def summary(self):
         with self._locked() as state:
             return {**self.identity,'call_count':len(state['calls']),

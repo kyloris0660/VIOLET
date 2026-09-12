@@ -140,6 +140,9 @@ def main():
                 raise RuntimeError('selected_source_snapshot_changed_refresh_required')
             receipt['tail_media_ids']=coverage['tail_media_ids']
             if args.semantic_manifest:
+                from app.services.production_pixiv_release_inputs import verify_role_completion
+                receipt['role_target_coverage']=verify_role_completion(aggregates,read(args.vocabulary),
+                    read(args.role_facts),read(out/'llm-budget-private.json'))
                 receipt['semantic_input_identity']=verify_semantic_manifest(read(args.semantic_manifest),
                     aggregates,read(args.vocabulary),read(args.role_facts),read(args.judgments),source_head)
             run=build_production_clustering(production_consumer(aggregates),

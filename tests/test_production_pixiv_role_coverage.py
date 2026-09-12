@@ -84,7 +84,8 @@ def test_repair_preserves_answered_names_and_reuses_exact_cache_without_repay(tm
     assert len(provider.calls)==1 and budget.summary()['call_count']==2
     cached=repair_missing_role_coverage(value,vocabulary,facts,provider=provider,budget=budget,
         cache_dir=tmp_path/'roles',batch_size=8)
-    assert cached['coverage_repair_summary']['cache_hits']==1 and len(provider.calls)==1
+    assert cached['coverage_repair_summary']['prior_valid_unit_cache_reused']==1 and len(provider.calls)==1
+    assert cached['coverage_repair_summary']['selected_units']==0
     resumed=repair_missing_role_coverage(value,vocabulary,result,provider=provider,budget=budget,
         cache_dir=tmp_path/'roles')
     assert resumed['coverage_repair_summary']['selected_units']==0 and len(provider.calls)==1
@@ -111,6 +112,44 @@ def test_explicit_unknown_and_non_name_are_accounted_without_identity_invention(
     assert result['role_response_coverage']['counts']=={'candidate':2,'non_name':1,'unknown':1,'unaccounted':0}
 
 
+def test_repair_cache_shortcut_settles_saved_response_before_replanning(tmp_path,monkeypatch):
+    value,vocabulary,facts,_,budget=partial_facts(tmp_path)
+    provider=Responses(lambda group:([candidate('MysteryMissing')],[]))
+    real_settle=budget.settle
+    monkeypatch.setattr(budget,'settle',lambda *args,**kwargs:False)
+    repair_missing_role_coverage(value,vocabulary,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert any(row['status']=='reserved' for row in json.loads(budget.path.read_text())['calls'])
+    monkeypatch.setattr(budget,'settle',real_settle)
+    result=repair_missing_role_coverage(value,vocabulary,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert result['coverage_repair_summary']['selected_units']==0 and len(provider.calls)==1
+    assert not any(row['status']=='reserved' for row in json.loads(budget.path.read_text())['calls'])
+    charge=budget.summary()['charged_or_reserved_usd']
+    repair_missing_role_coverage(value,vocabulary,result,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert budget.summary()['charged_or_reserved_usd']==charge and len(provider.calls)==1
+
+
+def test_existing_compatible_non_name_answer_accounts_original_target_without_call(tmp_path):
+    from app.services.production_pixiv_role_extraction import plan_role_extraction,extract_production_roles
+    value,vocabulary,facts,_,budget=partial_facts(tmp_path)
+    negative=Responses(lambda group:([],[]))
+    units=plan_role_extraction(context(['MysteryMissing']),vocabulary)[0]
+    single=extract_production_roles(units,provider=negative,budget=budget,cache_dir=tmp_path/'single')
+    facts={**facts,'records':single['records']}
+    provider=Responses(lambda group:pytest.fail('compatible non-name must not be paid again'))
+    result=repair_missing_role_coverage(value,vocabulary,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert result['role_response_coverage']['requested_tag_occurrences']==3
+    assert result['role_response_coverage']['counts']=={'candidate':2,'non_name':1,'unaccounted':0}
+    answer=result['role_reused_target_answers']['aggregate-12345678']['MysteryMissing']
+    assert answer['response_fingerprint'] and answer['new_provider_calls']==0
+    assert answer['original_context_response_claimed_complete'] is False
+    from app.services.production_pixiv_release_inputs import verify_role_completion
+    from unittest.mock import patch
+    with patch('app.services.production_pixiv_service.production_consumer',return_value=value):
+        assert verify_role_completion([],vocabulary,result,json.loads(budget.path.read_text()))==result['role_response_coverage']
+        with pytest.raises(ValueError,match='role_target_processing_incomplete'):
+            verify_role_completion([],vocabulary,facts,json.loads(budget.path.read_text()))
+
+
 def test_still_partial_repair_requests_only_missing_targets_and_retains_answers(tmp_path):
     value,vocabulary,facts,_,budget=partial_facts(tmp_path,
         ['MysteryKnown','MysteryMissing','MysteryUnknown','MysteryOther'])
@@ -133,6 +172,20 @@ def test_still_partial_repair_requests_only_missing_targets_and_retains_answers(
     assert not plan_role_coverage_repair(value,vocabulary,resumed)[0]
 
 
+def test_cached_unsolicited_sibling_cannot_prevent_the_missing_target_retry(tmp_path):
+    value,vocabulary,facts,_,budget=partial_facts(tmp_path)
+    partial=Responses(lambda group:([candidate('MysteryKnown')],[]))
+    first=repair_missing_role_coverage(value,vocabulary,facts,provider=partial,budget=budget,cache_dir=tmp_path/'roles')
+    assert first['role_response_coverage']['counts']['unaccounted']==1
+    raw_before={str(p):p.read_bytes() for p in (tmp_path/'roles/raw').rglob('*.json')}
+    provider=Responses(lambda group:([candidate('MysteryMissing')],[]))
+    result=repair_missing_role_coverage(value,vocabulary,first,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    # The original completion and invalid repair are the first two attempts;
+    # one final bounded repair closes the actual missing target.
+    assert len(provider.calls)==1 and result['role_response_coverage']['counts']['unaccounted']==0
+    assert all(__import__('pathlib').Path(p).read_bytes()==b for p,b in raw_before.items())
+
+
 def test_invalid_candidate_sibling_is_preserved_and_only_invalid_target_is_repaired(tmp_path):
     value=context(['MysteryGood','MysteryBad']);vocab=build_semantic_vocabulary([])
     provider=Responses(lambda group:([candidate('MysteryGood'),candidate('MysteryBad','invented_role')],[]))
@@ -150,6 +203,45 @@ def test_invalid_candidate_sibling_is_preserved_and_only_invalid_target_is_repai
     ledger=json.loads(budget.path.read_text())
     assert ledger['calls'][0]['business_valid'] is False
     assert budget.summary()['charged_or_reserved_usd']>0
+
+
+def test_compound_tag_keeps_reported_character_prefix_and_does_not_promote_outfit_suffix(tmp_path):
+    value=context(['FictionalHero:EveningOutfit','pose-description'])
+    vocabulary=build_semantic_vocabulary([])
+    provider=Responses(lambda group:([
+        {**candidate('FictionalHero'),'source_field':'provider_tag'},
+        {**candidate('EveningOutfit','work_title'),'source_field':'provider_tag','extraction_action':'parenthetical_split'}],
+        [{'raw_value':'pose-description','disposition':'non_name','reason_code':'descriptive'}]))
+    budget=task_budget(tmp_path,provider)
+    facts=complete_contextual_production_roles(value,vocabulary,{'schema_version':ROLE_SCHEMA,'records':{}},
+        provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    record=next(iter(facts['completion_records'].values()))
+    assert any(c['raw_value']=='FictionalHero:EveningOutfit' and c['candidate_role']=='character' for c in record['candidates'])
+    assert not any(c['candidate_role']=='work_title' for c in record['candidates'])
+    assert plan_role_coverage_repair(value,vocabulary,facts)[0]==[]
+    assert json.loads(budget.path.read_text())['calls'][0]['business_valid'] is False
+
+
+def test_exhausted_target_does_not_stop_other_missing_targets_or_reset_attempts(tmp_path):
+    from dataclasses import replace
+    from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
+    value,vocabulary,facts,_,budget=partial_facts(tmp_path,
+        ['MysteryKnown','MysteryMissing','MysteryUnknown','MysteryOther'])
+    unit=plan_role_coverage_repair(value,vocabulary,facts)[0][0]
+    group=replace(unit.unit_group,data_type_label='Requested unresolved raw tags: '+json.dumps(['MysteryMissing']))
+    keys=BudgetedExtractionProvider.logical_keys([group])
+    # The original partial request already charged one logical attempt.
+    for i in range(2):
+        ticket=budget.reserve('failed-'+str(i),[],max_output_tokens=100,logical_keys=keys)
+        budget.settle(ticket,{},success=False)
+    provider=Responses(lambda group:([candidate('MysteryOther')],[]))
+    result=repair_missing_role_coverage(value,vocabulary,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert len(provider.calls)==1
+    assert json.loads(provider.calls[0][0]['data_type_label'].split(': ',1)[1])==['MysteryOther']
+    assert result['role_response_coverage']['counts']['attempt_limit_reached']==1
+    assert result['role_response_coverage']['counts']['unaccounted']==0
+    assert result['role_response_coverage']['requested_tag_occurrences']==4
+    assert result['role_terminal_targets']['aggregate-12345678']['MysteryMissing']['identity_confirmed'] is False
 
 
 def test_target_accounting_rejects_aggregate_counts_duplicates_and_unsupported_claims(tmp_path):

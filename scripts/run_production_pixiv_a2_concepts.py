@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--aggregates',required=True,type=Path)
     parser.add_argument('--vocabulary',required=True,type=Path)
     parser.add_argument('--role-facts',type=Path)
+    parser.add_argument('--diagnostic-names',type=Path,help='private names to trace after graph construction; never model input')
     parser.add_argument('--label',required=True)
     parser.add_argument('--expected-python',required=True)
     parser.add_argument('--limit',type=int,default=0,help='bounded role/completion batch; 0 processes all remaining units')
@@ -63,7 +64,7 @@ def main():
     out=args.artifacts.resolve(strict=True)
     if not out.is_relative_to((ROOT/'.local_manifests').resolve()) or not re.fullmatch('[a-z0-9-]+',args.label):
         raise RuntimeError('private_concept_artifact_location_invalid')
-    for path in (args.aggregates,args.vocabulary,args.role_facts):
+    for path in (args.aggregates,args.vocabulary,args.role_facts,args.diagnostic_names):
         if path and not path.resolve(strict=True).is_relative_to(out):raise RuntimeError('concept_input_outside_task')
     llm=read(args.profile)['tag_translation_llm']
     if llm['model']!='gpt-4.1-mini' or llm['provider']!='openai_compatible' or llm['base_url'].rstrip('/')!='https://api.openai.com/v1':
@@ -148,9 +149,28 @@ def main():
             write(out/f'{args.label}-roles-private.json',result)
             print(json.dumps(result['summary'],ensure_ascii=False),flush=True)
             return
+        def trace(stage,run):
+            if not args.diagnostic_names:return
+            from app.services.source_metadata_registry_service import canonical_source_key
+            names={canonical_source_key(n) for n in read(args.diagnostic_names)}
+            selected={s.signal_key for s in run.resolution.signals if canonical_source_key(s.raw_value) in names}
+            concepts={link.concept_key for link in run.resolution.links if link.signal_key in selected}
+            component={link.signal_key for link in run.resolution.links if link.concept_key in concepts}|selected
+            write(out/f'{args.label}-{stage}-causal-trace-private.json',{
+                'run_id':run.resolution.run_id,'business_fingerprint':run.business_projection_fingerprint,
+                'diagnostic_names':sorted(names),'signals':[asdict(s) for s in run.resolution.signals if s.signal_key in component],
+                'edges':[asdict(e) for e in run.resolution.edge_candidates if e.left_signal_key in component or e.right_signal_key in component],
+                'links':[asdict(r) for r in run.resolution.links if r.signal_key in component],
+                'aliases':[asdict(r) for r in run.resolution.aliases if r.concept_key in concepts],
+                'judgments':[r for r in run.resolution.llm_judgments if r.get('left_signal_key') in component or r.get('right_signal_key') in component],
+                'diagnostic_selection_did_not_affect_graph_or_model_inputs':True})
         run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts)
+        trace('initial',run)
         judgments=[];receipt=None
         if args.action=='adjudicate':
+            from app.services.production_pixiv_release_inputs import verify_role_completion
+            role_coverage=verify_role_completion(aggregates,vocabulary,facts,read(out/'llm-budget-private.json'))
+            write(out/f'{args.label}-role-completion-admission-private.json',role_coverage)
             config=LLMAdjudicationConfig(enabled=True,max_calls=1000000,max_budget_usd=cap,selection_policy='all_eligible',
                 model_label=llm['model'],durable_cache_dir=str(out/'llm-cache'),semantic_cache_reuse=True,
                 semantic_cache_dirs=(str(Path(read(args.profile)['storage_root'])/'.local_manifests/source_concept_llm_adjudication_cache'),),
@@ -165,11 +185,16 @@ def main():
             def work_pair(edge):
                 return by_key[edge.left_signal_key].role_hint==by_key[edge.right_signal_key].role_hint=='work'
             work_edges=[edge for edge in run.resolution.edge_candidates if work_pair(edge)]
+            write(out/f'{args.label}-work-selected-pairs-private.json',[asdict(edge) for edge in
+                select_llm_adjudication_edges(work_edges,signals=run.resolution.signals,config=config)])
             work_judgments,work_receipt=run_bounded_llm_adjudication(work_edges,signals=run.resolution.signals,config=config)
             write(out/f'{args.label}-work-judgments-private.json',work_judgments)
             write(out/f'{args.label}-work-adjudication-private.json',work_receipt)
             run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=work_judgments)
+            trace('work-context',run)
             remaining=[edge for edge in run.resolution.edge_candidates if not work_pair(edge)]
+            write(out/f'{args.label}-remaining-selected-pairs-private.json',[asdict(edge) for edge in
+                select_llm_adjudication_edges(remaining,signals=run.resolution.signals,config=config)])
             other_judgments,other_receipt=run_bounded_llm_adjudication(remaining,signals=run.resolution.signals,config=config)
             judgments=[*work_judgments,*other_judgments]
             receipt={'work_stage':work_receipt,'remaining_stage':other_receipt,'task_budget':budget.summary(),
@@ -178,6 +203,7 @@ def main():
             write(out/f'{args.label}-judgments-private.json',judgments)
             write(out/f'{args.label}-adjudication-private.json',receipt)
             run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=judgments)
+            trace('final',run)
             from app.services.production_pixiv_release_inputs import semantic_input_identity
             import subprocess
             write(out/f'{args.label}-semantic-manifest-private.json',{

@@ -177,6 +177,35 @@ def test_partial_release_admission_leaves_existing_projection_unchanged(database
     verify_full_input(live,live,coverage)
 
 
+def test_accepted_alias_recalls_untyped_literal_tags_without_identity_union(database):
+    from dataclasses import replace
+    from app.models import SourceConceptSignal
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    aggregates=build_canonical_pixiv_aggregates_from_session(database)
+    consumer=production_consumer(aggregates)
+    consumer=replace(consumer,signals=tuple(replace(s,role_hint='work',trust_tier='strong',status='active',work_context_key=None)
+        if s.origin_type=='pixiv_tag_observation' and s.evidence_payload['work_id']!='910000003' else s for s in consumer.signals))
+    initial=build_production_clustering(consumer)
+    typed=[s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation' and s.role_hint=='work']
+    judgment={'left_signal_key':typed[0].signal_key,'right_signal_key':typed[1].signal_key,
+        'decision':'must_link','confidence':0.99,'cache_key':'test-accepted-distinct-spellings'}
+    run=build_production_clustering(consumer,judgments=[judgment])
+    applied=apply(database,run,scope_for(database))
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,include_evidence_fallback=True)
+    assert 4 not in observed['identity'] and 4 in observed['evidence_fallback']
+    unknown=database.query(SourceConceptSignal).filter_by(created_by_run_id=run.resolution.run_id,
+        canonical_key='sunpetal',role_hint='unknown').one()
+    assert unknown.role_hint=='unknown'
+    # A literal artwork title cannot gain this source-tag recall permission.
+    unknown.origin_type='pixiv_title_observation';database.flush()
+    assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True)['combined']
+    unknown.origin_type='pixiv_tag_observation';database.flush()
+    source=database.get(SourceMetadataRecord,104);source.title='Changed source revision';database.commit()
+    assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True)['combined']
+
+
 def test_batch_order_and_resume_receipts_do_not_change_business_identity(database):
     aggregates=build_canonical_pixiv_aggregates_from_session(database)
     initial=build_production_clustering(production_consumer(aggregates))

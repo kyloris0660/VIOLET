@@ -44,3 +44,23 @@ def test_frozen_quality_is_recomputed_even_if_boolean_stays_true():
                    lambda v:v['cases'][0].update(expected='cannot_link')):
         changed=copy.deepcopy(value);mutate(changed)
         with pytest.raises(ValueError):recompute_quality(changed,oracle)
+
+
+def test_suggestion_expected_set_cannot_be_rewritten_with_the_observed_result():
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    sample={'media_id':20,'suggested_tag':'draft','accepted_control_tag':'kept'}
+    case={'category':'suggestion_suggested_positive','kind':'suggested_positive','media_id':20,
+        'query':'id:20 "draft"','expected_ids':[],'actual_ids':[],'total':0,'passed':True}
+    value['cases'].append(case)
+    assert recompute_quality(value,oracle,suggestion_oracle={'samples':[sample]})['failed_cases']==0
+    case.update(expected_ids=[20],actual_ids=[20],total=1)
+    with pytest.raises(ValueError,match='frozen_suggestion_expectation_changed'):
+        recompute_quality(value,oracle,suggestion_oracle={'samples':[sample]})
+
+
+def test_absent_former_identity_case_cannot_disappear_from_denominator():
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    baseline=copy.deepcopy(value)
+    value['cases']=[];value['projection_rows']=value['projection_rows'][:1]
+    with pytest.raises(ValueError,match='quality_case_missing'):
+        recompute_quality(value,oracle,baseline=baseline)

@@ -59,6 +59,25 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
             if any(record.get(k)!=v for k,v in expected_record.items()):
                 raise ValueError('semantic_role_record_version_or_model_changed')
     aggregate_keys={row['canonical_fingerprint'] for row in aggregates}
+    from .source_metadata_registry_service import canonical_source_key
+    for aggregate,answers in role_facts.get('role_reused_target_answers',{}).items():
+        if aggregate not in aggregate_keys:raise ValueError('semantic_reused_role_source_changed')
+        for raw,answer in answers.items():
+            record=role_facts.get('records',{}).get(answer.get('extraction_key'))
+            if (not record or record.get('candidates') or record.get('verdict') not in (
+                'no_explicit_name','rejected_general_only','rejected_popularity_or_meta_only')
+                or canonical_source_key(record.get('raw_value',''))!=canonical_source_key(raw)
+                or canonical_fingerprint(record)!=answer.get('response_fingerprint')
+                or answer.get('disposition')!='non_name' or answer.get('new_provider_calls')!=0
+                or answer.get('original_context_response_claimed_complete') is not False):
+                raise ValueError('semantic_reused_role_answer_changed')
+    for aggregate,answers in role_facts.get('role_terminal_targets',{}).items():
+        if aggregate not in aggregate_keys:raise ValueError('semantic_terminal_role_source_changed')
+        for answer in answers.values():
+            attempts=answer.get('attempt_ids',[])
+            if (len(set(attempts))<3 or answer.get('identity_confirmed') is not False
+                or answer.get('reason_code')!='three_prior_logical_attempts_exhausted'):
+                raise ValueError('semantic_terminal_role_attempt_evidence_missing')
     for mapping,records in (('context_by_aggregate','context_records'),('completion_by_aggregate','completion_records'),
                             ('coverage_repair_by_aggregate','coverage_repair_records')):
         if any(aggregate not in aggregate_keys or key not in role_facts.get(records,{})
@@ -83,3 +102,20 @@ def verify_semantic_manifest(manifest, aggregates, vocabulary, facts, judgments,
     if processing['judgment_count'] != len(judgments):
         raise ValueError('semantic_judgment_count_changed')
     return expected
+
+
+def verify_role_completion(aggregates,vocabulary,facts,ledger):
+    """Recompute the retained role denominator and bind exhausted calls."""
+    from .production_pixiv_service import production_consumer
+    from .production_pixiv_role_extraction import summarize_role_response_coverage
+    coverage=summarize_role_response_coverage(production_consumer(aggregates),vocabulary,facts)
+    if coverage['counts'].get('unaccounted',0) or coverage!=facts.get('role_response_coverage'):
+        raise ValueError('semantic_original_role_target_processing_incomplete')
+    calls={row['id']:row for row in ledger['calls']}
+    for answers in facts.get('role_terminal_targets',{}).values():
+        for answer in answers.values():
+            for ticket in answer['attempt_ids']:
+                row=calls.get(ticket)
+                if not row or row['status']=='reserved' or answer['logical_key'] not in row.get('logical_keys',[]):
+                    raise ValueError('semantic_terminal_role_attempt_not_settled')
+    return coverage

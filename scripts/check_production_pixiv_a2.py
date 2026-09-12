@@ -167,7 +167,10 @@ def derive_result(private,repo=ROOT):
     quality=read(private,manifest['quality']);workload=read(private,manifest['workload'])
     require(quality['candidate_head']==workload['candidate_head']==head,'quality_candidate')
     from scripts.production_pixiv_a2_evidence import recompute_quality,latency_statistics
-    quality_actual=recompute_quality(quality,read(private,quality['oracle_input']))
+    quality_actual=recompute_quality(quality,read(private,quality['oracle_input']),
+        suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'),
+        creator_oracle=read(private,'independent-creator-homonym-oracle-private.json'),
+        baseline=read(private,'full-production-final-1-combined-quality-private.json'))
     require(quality['independent_answer_sources'] and quality_actual['case_count']>=80
         and quality_actual['failed_cases']==0,'independent_quality')
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
