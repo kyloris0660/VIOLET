@@ -27,7 +27,7 @@ from .source_name_candidate_extraction_service import (
 
 ROLE_SCHEMA='violet.production-pixiv-role-result.v1'
 COMPLETION_ORIGIN='production_pixiv_residual_roles_v1'
-COVERAGE_REPAIR_ORIGIN='production_pixiv_role_coverage_repair_v1'
+COVERAGE_REPAIR_ORIGIN='production_pixiv_role_coverage_repair_v2'
 COMPLETION_PROMPT=(
     'Production residual role completion v1. The requested raw tags are listed in each record data_type_label. '
     'Classify every requested spelling using ALL of its actual tags as context. '
@@ -46,6 +46,9 @@ COVERAGE_REPAIR_PROMPT=(
     'For unknown, preserve uncertainty; for non_name, give a short reason without inventing identity. '
     'Aggregate rejected_summary counts do not account for individual requested tags. '
     'Do not collapse multilingual spellings or answer only names in the surrounding context.'
+    ' The record schema is extended for this task: target_dispositions is a REQUIRED array at the same level as candidates. '
+    'Example for a descriptive tag: "target_dispositions":[{"raw_value":"red dress","disposition":"non_name","reason_code":"clothing"}]. '
+    'The array must cover the exact requested spellings, including rejected descriptions. Short reason_code values are required; no prose rationale.'
 )
 
 
@@ -104,6 +107,17 @@ def _production_messages(messages):
     for row in selected:row.pop('deterministic_hints',None)
     payload['production_prompt_adapter']=origin
     system=messages[0]['content']
+    if origin==COVERAGE_REPAIR_ORIGIN:
+        # F7a's base output restriction conflicts with this task's additional
+        # per-target ledger. Change only the repair adapter, never old prompts.
+        system=system.replace('Only include ambiguous_items or error_code when needed. ',
+            'Also include target_dispositions for every requested raw spelling. Include ambiguous_items or error_code when needed. ')
+        system=system.replace('Do not output verbose reasons, prose explanations, chain-of-thought, or per-tag rationale text.',
+            'Do not output verbose reasons, prose explanations, or chain-of-thought. Short per-target reason_code values are required.')
+        payload['required_record_fields']=['group_key','provider','verdict','candidates','rejected_summary','target_dispositions']
+        payload['target_disposition_fields']=['raw_value','disposition','reason_code']
+        for row in selected:
+            row['requested_raw_tags']=json.loads(row['data_type_label'].split(': ',1)[1])
     if not system.endswith(prompt):system+='\n'+prompt
     return [{**messages[0],'content':system},
         {**messages[1],'content':json.dumps(payload,ensure_ascii=False,sort_keys=True)}]

@@ -202,3 +202,20 @@ def test_bounded_repair_prioritizes_current_missing_names_without_dropping_other
     assert result['role_response_coverage']['counts']['unaccounted']==1
     remaining,_,remaining_plan=plan_role_coverage_repair(value,vocabulary,result)
     assert remaining[0].raw_values==('MysteryLow',) and remaining_plan['already_attempted_aggregates']==1
+
+
+def test_repair_wire_contract_removes_conflicting_output_restriction_and_preserves_old_prompt(tmp_path):
+    from app.services.production_pixiv_role_extraction import _production_messages,COMPLETION_ORIGIN,COMPLETION_PROMPT
+    from app.services.source_name_candidate_extraction_service import extraction_messages
+    value,vocabulary,facts,_,_=partial_facts(tmp_path)
+    unit=plan_role_coverage_repair(value,vocabulary,facts)[0][0]
+    messages=_production_messages(extraction_messages([unit.unit_group]))
+    assert 'Only include ambiguous_items or error_code when needed.' not in messages[0]['content']
+    payload=json.loads(messages[1]['content'])
+    assert payload['records'][0]['requested_raw_tags']==['MysteryMissing']
+    assert 'target_dispositions' in payload['required_record_fields']
+    assert _production_messages(messages)==messages
+    old=extraction_messages([replace(unit.unit_group,data_origin=COMPLETION_ORIGIN)])
+    adapted=_production_messages(old)
+    assert adapted[0]['content']==old[0]['content']+'\n'+COMPLETION_PROMPT
+    assert 'required_record_fields' not in json.loads(adapted[1]['content'])
