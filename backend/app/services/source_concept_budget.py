@@ -114,7 +114,7 @@ class AdjudicationBudget:
             if len(previous)>=3:
                 raise AdjudicationBudgetBlocked('adjudication_pair_attempts_exhausted')
             for logical in logical_keys:
-                attempts=[r for r in state['calls'] if logical in r.get('logical_keys',[])]
+                attempts=[r for r in state['calls'] if logical in r.get('logical_keys',[]) or r['key']==logical]
                 if any(r['status']=='reserved' for r in attempts):
                     raise AdjudicationBudgetBlocked('adjudication_logical_call_outcome_unknown')
                 if len(attempts)>=3:

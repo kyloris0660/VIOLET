@@ -103,3 +103,22 @@ def test_response_before_save_stays_reserved_and_legacy_cache_needs_no_invented_
         book.recover_response(key='wrong',reservation=ticket,usage={},business_valid=True)
     with pytest.raises(AdjudicationBudgetBlocked,match='inflight_call'):
         ledger(tmp_path,30).increase_cap(previous_cap_usd=10,authorization_source='task43',authorization_id='owner43')
+
+
+def test_prompt_revision_counts_legacy_pair_attempts_without_reset(tmp_path):
+    book=ledger(tmp_path,10);logical='decision-input:original-source-question'
+    for _ in range(2):
+        ticket=book.reserve(logical,[]);book.settle(ticket,{'prompt_tokens':10,'completion_tokens':10},success=False)
+    revised=logical+':prompt:revised-instructions'
+    ticket=book.reserve(revised,[],logical_keys=[logical]);book.settle(ticket,{},success=False)
+    with pytest.raises(AdjudicationBudgetBlocked,match='logical_attempts_exhausted'):
+        book.reserve('another-version-or-run',[],logical_keys=[logical])
+    assert book.summary()['call_count']==3
+
+
+def test_prompt_revision_cannot_overlap_unsettled_legacy_question(tmp_path):
+    book=ledger(tmp_path,10);logical='decision-input:original-source-question'
+    book.reserve(logical,[])
+    with pytest.raises(AdjudicationBudgetBlocked,match='logical_call_outcome_unknown'):
+        book.reserve(logical+':prompt:revised',[],logical_keys=[logical])
+    assert book.summary()['call_count']==1

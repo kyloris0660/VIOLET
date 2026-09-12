@@ -78,7 +78,7 @@ def main():
     from app.services.source_concept_budget import AdjudicationBudget
     from app.services.source_concept_resolver_service import (
         LLMAdjudicationConfig,run_bounded_llm_adjudication,primary_openai_provider_from_settings,
-        select_llm_adjudication_edges,
+        select_llm_adjudication_edges,PRODUCTION_PAIR_PROMPT_VERSION,
     )
     aggregates=read(args.aggregates);vocabulary=read(args.vocabulary);facts=read(args.role_facts) if args.role_facts else None
     consumer=production_consumer(aggregates)
@@ -172,6 +172,7 @@ def main():
             role_coverage=verify_role_completion(aggregates,vocabulary,facts,read(out/'llm-budget-private.json'))
             write(out/f'{args.label}-role-completion-admission-private.json',role_coverage)
             config=LLMAdjudicationConfig(enabled=True,max_calls=1000000,max_budget_usd=cap,selection_policy='all_eligible',
+                prompt_version=PRODUCTION_PAIR_PROMPT_VERSION,
                 model_label=llm['model'],durable_cache_dir=str(out/'llm-cache'),semantic_cache_reuse=True,
                 semantic_cache_dirs=(str(Path(read(args.profile)['storage_root'])/'.local_manifests/source_concept_llm_adjudication_cache'),),
                 task_budget_path=str(out/'llm-budget-private.json'),input_price_per_million=0.4,output_price_per_million=1.6,

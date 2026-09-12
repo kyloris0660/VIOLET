@@ -42,6 +42,10 @@ def test_semantic_release_binds_current_sources_roles_context_versions_and_judgm
     # Compatible inherited results require a current completed processing
     # receipt, not invented local provider calls for accepted old caches.
     verify_semantic_manifest(manifest,aggregates,vocabulary,facts,judgments,'a'*40)
+    stale_pair_prompt=copy.deepcopy(manifest)
+    stale_pair_prompt['input_identity']['versions']['pair_prompt']='source_concept_llm_pair_adjudication_v1'
+    with pytest.raises(ValueError,match='input_version_or_candidate'):
+        verify_semantic_manifest(stale_pair_prompt,aggregates,vocabulary,facts,judgments,'a'*40)
     for key in ('aggregates','role_facts','judgments','versions'):
         stale=copy.deepcopy(manifest);stale['input_identity'][key]='old'
         with pytest.raises(ValueError,match='input_version_or_candidate'):

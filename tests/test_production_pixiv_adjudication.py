@@ -20,6 +20,50 @@ def config(tmp_path):
         output_price_per_million=1.6,semantic_cache_reuse=True)
 
 
+def test_semantic_identity_prompt_revision_retains_old_answer_cost_and_reuses_new_answer(tmp_path,monkeypatch):
+    signals,edges=_eligible_llm_edges(1)
+    class PromptAware(MeteredProvider):
+        async def complete_json(self,messages,**kwargs):
+            self.calls+=1;self.last_usage={'prompt_tokens':100,'completion_tokens':50}
+            instructions=messages[0]['content']
+            revised='Judge semantic identity, not string equality' in instructions
+            if revised:
+                assert 'source role hints character and person are compatible' in instructions
+                assert 'A shared work or co-occurrence alone does not establish sameness' in instructions
+                assert 'needs_review when identity evidence is insufficient or ambiguous' in instructions
+            return {'decision':'must_link' if revised else 'cannot_link','confidence':0.9}
+    provider=PromptAware()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path)
+    before,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    old_record=next((service._cache_root(cfg)/'records').glob('*.json'));old_bytes=old_record.read_bytes()
+    old_call=json.loads((tmp_path/'budget.json').read_text())['calls'][0]
+    revised=replace(cfg,prompt_version=service.PRODUCTION_PAIR_PROMPT_VERSION)
+    after,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=revised)
+    assert before[0]['decision']=='cannot_link' and after[0]['decision']=='must_link'
+    assert old_record.read_bytes()==old_bytes
+    calls=json.loads((tmp_path/'budget.json').read_text())['calls']
+    assert calls[0]==old_call and len(calls)==2 and calls[1]['logical_keys']==[old_call['key']]
+    assert calls[1]['key']!=old_call['key'] and receipt['task_budget']['charged_or_reserved_usd']==0.00024
+    again,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=revised)
+    assert again[0]['decision']=='must_link' and receipt['cache_hits']==1 and provider.calls==2
+
+
+@pytest.mark.parametrize('decision',['cannot_link','needs_review'])
+def test_revised_prompt_keeps_negative_and_unknown_answers_without_reasking(tmp_path,monkeypatch,decision):
+    signals,edges=_eligible_llm_edges(1)
+    class Answer(MeteredProvider):
+        async def complete_json(self,messages,**kwargs):
+            self.calls+=1;self.last_usage={'prompt_tokens':100,'completion_tokens':50}
+            return {'decision':decision,'confidence':0.65}
+    provider=Answer();monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=replace(config(tmp_path),prompt_version=service.PRODUCTION_PAIR_PROMPT_VERSION)
+    for _ in range(2):
+        rows,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+        assert rows[0]['decision']==decision and receipt['error_count']==0
+    assert provider.calls==1 and receipt['task_budget']['call_count']==1
+
+
 @pytest.mark.parametrize('confidence,conflict',[(0.7,True),(0.8,True),('high',False)])
 def test_semantic_cache_compares_effective_confidence_independent_of_filename(tmp_path,monkeypatch,confidence,conflict):
     signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()

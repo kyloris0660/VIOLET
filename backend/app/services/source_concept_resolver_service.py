@@ -71,6 +71,7 @@ LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
 LLM_DECISION_SCHEMA_VERSION = "source_concept_pair_decision_schema_v1"
 LLM_ADJUDICATION_POLICY_VERSION = "source_concept_budget_driven_adjudication_v1"
 LLM_PROVIDER_POLICY_VERSION = "primary_openai_compatible_no_fallback_v1"
+PRODUCTION_PAIR_PROMPT_VERSION = "production_pixiv_pair_semantic_identity_v2"
 DEFAULT_SOURCE_CONCEPT_LLM_CACHE_ROOT = Path(".local_manifests") / "source_concept_llm_adjudication_cache"
 
 SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = (
@@ -2935,6 +2936,38 @@ def _decision_input_key(summary: Mapping[str, Any]) -> str:
     return value_hash(sorted(sides,key=lambda row:json.dumps(row,sort_keys=True,ensure_ascii=False)),40)
 
 
+def _pair_budget_identity(config, metadata, decision_input_key):
+    key='decision-input:'+decision_input_key if config.semantic_cache_reuse else metadata['cache_key']
+    if config.prompt_version==PRODUCTION_PAIR_PROMPT_VERSION:
+        # New instructions require new-version answers, but cannot reset the
+        # three-attempt lifetime of the same source question. Legacy A2 calls
+        # used this logical identity directly as their reservation key.
+        logical='decision-input:'+decision_input_key
+        return key+':prompt:'+config.prompt_version,(logical,)
+    return key,()
+
+
+def _pair_system_instructions(config):
+    text=("You are adjudicating unconfirmed source-layer name signals. "
+        "Return JSON only with keys decision, confidence, and optional reason_code. "
+        "decision must be must_link, cannot_link, or needs_review. "
+        "Do not create Entity truth. Do not include chain-of-thought.")
+    if config.prompt_version==PRODUCTION_PAIR_PROMPT_VERSION:
+        text+=(" Judge semantic identity, not string equality. canonical_key and surface_key "
+            "are normalized spellings, not authoritative identity IDs. Different names, scripts, "
+            "translations, transliterations, or established aliases can refer to the same identity. "
+            "The source role hints character and person are compatible; their difference alone "
+            "does not establish distinct identities. Use recognized name knowledge together with "
+            "the supplied work context; do not invent missing source context. A shared work or "
+            "co-occurrence alone does not establish sameness, and ambiguous titles or nicknames "
+            "may refer to several identities. cannot_link requires support for distinct identities, "
+            "not merely different canonical keys, names, or compatible role hints. Return "
+            "needs_review when identity evidence is insufficient or ambiguous. Keep source titles "
+            "as context rather than promoting them into character identity. Give a brief reason_code "
+            "for the identity basis, without private reasoning or additional names.")
+    return text
+
+
 def _compatible_decision_cache(config: LLMAdjudicationConfig) -> dict[str, Any]:
     if not config.semantic_cache_reuse:
         return {}
@@ -4014,6 +4047,7 @@ def run_bounded_llm_adjudication(
         )
         metadata = llm_cache_metadata(block_payload, config=config)
         decision_input_key = _decision_input_key(block_payload)
+        admission_key,logical_keys = _pair_budget_identity(config,metadata,decision_input_key)
         exact_record = _load_exact_cache_record(durable_cache_root, metadata=metadata, config=config)
         if exact_record is not None:
             if budget:
@@ -4022,8 +4056,7 @@ def run_bounded_llm_adjudication(
                     budget.recover_response(key=saved['key'],reservation=saved['reservation'],
                         usage=saved['usage'],business_valid=True)
                 else:
-                    old_key='decision-input:'+decision_input_key if config.semantic_cache_reuse else metadata['cache_key']
-                    budget.recover_response(key=old_key,usage={},business_valid=True)
+                    budget.recover_response(key=admission_key,usage={},business_valid=True)
             cache_hits += 1
             exact_cache_hits += 1
             cached = _judgment_from_cache_record(
@@ -4084,12 +4117,7 @@ def run_bounded_llm_adjudication(
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are adjudicating unconfirmed source-layer name signals. "
-                    "Return JSON only with keys decision, confidence, and optional reason_code. "
-                    "decision must be must_link, cannot_link, or needs_review. "
-                    "Do not create Entity truth. Do not include chain-of-thought."
-                ),
+                "content": _pair_system_instructions(config),
             },
             {
                 "role": "user",
@@ -4116,8 +4144,7 @@ def run_bounded_llm_adjudication(
             # Admission is durable before dispatch. A process crash retains
             # its reservation and prevents an automatic duplicate charge.
             try:
-                admission_key = 'decision-input:'+decision_input_key if config.semantic_cache_reuse else metadata['cache_key']
-                reservation = budget.reserve(admission_key, messages)
+                reservation = budget.reserve(admission_key, messages,logical_keys=logical_keys)
             except AdjudicationBudgetBlocked as exc:
                 budget_blocked_pairs.append({'cache_key':metadata['cache_key'],'reason':str(exc)})
                 continue
