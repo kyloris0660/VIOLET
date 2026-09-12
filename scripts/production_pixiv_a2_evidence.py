@@ -124,7 +124,14 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             desired=[sides[0]['media']|sides[1]['media']]*2 if decision=='must_link' else [s['media'] for s in sides]
             passed=all(s['media'] for s in sides) and all(want<=got for want,got in zip(desired,actual))
             if decision=='must_link':passed=passed and bool(shared)
-            elif decision=='cannot_link':passed=passed and not shared
+            elif decision=='cannot_link':
+                left,right=map(quote,pair)
+                # Distinct identities can co-occur or match old tags. Check the
+                # actual query exclusion/intersection behavior without assuming
+                # their ordinary mixed-search Media sets must be disjoint.
+                compositions=((left+' -'+right,actual[0]-actual[1]),
+                    (right+' -'+left,actual[1]-actual[0]),(left+' '+right,actual[0]&actual[1]))
+                passed=passed and not shared and all(ids(q)==want for q,want in compositions)
         elif category in {'media_set_AND','media_set_negative'}:
             left,right=map(quote,case['names']);a,b=ids(left),ids(right)
             desired=a&b if category=='media_set_AND' else a-b
@@ -133,7 +140,8 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
         elif category=='accepted_search_equivalence_only':
             family=next(r for r in oracle['search_only_families'] if r['family_id']==case['accepted_family_id'])
             checks=[[ids(f'id:{s["media_id"]} '+quote(n)) for n in family['names']] for s in case['samples']]
-            passed=bool(checks) and any(bool(row[0]) for row in checks) and all(all(x==row[0] for x in row) for row in checks)
+            passed=bool(checks) and all(all(x=={sample['media_id']} for x in row)
+                for sample,row in zip(case['samples'],checks))
         elif 'expected_ids' in case and 'actual_ids' in case:
             samples=(suggestion_oracle or {}).get('samples',[])
             sample=next((r for r in samples if r['media_id']==case['media_id']),None)

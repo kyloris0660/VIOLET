@@ -68,7 +68,7 @@ outside the automated contract.
 
 当前契约为 `production_pixiv_a2_v1`，入口为
 `scripts/check_production_pixiv_a2.py`，统一检查器使用 `--a2-evidence`。
-它核对固定T0全量Media/work/page归宿、真实原库物化、共享USD10预算、
+它核对固定T0全量Media/work/page归宿、真实原库物化、43号授权的共享累计USD30预算（保留原USD10历史）、
 独立恢复和owned rollback/replay、独立多语言答案、240-query工作量、
 正常launcher和新浏览器实际媒体证据，以及同候选focused/PostgreSQL和
 一次完整non-E2E的精确失败对账。公开结果仅表示工程交付，负责人接受、

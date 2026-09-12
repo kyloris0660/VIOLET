@@ -2952,7 +2952,11 @@ def _compatible_decision_cache(config: LLMAdjudicationConfig) -> dict[str, Any]:
                 key=_decision_input_key(record['input_signal_summary'])
             except (OSError,ValueError,TypeError,KeyError):
                 continue
-            if key in records and (records[key] is None or records[key]['decision']!=record['decision']):
+            if key in records and (records[key] is None or
+                (llm_public_decision(records[key].get('decision')),
+                 source_confidence_score(records[key].get('confidence'),0.5)) !=
+                (llm_public_decision(record.get('decision')),
+                 source_confidence_score(record.get('confidence'),0.5))):
                 records[key]=None  # Disagreeing old answers are not reusable.
             else:
                 records[key]=record

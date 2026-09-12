@@ -1,4 +1,5 @@
 from dataclasses import replace
+import json
 
 import pytest
 
@@ -17,6 +18,27 @@ def config(tmp_path):
     return _cache_config(tmp_path,model_label='gpt-test',max_budget_usd=10,
         task_budget_path=str(tmp_path/'budget.json'),input_price_per_million=0.4,
         output_price_per_million=1.6,semantic_cache_reuse=True)
+
+
+@pytest.mark.parametrize('confidence,conflict',[(0.7,True),(0.8,True),('high',False)])
+def test_semantic_cache_compares_effective_confidence_independent_of_filename(tmp_path,monkeypatch,confidence,conflict):
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path)
+    service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    directory=service._cache_root(cfg)/'records'
+    original=next(directory.glob('*.json'))
+    record=json.loads(original.read_text(encoding='utf-8'))
+    record.update(decision='must_link',confidence=0.9)
+    original.write_text(json.dumps(record),encoding='utf-8')
+    duplicate={**record,'confidence':confidence}
+    key=service._decision_input_key(record['input_signal_summary'])
+    other=directory/'000-duplicate.json'
+    other.write_text(json.dumps(duplicate),encoding='utf-8')
+    assert (service._compatible_decision_cache(cfg)[key] is None) is conflict
+    other.rename(directory/'zzz-duplicate.json')
+    assert (service._compatible_decision_cache(cfg)[key] is None) is conflict
+    assert provider.calls==1
 
 
 def test_new_occurrence_reuses_same_decision_input_without_provider_or_budget_reset(tmp_path,monkeypatch):

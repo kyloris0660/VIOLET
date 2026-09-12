@@ -49,17 +49,27 @@ def append(path,value):
         stream.flush();os.fsync(stream.fileno())
 
 
-def valid_raw_payload(path, work_id):
+def valid_raw_payload(path, work_id, required_pages=()):
     """A nonempty or orphan file is not proof of a reusable provider result."""
     from app.services.pixiv_metadata_ingestion_service import parse_gallery_dl_stdout, PixivMetadataGateError
     try:
         pages = parse_gallery_dl_stdout(path.read_text(encoding='utf-8'), work_id)
-        return bool(pages)
+        observed = {page['page_index'] for page in pages}
+        declared = {page.get('page_count') for page in pages}
+        if not observed or len(declared) != 1:
+            return False
+        count = next(iter(declared))
+        # Complete JSON can still end at a page boundary. A full remote domain
+        # also proves a genuinely nonexistent local page; otherwise all fixed
+        # targets must be present before this response can suppress acquisition.
+        complete_remote = count is not None and observed == set(range(count))
+        required = set(required_pages)
+        return complete_remote or bool(required) and required <= observed
     except (OSError, UnicodeError, ValueError, TypeError, KeyError, PixivMetadataGateError):
         return False
 
 
-def recover_raw_payloads(out, events, scope_fingerprint):
+def recover_raw_payloads(out, events, scope_fingerprint, required_pages_by_work=None):
     attempts = Counter()
     candidates = {}
     failed_paths = set()
@@ -80,18 +90,19 @@ def recover_raw_payloads(out, events, scope_fingerprint):
         path = path.resolve()
         if not path.is_relative_to(out.resolve()):
             raise RuntimeError('raw_payload_outside_artifacts')
-        if path not in failed_paths and valid_raw_payload(path, work):
+        required = (required_pages_by_work or {}).get(work, ())
+        if path not in failed_paths and valid_raw_payload(path, work, required):
             candidates[work] = path
     return attempts, candidates
 
 
-def publish_raw_response(raw_dir, work, attempt, result):
+def publish_raw_response(raw_dir, work, attempt, result, required_pages=()):
     """Only validated success is atomically admitted as a replayable payload."""
     temporary = raw_dir / f'{work}-attempt-{attempt}.pending'
     with temporary.open('x', encoding='utf-8') as stream:
         stream.write(result.stdout or '')
         stream.flush(); os.fsync(stream.fileno())
-    valid = result.returncode == 0 and valid_raw_payload(temporary, work)
+    valid = result.returncode == 0 and valid_raw_payload(temporary, work, required_pages)
     suffix = 'json' if valid else 'diagnostic'
     destination = raw_dir / f'{work}-attempt-{attempt}.{suffix}'
     if destination.exists():
@@ -176,6 +187,9 @@ def main():
             raise RuntimeError('live_database_identity_mismatch')
         session.rollback()
         mappings={int(row['media_id']):row for row in scope['mappings'] if row['work_id']}
+        required_pages_by_work=defaultdict(set)
+        for mapped in mappings.values():
+            required_pages_by_work[mapped['work_id']].add(mapped['page_index'])
         if args.action=='prepare':
             counts=Counter();changed=[]
             media=session.query(Media).filter(Media.id.in_(sorted(mappings))).order_by(Media.id).all()
@@ -231,7 +245,7 @@ def main():
                 if not any(row.get('event')=='returned' and row.get('stdout')==str(raw.relative_to(out)) for row in prior_events):
                     append(journal,{'event':'returned','work_id':work,'attempt':1,'returncode':call['returncode'],'stdout':str(raw.relative_to(out))})
         events=[json.loads(line) for line in journal.read_text(encoding='utf-8').splitlines()]
-        attempts,cached=recover_raw_payloads(out,events,scope['canonical_fingerprint'])
+        attempts,cached=recover_raw_payloads(out,events,scope['canonical_fingerprint'],required_pages_by_work)
         if args.action=='close-page-mismatches':
             outcomes=[]
             for work in sorted(selected,key=int):
@@ -284,7 +298,7 @@ def main():
             except (subprocess.TimeoutExpired,OSError) as exc:
                 append(journal,{'event':'transport_failure','work_id':work,'attempt':attempt,'exception':type(exc).__name__})
                 raise
-            stdout,replayable=publish_raw_response(raw_dir,work,attempt,result)
+            stdout,replayable=publish_raw_response(raw_dir,work,attempt,result,required_pages_by_work[work])
             stderr=raw_dir/f'{work}-attempt-{attempt}.stderr'
             with stderr.open('x',encoding='utf-8') as stream:
                 stream.write(result.stderr or '');stream.flush();os.fsync(stream.fileno())

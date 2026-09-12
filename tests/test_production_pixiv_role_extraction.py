@@ -243,6 +243,22 @@ def test_contextual_supplement_is_cached_and_bound_to_real_aggregate(tmp_path):
     assert next(s for s in adapted.signals if s.raw_value=='MysteryName').role_hint=='character'
     other=adapt_production_semantics(contextual_input('different-aggregate','DifferentWork'),vocabulary,result)
     assert next(s for s in other.signals if s.raw_value=='MysteryName').role_hint=='unknown'
+    # A resumed supplement may skip already grounded units; their facts must
+    # remain effective instead of disappearing behind the latest batch.
+    resumed=extract_contextual_production_roles(first,vocabulary,result,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert result['context_by_aggregate'].items()<=resumed['context_by_aggregate'].items()
+    assert all(resumed['context_records'][k]==v for k,v in result['context_records'].items())
+    assert next(s for s in adapt_production_semantics(first,vocabulary,resumed).signals if s.raw_value=='MysteryName').role_hint=='character'
+
+
+def test_context_supplement_does_not_publish_unacquired_mapping(tmp_path,monkeypatch):
+    from app.services import production_pixiv_role_extraction as service
+    prior={'records':{},'context_records':{'old':{'kept':True}},'context_by_aggregate':{'aggregate':'old'}}
+    monkeypatch.setattr(service,'plan_contextual_role_extraction',lambda *args:([],{'aggregate':'new','unanswered':'missing'},{}))
+    monkeypatch.setattr(service,'extract_production_roles',lambda *args,**kwargs:{'records':{},'summary':{}})
+    result=service.extract_contextual_production_roles(None,None,prior,provider=None,budget=None,cache_dir=tmp_path)
+    assert result['context_records']==prior['context_records']
+    assert result['context_by_aggregate']==prior['context_by_aggregate']
 
 
 def test_generic_external_taxonomy_does_not_reject_pixiv_name_before_context():

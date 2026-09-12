@@ -145,6 +145,33 @@ def _adapt_response_record(row,unit):
         if parsed:supported.update(canonical_source_key(value) for value in parsed)
         popularity=popularity_suffix_prefix(raw)
         if popularity:supported.add(canonical_source_key(popularity.get('extracted_prefix')))
+    # Some preserved responses put a structured candidate inside its target
+    # disposition. Recover that answer through the same validator. The literal
+    # request proves source/action provenance; missing confidence stays missing
+    # so F7a retains its existing zero-confidence review downgrade.
+    dispositions=row.get('target_dispositions')
+    if isinstance(dispositions,list) and isinstance(row.get('candidates'),list):
+        literal={canonical_source_key(t.get('raw_tag')) for t in unit.unit_group.tags}
+        grouped=defaultdict(list)
+        for disposition in dispositions:
+            if isinstance(disposition,dict):grouped[canonical_source_key(disposition.get('raw_value'))].append(disposition)
+        existing={canonical_source_key(c.get('raw_value')) for c in row['candidates'] if isinstance(c,dict)}
+        for raw,answers in grouped.items():
+            if raw not in literal or raw in existing or len(answers)!=1:continue
+            answer=answers[0];candidate=answer.get('candidate')
+            if answer.get('disposition')!='candidate' or not isinstance(candidate,dict):continue
+            if canonical_source_key(candidate.get('raw_value'))!=raw:continue
+            candidate=dict(candidate)
+            candidate.setdefault('source_field','source_tag_observation')
+            candidate.setdefault('extraction_action','normal_tag_candidate')
+            candidate['production_candidate_response_location']='target_dispositions.candidate'
+            try:
+                validate_extraction_record({**row,'candidates':[candidate]},unit.unit_group)
+            except (ValueError,TypeError,SourceNameCandidateExtractionError):
+                # An invalid nested item cannot poison a previously valid
+                # sibling cache. Its original disposition remains diagnostic.
+                continue
+            row['candidates'].append(candidate)
     for candidate in row.get('candidates') or []:
         if not isinstance(candidate,dict):continue
         raw_key=canonical_source_key(candidate.get('raw_value'))
@@ -571,7 +598,9 @@ def extract_contextual_production_roles(consumer,vocabulary,role_facts,*,provide
         raise ValueError('production_context_batch_size_invalid')
     units,mapping,plan=plan_contextual_role_extraction(consumer,vocabulary,role_facts)
     extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress)
-    return {**role_facts,'context_records':extracted['records'],'context_by_aggregate':mapping,
+    return {**role_facts,'context_records':{**role_facts.get('context_records',{}),**extracted['records']},
+        'context_by_aggregate':{**role_facts.get('context_by_aggregate',{}),
+            **{aggregate:key for aggregate,key in mapping.items() if key in extracted['records']}},
         'context_summary':{**extracted['summary'],**plan}}
 
 

@@ -73,6 +73,39 @@ def test_absent_former_identity_case_cannot_disappear_from_denominator():
         recompute_quality(value,oracle,baseline=baseline)
 
 
+def test_every_search_equivalence_sample_must_recall_its_actual_media():
+    value=quality_fixture()[0]
+    oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}],
+        'search_only_families':[{'family_id':'family','names':['alias-a','alias-b']}]}
+    for mid in (10,11):
+        for name in ('alias-a','alias-b'):
+            value['queries'][f'id:{mid} "{name}"']={'status_code':200,'ids':[mid]}
+    value['cases'].append({'category':'accepted_search_equivalence_only','accepted_family_id':'family',
+        'samples':[{'media_id':10},{'media_id':11}],'passed':True})
+    assert recompute_quality(value,oracle)['failed_cases']==0
+    for name in ('alias-a','alias-b'):
+        value['queries'][f'id:11 "{name}"']['ids']=[]
+    with pytest.raises(ValueError,match='summary_disagrees_with_raw'):
+        recompute_quality(value,oracle)
+
+
+def test_separation_checks_query_behavior_and_allows_legitimate_cooccurrence():
+    value=quality_fixture()[0]
+    value['projection_rows'][1][3]=2
+    value['cases'][0].update(expected='cannot_link',category='required_separation')
+    oracle={'identity_pairs':[{'names':['a','b'],'expected':'cannot_link'}]}
+    for query,ids in {'"a"':[10,12],'"b"':[11,12],'"a" -"b"':[10],
+        '"b" -"a"':[11],'"a" "b"':[12]}.items():
+        value['queries'][query]={'status_code':200,'ids':ids}
+    assert recompute_quality(value,oracle)['failed_cases']==0
+    # Separate concepts and own-side recall alone cannot hide a broad HTTP
+    # union regression: actual exclusion requests expose the inconsistency.
+    value['queries']['"a"']['ids']=[10,11,12]
+    value['queries']['"b"']['ids']=[10,11,12]
+    with pytest.raises(ValueError,match='summary_disagrees_with_raw'):
+        recompute_quality(value,oracle)
+
+
 def test_browser_requires_loaded_fullscreen_and_actual_dom_sets():
     from scripts.production_pixiv_a2_evidence import verify_browser_actions
     browser={'actions':[],'search':{'ids':[1],'api_ids':[1]},'old_tag':{'dom_ids':[1],'api_ids':[1]},

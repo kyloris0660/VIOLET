@@ -222,6 +222,52 @@ def test_compound_tag_keeps_reported_character_prefix_and_does_not_promote_outfi
     assert json.loads(budget.path.read_text())['calls'][0]['business_valid'] is False
 
 
+def test_nested_target_candidate_replays_without_invented_confidence_or_new_call(tmp_path):
+    from app.services.production_pixiv_role_extraction import _adapt_response_record, _read_unit_cache, _unit_path
+    value,vocabulary,facts,_,budget=partial_facts(tmp_path)
+    units,_,_=plan_role_coverage_repair(value,vocabulary,facts)
+    unit=units[0]
+    provider=Responses(lambda group:([candidate('UnrequestedSibling')],[{
+        'raw_value':'MysteryMissing','disposition':'candidate','reason_code':'structured_character_tag',
+        'candidate':{'raw_value':'MysteryMissing','display_name':'MysteryMissing',
+            'normalized_value':'MysteryMissing','role':'character','status':'active_candidate'}}]))
+    result=repair_missing_role_coverage(value,vocabulary,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    record=next(iter(result['coverage_repair_records'].values()))
+    nested=next(c for c in record['candidates'] if c['raw_value']=='MysteryMissing')
+    assert nested['candidate_role']=='character' and nested['candidate_status']=='needs_review'
+    assert nested['confidence']==0.0
+    assert nested['evidence_payload']['candidate_status_guard']['candidate_confidence_invalid_downgraded']
+    before=budget.summary()
+    cached,_=_read_unit_cache(_unit_path(tmp_path/'roles',unit),unit,'gpt-4.1-mini')
+    assert role_target_coverage(unit,cached)['fully_accounted']
+    assert _adapt_response_record(cached['validated_response'],unit)==cached['validated_response']
+    assert budget.summary()==before and len(provider.calls)==1
+
+
+@pytest.mark.parametrize('disposition,nested_raw,duplicate',[
+    ('candidate','AnotherTag',False),('non_name','MysteryMissing',False),('candidate','MysteryMissing',True)])
+def test_nested_candidate_cannot_escape_literal_target_or_contradict_disposition(tmp_path,disposition,nested_raw,duplicate):
+    from app.services.production_pixiv_role_extraction import _adapt_response_record
+    value,vocabulary,facts,_,_=partial_facts(tmp_path)
+    unit=plan_role_coverage_repair(value,vocabulary,facts)[0][0]
+    answer={'raw_value':'MysteryMissing','disposition':disposition,'candidate':candidate(nested_raw)}
+    rows=[answer,*([{'raw_value':'MysteryMissing','disposition':'unknown','reason_code':'uncertain'}] if duplicate else [])]
+    adapted=_adapt_response_record({'candidates':[],'target_dispositions':rows},unit)
+    assert adapted['candidates']==[]
+
+
+def test_invalid_nested_candidate_does_not_poison_valid_cached_siblings(tmp_path):
+    from app.services.production_pixiv_role_extraction import _revalidate_cached_response
+    value,vocabulary,facts,_,_=partial_facts(tmp_path)
+    unit=plan_role_coverage_repair(value,vocabulary,facts)[0][0]
+    previous={'verdict':'multiple_candidates_found','candidates':[candidate('MysteryKnown')],
+        'validated_response':{'group_key':unit.unit_group.group_key,'provider':'pixiv',
+            'verdict':'multiple_candidates_found','candidates':[candidate('MysteryKnown')],
+            'rejected_summary':{},'target_dispositions':[{'raw_value':'MysteryMissing','disposition':'candidate',
+                'candidate':candidate('MysteryMissing','invalid-role')}]}}
+    assert _revalidate_cached_response(previous,unit)==previous
+
+
 def test_exhausted_target_does_not_stop_other_missing_targets_or_reset_attempts(tmp_path):
     from dataclasses import replace
     from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
