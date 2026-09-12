@@ -4,7 +4,7 @@
 
 当前路线为已正式授权的A2：固定全量Pixiv metadata与完整概念链进入原生产。PR #151与#152已接受并合并，39号发布对齐已完成。
 三个连续步骤见`docs/plans/production-pixiv-a2.md`；唯一当前状态为`docs/state/current-phase.json`。
-本轮新LLM费用累计USD 10，不合并、不推main、不触发额外reviewer、不进入A3。历史报告和原工程证据保留。
+43号授权下A2所有批次累计上限USD 30，原USD 9.998387消费及调用身份保留；不合并、不推main、不触发额外reviewer、不进入A3。历史报告和原工程证据保留。
 
 ## 历史 PX3 基线记录
 

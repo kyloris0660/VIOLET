@@ -451,7 +451,9 @@ def test_handoff_roadmap_and_test_workflow_updates_are_factual() -> None:
         assert live['passed']
         handoff=(ROOT/'docs/current-handoff.md').read_text(encoding='utf-8')
         assert 'PRODUCTION-PIXIV-A2' in handoff and 'PR #152' in handoff
-        assert '不合并、不推main' in handoff and 'USD 10' in handoff
+        state=json.loads((ROOT/'docs/state/current-phase.json').read_text(encoding='utf-8'))
+        assert state['llm_budget_usd'] in (10,30)
+        assert '不合并、不推main' in handoff and f"USD {state['llm_budget_usd']}" in handoff
         assert 'ChatGPT review pack' in (ROOT/'docs/test-workflow.md').read_text(encoding='utf-8')
         return
     if live['phase_id'] == 'PRODUCTION-PIXIV-A1':

@@ -35,7 +35,9 @@ def test_current_mainline_roadmap_persists_px3_boundary_and_fixed_route() -> Non
         assert live['passed']
         text=_read('docs/roadmap/current-mainline-roadmap.md')
         assert '<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A2 -->' in text
-        assert 'USD 10' in text and 'A3' in text
+        state=json.loads(_read('docs/state/current-phase.json'))
+        assert state['llm_budget_usd'] in (10,30)
+        assert f"USD {state['llm_budget_usd']}" in text and 'A3' in text
         _assert_split_s2g_not_active(text)
         return
     if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
