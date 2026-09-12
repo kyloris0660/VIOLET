@@ -1838,10 +1838,17 @@ class UnionFind:
 
     def find(self, key: str) -> str:
         self.add(key)
-        parent = self.parent[key]
-        if parent != key:
-            self.parent[key] = self.find(parent)
-        return self.parent[key]
+        root = key
+        # Lexical-root unions can form a chain longer than Python's call stack
+        # before an old member is visited. Preserve the root and compress the
+        # same path iteratively, without changing any identity decision.
+        while self.parent[root] != root:
+            root = self.parent[root]
+        while key != root:
+            parent = self.parent[key]
+            self.parent[key] = root
+            key = parent
+        return root
 
     def union(self, left: str, right: str) -> None:
         left_root = self.find(left)
