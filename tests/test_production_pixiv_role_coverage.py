@@ -54,6 +54,85 @@ def partial_facts(tmp_path,names=None):
     return value,vocabulary,facts,provider,budget
 
 
+@pytest.mark.parametrize('bad',[
+    {'disposition':'unknown','reason_code':'missing_raw'},
+    {'raw_value':'MysteryUnknown','disposition':'invented','reason_code':'bad'},
+    {'raw_value':'MysteryUnknown','disposition':'non_name'},
+    {'raw_value':'MysteryUnknown','disposition':'candidate'},
+    {'raw_value':'MysteryUnknown','disposition':{'malformed':'object'}},
+])
+def test_partial_unit_resume_preserves_valid_dispositions_and_original_fees(tmp_path,bad):
+    value=context(['MysteryKnown','MysteryMissing','MysteryUnknown','MysteryDescription'])
+    vocab=build_semantic_vocabulary([]);empty={'schema_version':ROLE_SCHEMA,'records':{}}
+    first=Responses(lambda group:([candidate('MysteryKnown')],[
+        {'raw_value':'MysteryUnknown','disposition':'unknown','reason_code':'insufficient_identity'},
+        {'raw_value':'MysteryDescription','disposition':'non_name','reason_code':'descriptive_term'}]))
+    budget=task_budget(tmp_path,first)
+    initial=complete_contextual_production_roles(value,vocab,empty,provider=first,budget=budget,cache_dir=tmp_path/'roles')
+    old_calls=json.loads(budget.path.read_text())['calls']
+    assert initial['completion_summary']['unaccounted_requested_tag_occurrences']==1
+    provider=Responses(lambda group:([candidate('MysteryMissing'),candidate('MysteryUnknown')],[bad,
+        {'raw_value':'MysteryDescription','disposition':'unknown','reason_code':'changed_mind'}]))
+    result=complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    record=next(iter(result['completion_records'].values()))
+    by_raw={r['raw_value']:r for r in record['validated_response']['target_dispositions']}
+    assert by_raw['MysteryUnknown']['disposition']=='unknown'
+    assert by_raw['MysteryDescription']['disposition']=='non_name'
+    assert not any(c['raw_value']=='MysteryUnknown' for c in record['candidates'])
+    assert result['completion_summary']['unaccounted_requested_tag_occurrences']==0
+    assert json.loads(budget.path.read_text())['calls'][:len(old_calls)]==old_calls
+    charge=budget.summary()['charged_or_reserved_usd']
+    complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert len(provider.calls)==1 and budget.summary()['charged_or_reserved_usd']==charge
+
+
+def test_contextual_unit_limit_bounds_dispatch_and_aggregate_admission(tmp_path,monkeypatch):
+    from types import SimpleNamespace
+    from app.services import production_pixiv_role_extraction as service
+    units=[SimpleNamespace(extraction_key='first'),SimpleNamespace(extraction_key='second')]
+    monkeypatch.setattr(service,'plan_contextual_role_extraction',lambda *args:(units,{'a':'first','b':'second'},{}))
+    def extract(selected,**kwargs):
+        assert selected==units[:1]
+        return {'records':{'first':{'answer':'valid'}},'summary':{}}
+    monkeypatch.setattr(service,'extract_production_roles',extract)
+    result=service.extract_contextual_production_roles(None,None,{},provider=None,budget=None,
+        cache_dir=tmp_path,unit_limit=1)
+    assert result['context_by_aggregate']=={'a':'first'} and result['context_summary']['selected_units']==1
+    with pytest.raises(ValueError,match='unit_limit_invalid'):
+        service.extract_contextual_production_roles(None,None,{},provider=None,budget=None,cache_dir=tmp_path,unit_limit=-1)
+
+
+@pytest.mark.parametrize('disposition',['unknown','non_name'])
+def test_partial_unit_accepts_only_nonpositive_new_answers_without_losing_candidate(tmp_path,disposition):
+    value=context(['MysteryKnown','MysteryMissing']);vocab=build_semantic_vocabulary([])
+    empty={'schema_version':ROLE_SCHEMA,'records':{}}
+    first=Responses(lambda group:([candidate('MysteryKnown')],[]));budget=task_budget(tmp_path,first)
+    initial=complete_contextual_production_roles(value,vocab,empty,provider=first,budget=budget,cache_dir=tmp_path/'roles')
+    assert initial['completion_summary']['unaccounted_requested_tag_occurrences']==1
+    provider=Responses(lambda group:([],[{'raw_value':'MysteryMissing','disposition':disposition,'reason_code':'explicit_answer'}]))
+    result=complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert result['completion_summary']['unaccounted_requested_tag_occurrences']==0
+    record=next(iter(result['completion_records'].values()))
+    assert {c['raw_value'] for c in record['candidates']}=={'MysteryKnown'}
+    assert record['validated_response']['target_dispositions']==[{
+        'raw_value':'MysteryMissing','disposition':disposition,'reason_code':'explicit_answer'}]
+    charge=budget.summary()['charged_or_reserved_usd']
+    complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert len(provider.calls)==1 and budget.summary()['charged_or_reserved_usd']==charge
+
+
+@pytest.mark.parametrize('dispositions',[{'bad':'shape'},[{'disposition':'non_name','reason_code':'missing_raw'}],
+    [{'raw_value':'Unrequested','disposition':'non_name','reason_code':'wrong_target'}]])
+def test_malformed_dispositions_cannot_become_a_paid_valid_whole_group_answer(tmp_path,dispositions):
+    value=context(['MysteryMissing']);vocab=build_semantic_vocabulary([])
+    provider=Responses(lambda group:([],dispositions));budget=task_budget(tmp_path,provider)
+    facts=complete_contextual_production_roles(value,vocab,{'schema_version':ROLE_SCHEMA,'records':{}},
+        provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert facts['completion_summary']['unaccounted_requested_tag_occurrences']==1
+    assert json.loads(budget.path.read_text())['calls'][0]['business_valid'] is False
+    assert budget.summary()['charged_or_reserved_usd']>0
+
+
 def test_parsed_partial_record_does_not_claim_all_requested_names_answered(tmp_path):
     value,vocabulary,facts,provider,budget=partial_facts(tmp_path)
     summary=facts['completion_summary']

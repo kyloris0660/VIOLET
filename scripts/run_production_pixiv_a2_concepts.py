@@ -121,8 +121,8 @@ def main():
                 write(out/f'{args.label}-context-progress-private.json',value)
                 print(json.dumps(value),flush=True)
             result=extract_contextual_production_roles(consumer,vocabulary,facts,provider=provider,budget=budget,
-                cache_dir=out/'role-cache',progress=context_progress,batch_size=args.context_batch_size,
-                **({'unit_limit':args.limit,'workers':args.text_workers,
+                cache_dir=out/'role-cache',progress=context_progress,batch_size=args.context_batch_size,unit_limit=args.limit,
+                **({'workers':args.text_workers,
                     'provider_factory':lambda:primary_openai_provider_from_settings()[0]}
                     if args.action in {'complete-contextual-roles','repair-role-coverage'} else {}))
             write(out/f'{args.label}-roles-private.json',result)

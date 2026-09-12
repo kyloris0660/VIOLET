@@ -7,6 +7,11 @@ from pathlib import Path
 from uuid import uuid4
 from datetime import datetime, timezone
 import hashlib
+import logging
+import time
+
+
+WINDOWS_REPLACE_RETRY_DELAYS=(0.05,0.1,0.2,0.4,0.8)
 
 
 class AdjudicationBudgetBlocked(RuntimeError):
@@ -60,7 +65,19 @@ class AdjudicationBudget:
         with temp.open('x',encoding='utf-8') as stream:
             json.dump(state,stream,ensure_ascii=False,sort_keys=True)
             stream.flush(); os.fsync(stream.fileno())
-        os.replace(temp,self.path)
+        for attempt in range(len(WINDOWS_REPLACE_RETRY_DELAYS)+1):
+            try:
+                os.replace(temp,self.path)
+                return
+            except PermissionError as error:
+                # Windows can briefly deny replacement while another reader
+                # owns a non-delete-sharing handle. Keep the same fsynced
+                # state and ledger lock; never create a second reservation.
+                # A persistent denial still fails closed and retains the temp.
+                code=getattr(error,'winerror',None)
+                if code not in {5,32,33} or attempt==len(WINDOWS_REPLACE_RETRY_DELAYS):raise
+                logging.getLogger(__name__).warning('budget_atomic_replace_retry winerror=%s retry=%s',code,attempt+1)
+                time.sleep(WINDOWS_REPLACE_RETRY_DELAYS[attempt])
 
     def _cost(self,input_tokens,output_tokens):
         amount=Decimal(input_tokens)*Decimal(self.identity['input_per_million'])+Decimal(output_tokens)*Decimal(self.identity['output_per_million'])

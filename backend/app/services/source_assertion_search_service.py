@@ -875,6 +875,7 @@ def _soft_search_condition_for_term(
                 include_needs_review=include_needs_review
                 if include_source_concept_needs_review is None
                 else include_source_concept_needs_review,
+                include_production_alias_evidence=True,
             ),
         )
     )

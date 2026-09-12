@@ -251,6 +251,45 @@ def _unit_answer_complete(unit,record):
         or not role_target_coverage(unit,record)['missing_raw_tags'])
 
 
+def _merge_valid_target_answers(unit,row,candidates,previous=None):
+    """Retain accepted siblings while admitting only validated missing answers."""
+    from .production_pixiv_semantics import _context_candidate_matches
+    def checked(response,validated):
+        raw=response.get('target_dispositions',[]);groups=defaultdict(list);invalid=False
+        if not isinstance(raw,list):raw=[];invalid=True
+        for answer in raw:
+            if not isinstance(answer,dict) or answer.get('raw_value') not in unit.raw_values:
+                invalid=True;continue
+            groups[answer['raw_value']].append(answer)
+        accepted={};missing={}
+        for name,answers in groups.items():
+            answer=answers[0]
+            valid=len(answers)==1 and isinstance(answer.get('disposition'),str) and (
+                (answer.get('disposition') in {'unknown','non_name'}
+                 and isinstance(answer.get('reason_code'),str) and answer['reason_code'].strip())
+                or (answer.get('disposition')=='candidate'
+                    and any(_context_candidate_matches(c,name) for c in validated)))
+            if valid:accepted[name]=answer
+            else:
+                invalid=True
+                missing[name]={'raw_value':name,'disposition':'invalid_response_retained_as_missing'}
+        return accepted,missing,invalid or bool(response.get('target_dispositions_validation_error'))
+    old=(previous or {}).get('validated_response',{})
+    protected=set(role_target_coverage(unit,previous)['outcomes']) if previous else set()
+    old_valid,old_missing,old_error=checked(old,(previous or {}).get('candidates',[]))
+    new_valid,new_missing,new_error=checked(row,[asdict(c) for c in candidates])
+    dispositions={**old_missing,**old_valid}
+    for name,answer in new_missing.items():
+        if name not in protected:dispositions.setdefault(name,answer)
+    dispositions.update({name:answer for name,answer in new_valid.items() if name not in protected})
+    incoming=[c for c in row.get('candidates',[])
+        if not any(_context_candidate_matches(c,name) for name in protected)]
+    return {**row,'candidates':list({canonical_fingerprint(c):c for c in
+        [*old.get('candidates',[]),*incoming]}.values()),
+        'target_dispositions':[dispositions[name] for name in sorted(dispositions)],
+        'target_dispositions_validation_error':old_error or new_error}
+
+
 class BudgetedExtractionProvider(BaseLLMProvider):
     def __init__(self,provider,budget,cache_dir,units,gate=None):
         self.provider=provider;self.budget=budget;self.model=provider.model
@@ -348,7 +387,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 if _unit_answer_complete(unit,previous):continue
             try:
                 verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
-            except (ValueError,SourceNameCandidateExtractionError) as original_error:
+            except (ValueError,TypeError,SourceNameCandidateExtractionError) as original_error:
                 # Validate siblings individually through the same F7a schema.
                 # No malformed target is converted into a positive or unknown
                 # answer. Missing targets remain available to bounded repair.
@@ -365,18 +404,9 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 partial['partial_validation_error']=str(original_error)
                 row=partial
             if verdict.extraction_verdict.startswith('extraction_error'):continue
-            if previous:
-                # The immutable raw envelope remains the original evidence.
-                # A mutable unit cache can gain valid missing answers without
-                # losing siblings already accepted from an earlier response.
-                old=previous.get('validated_response',{})
-                merged={**row,'candidates':list({canonical_fingerprint(c):c for c in
-                    [*old.get('candidates',[]),*row.get('candidates',[])]}.values()),
-                    'target_dispositions':list({r['raw_value']:r for r in
-                    [*old.get('target_dispositions',[]),*row.get('target_dispositions',[])]}.values())}
-                try:verdict,candidates,*_=validate_extraction_record(merged,unit.unit_group)
-                except (ValueError,SourceNameCandidateExtractionError):continue
-                row=merged
+            row=_merge_valid_target_answers(unit,row,candidates,previous)
+            try:verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
+            except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
             _atomic_write_json(path,
                 {**_record(unit,self.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
                  'validated_response':row})
@@ -593,15 +623,17 @@ def plan_contextual_role_extraction(consumer,vocabulary,role_facts):
         'already_grounded_aggregates':skipped,'context_derived_identity_equivalence':False}
 
 
-def extract_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5):
+def extract_contextual_production_roles(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,batch_size=5,unit_limit=0):
     if type(batch_size) is not int or not 1<=batch_size<=10:
         raise ValueError('production_context_batch_size_invalid')
+    if type(unit_limit) is not int or unit_limit<0:raise ValueError('production_context_unit_limit_invalid')
     units,mapping,plan=plan_contextual_role_extraction(consumer,vocabulary,role_facts)
+    if unit_limit:units=units[:unit_limit]
     extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress)
     return {**role_facts,'context_records':{**role_facts.get('context_records',{}),**extracted['records']},
         'context_by_aggregate':{**role_facts.get('context_by_aggregate',{}),
             **{aggregate:key for aggregate,key in mapping.items() if key in extracted['records']}},
-        'context_summary':{**extracted['summary'],**plan}}
+        'context_summary':{**extracted['summary'],**plan,'selected_units':len(units)}}
 
 
 def plan_contextual_role_completion(consumer,vocabulary,role_facts):
@@ -664,11 +696,14 @@ def role_target_coverage(unit,record):
     """A valid envelope or aggregate rejection count does not answer each tag."""
     from .production_pixiv_semantics import _context_candidate_matches
     raw_dispositions=record.get('validated_response',{}).get('target_dispositions',[])
+    invalid_dispositions=not isinstance(raw_dispositions,list) or bool(
+        record.get('validated_response',{}).get('target_dispositions_validation_error'))
     if not isinstance(raw_dispositions,list):raw_dispositions=[]
     by_raw=defaultdict(list)
     for row in raw_dispositions:
         if isinstance(row,dict) and row.get('raw_value') in unit.raw_values:
             by_raw[row['raw_value']].append(row)
+        else:invalid_dispositions=True
     outcomes={};missing=[]
     for raw in unit.raw_values:
         matched=[row for row in record.get('candidates',[]) if _context_candidate_matches(row,raw)]
@@ -676,10 +711,11 @@ def role_target_coverage(unit,record):
             outcomes[raw]={'disposition':'candidate','reported_roles':sorted({row['candidate_role'] for row in matched})}
             continue
         rows=by_raw.get(raw,[])
-        if (len(rows)==1 and rows[0].get('disposition') in {'unknown','non_name'}
+        if (len(rows)==1 and isinstance(rows[0].get('disposition'),str) and rows[0]['disposition'] in {'unknown','non_name'}
             and isinstance(rows[0].get('reason_code'),str) and rows[0]['reason_code'].strip()):
             outcomes[raw]={'disposition':rows[0]['disposition'],'reason_code':rows[0]['reason_code']}
-        elif not rows and record.get('verdict') in {'no_explicit_name','rejected_general_only','rejected_popularity_or_meta_only'}:
+        elif (not rows and not invalid_dispositions
+            and record.get('verdict') in {'no_explicit_name','rejected_general_only','rejected_popularity_or_meta_only'}):
             # Unlike anonymous counts in a mixed positive answer, a validated
             # whole-group non-name verdict covers all names in that question.
             outcomes[raw]={'disposition':'non_name','reason_code':'f7a_whole_group_'+record['verdict']}

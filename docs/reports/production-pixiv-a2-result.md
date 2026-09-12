@@ -8,6 +8,8 @@
 
 因此补齐通用语义判定说明，A2 使用 `production_pixiv_pair_semantic_identity_v2`，并将配对说明版本纳入发布 manifest。说明同时保留不同身份、歧义、同作品不自动同人的边界，不包含十例名字或验证答案。旧负向/unknown 未被删改或追认成 schema 无效；新版本统一重核选入配对，不只挑负向重问。旧版本配对缓存保留为历史，metadata/角色缓存继续复用；同一问题跨版本尝试仍累计最多三次。31 项开发回归通过，尚待新候选最终检查和真实质量。第二轮在初始构图、0 新调用/0 预留时暂停，累计费用仍为 USD11.321022，未重启原生产。
 
+新候选 `7d1bd2d` 的最终定向检查为 546 passed/1 skipped，PostgreSQL 为 16 passed。真实小样本逐项核对原问题字段未变后，8 条原冲突约束均返回 must-link；两个应分离对照分别返回 cannot-link 与 needs-review，未强制未知转为负向或正向。10 对有效、9 次新增调用、1 次同版本复用、0 错误，累计 USD11.323505、51 项未知 usage、0 在途。该小样本结果与通用说明修订方向一致，不代表实际组件或 80 例已通过；下一完整裁决统一使用新说明版本与 roles-4。首次辅助执行在派发前因 tuple/list 表示比较退出，修正后另存执行日志；没有因此产生额外调用。
+
 新增审查使远端未关闭线程为 25 条（43号原列 19 条继续保留）。已修复 raw 页域完整性、同语义裁决的置信度冲突、上下文续跑合并、逐样本搜索等价核算和注册契约的累计 USD30 条款；相关合并开发回归 92 passed，追加身份分离组合查询回归所在文件 15 passed，二者有重叠，不相加充当不同测试数。实际 28,485 份缓存的只读快照未发现同版本同语义输入的裁决/置信度分歧。分离验收增加双向排除与交集实测，仍允许不同身份合法共现；没有把混合搜索强行改成互斥图片集合。
 
 原 31,295 配对已逐项重建，保留 22,526 有效与 8,769 缺项。旧角色输入的本轮完整配对阶段已结束：31,704 对中 31,701 有效、3 个 `LLMTransportError` 待有界补做；27,338 缓存复用（22,370 精确、4,968 同输入不同出现），新增调用 4,366 次。累计 10,562 次/USD11.321022、51 项未知 usage、0 在途，原支出逐项保持，剩余额度 USD18.678978。这是中间结果，不能用于新版发布。旧 raw 中 47 份嵌套答案通过原问题身份核验；发布输入只补其中原未答目标的 7 份记录，保留已有明确非名称和 unknown 回答。原 49,227 角色目标出现仍完整保留：26,350 候选、22,642 非名称、209 明确 unknown、26 有据尝试耗尽、0 未记账。当前仅 4 个信号角色改变（3 个 unknown→work、Levia 的 unknown→character）。新事实另存 `closeout43-release-roles-4-private.json`，需新一轮选择与语义 manifest；不混入已经启动的旧输入裁决，也不把候选数当作确认身份数。
@@ -142,3 +144,35 @@ PR #153 为OPEN普通PR，当前检查无GitHub CI、18条未解决自动审查�
 工程判断：本轮可用metadata和有效派生结果已经全量进入正常生产，预算和固定范围归宿闭合；完整语义裁决与关键正向质量目标仍有缺项，故属于预算限制下的实际生产交付，**不是A2完整成功或可合并裁决**。下一项决定由负责人给出：审查当前PR与质量/恢复边界，确定有界修正或追加裁决预算；本轮预算不增加。
 
 A3的精确连接点：统一导入事务中的 `queue_media_for_pixiv_metadata()` → 既有work队列/检查点 → `persist_complete_work()` → binding_revision失效 → `build_production_inputs()` / `build_production_clustering()` / `replace_production_projection()`。当前guard拒绝其他固定scope同时active；T0外新增Media须设计并验证后继scope过渡，不能删除guard、清旧run或用部分文件替换全量。A3另行决定日常模型预算/调度及PR152的恢复边界遗留，本轮USD10不自动重置。不做第二provider、视觉检索或角色传播。
+
+
+### 43号新增四条真实路径修正
+
+43号新增4条相关审查意见已完成开发修正：角色缓存仅合并有效缺项并保留先前unknown/non-name及费用；contextual-roles实际遵守limit；真实/api/search接入有界生产别名来源证据且不启用实验overlay；验证log/XML与JSON同样限制于私有证据目录。真实API回归修前1 failed、修后1 passed，扩展170 passed及PostgreSQL 17 passed，均绑定未提交差异摘要且测试期间差异未变。仍须最终提交后的精确候选验证。远端29线程保持开放；全量roles-4/v2裁决继续同一账本，生产仍为44db0da，工程目标/负责人接受/Owner验收尚未完成。
+
+证据：closeout43-real-api-recall-before/after.log、closeout43-review29-focused-2 与 closeout43-review29-postgresql 的 command-private.json/XML/log。前80项开发检查与扩展170项存在重叠，不相加；本轮未再运行完整non-E2E。
+
+
+43号角色同类边界补充：无法读取目标的坏dispositions不能被整组non-name兜底误记成业务成功；保留实际费用且缺项仍可有界修复。新增3例后相关开发回归173 passed。当前roles-4在新校验下逐项重算一致：26350 candidate/22642 non_name/209 unknown/26 attempt_limit_reached/0 unaccounted，未改写角色事实、未访问数据库、零模型调用；该事实仍可用于正在运行的完整v2裁决。
+
+证据：closeout43-review29-focused-3 的 XML/log/command-private.json；closeout43-review29-rolefacts-consistency-private.json。173项替代此前170项相同范围计数，不累加；PG 17项仍是搜索接入改动的开发验证，最后提交后统一精确候选验证待执行。
+
+
+43号roles-4/v2完整裁决的作品阶段已完成：8911选入/8910有效/1 LLMTransportError，7666同版本语义缓存复用，1245新增调用（1244成功、1失败）。累计11816次/USD11.666804、52项未知usage、阶段结束0在途。失败问题为蓝档案简称与全称的一次作品配对，保留错误及费用，最终候选续跑按相同语义缓存和有界尝试处理，不将错误占位needs_review当作有效未知。进程继续作品上下文构图及剩余配对；完整A2质量与新版生产未宣称完成。02:13只读生产核对仍38114 Media/8623绑定Media/66572有效支持、0活动任务、0尾部/固定缺失，read ON/apply OFF。
+
+证据：closeout43-full-adjudication-3-work-adjudication-private.json、work-judgments-private.json；closeout43-semantic-v2-hour1-availability-private.json。阶段预算数是当时快照，不是最终结算。
+
+
+43号roles-4/v2作品上下文构图已结束，剩余阶段选入22696对；本次两阶段合计31607对。原31295选入、22526有效与8769缺项分母继续保留，当前新选择与旧中间31704对的差异待最终逐项对账，不以数量减少作为完成证明。本次构图进程采样峰值7501778944 bytes，重计算串行；剩余配对已继续同一账本派发。
+
+证据：closeout43-full-adjudication-3 的 work-selected-pairs/remaining-selected-pairs/work-context-causal-trace-private.json，以及 operator-progress-private.jsonl。工程结果仍为进行中。
+
+
+43号实际观测到一份有效配对响应保存后伴随PermissionError、预算仍reserved；仅有原执行进程，未启动第二队列。通过既有recover_response按同一缓存/问题指纹/预留恢复，559输入+30输出token结算272 microUSD，reserved→success；再次恢复不变、零新增模型调用，原响应/PermissionError记录/中间错误占位保留。预算与resolver行为文件均与7d1bd2d相同。该本地持久化/结算异常不能冒称provider HTTP失败，最终候选仍需缓存重放生成完整有效判断；当前队列继续运行、预留恢复为1笔。
+
+证据：closeout43-saved-settlement-recovery-1-private.json/provenance-private.json/log，及llm-cache/failures中的原f0531bd2配对错误。未推断PermissionError的具体外部占用者，也未修改权限或删除诊断文件。
+
+
+43号完整裁决第三次运行在下一调用的budget.reserve原子替换时遇WinError5退出（exit1），该次尚未请求provider。作品8911对阶段收据保留，剩余22696对最后已保存位置3135，未生成最终judgments/cluster，不能作为完整完成；所有成功缓存、原错误及两个临时文件保留。账本13296次/USD12.071399、53未知usage、0在途，原6110次/USD9.998387逐项未改；失败临时预留未计作真实调用或合并到账本。已最小修正共同预算原子写入：仅Windows 5/32/33最多6次同临时文件替换，等待合计1.55秒，永久拒绝仍失败且旧账本不变；reserve/settle修前6 failed、修后相关37 passed。下一步提交这些与29线程相关的修正、精确HEAD验证，再同一缓存/账本续跑，不重抓metadata、不恢复覆盖原生产。
+
+证据：closeout43-full-adjudication-3-interruption-private.json、closeout43-adjudication-3-interrupted-budget-closeout-private.json、closeout43-budget-replace-before/after.xml/log。另补仅unknown/non-name续答保留旧候选的2项回归通过，见closeout43-role-nonpositive-merge.xml/log；没有因此新增业务代码。

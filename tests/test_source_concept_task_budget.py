@@ -122,3 +122,66 @@ def test_prompt_revision_cannot_overlap_unsettled_legacy_question(tmp_path):
     with pytest.raises(AdjudicationBudgetBlocked,match='logical_call_outcome_unknown'):
         book.reserve(logical+':prompt:revised',[],logical_keys=[logical])
     assert book.summary()['call_count']==1
+
+
+def windows_replace_denied(code=5):
+    error=PermissionError('simulated Windows atomic replacement denial')
+    error.winerror=code
+    return error
+
+
+@pytest.mark.parametrize('winerror',[5,32,33])
+@pytest.mark.parametrize('stage',['reserve','settle'])
+def test_transient_windows_replace_retries_same_state_without_duplicate_call(tmp_path,monkeypatch,stage,winerror):
+    import json,time
+    from app.services import source_concept_budget as module
+    book=ledger(tmp_path,10);old=book.reserve('old',[]);book.settle(old,{},success=False)
+    ticket=book.reserve('new',[]) if stage=='settle' else None
+    before=json.loads(book.path.read_text());replace=module.os.replace;attempts=[];waits=[]
+    def transient(source,target):
+        attempts.append((source,target))
+        assert json.loads(book.path.read_text())==before
+        if len(attempts)<=2:raise windows_replace_denied(winerror)
+        return replace(source,target)
+    monkeypatch.setattr(module.os,'replace',transient);monkeypatch.setattr(time,'sleep',waits.append)
+    if stage=='reserve':ticket=book.reserve('new',[])
+    else:book.settle(ticket,{'prompt_tokens':559,'completion_tokens':30},success=True)
+    after=json.loads(book.path.read_text())
+    assert len(attempts)==3 and len(set(attempts))==1 and waits==[0.05,0.1]
+    assert len(after['calls'])==2 and after['calls'][0]==before['calls'][0]
+    assert after['calls'][1]['id']==ticket
+    assert after['calls'][1]['status']==('reserved' if stage=='reserve' else 'success')
+    if stage=='settle':assert after['calls'][1]['charged_microusd']==272
+
+
+@pytest.mark.parametrize('stage',['reserve','settle'])
+def test_persistent_windows_denial_is_bounded_and_retains_recoverable_state(tmp_path,monkeypatch,stage):
+    import json,time
+    from app.services import source_concept_budget as module
+    book=ledger(tmp_path,10);old=book.reserve('old',[]);book.settle(old,{},success=False)
+    ticket=book.reserve('new',[]) if stage=='settle' else None
+    before=book.path.read_bytes();attempts=[];waits=[]
+    def denied(source,target):attempts.append((source,target));raise windows_replace_denied()
+    with monkeypatch.context() as patch:
+        patch.setattr(module.os,'replace',denied);patch.setattr(time,'sleep',waits.append)
+        with pytest.raises(PermissionError):
+            if stage=='reserve':book.reserve('new',[])
+            else:book.settle(ticket,{'prompt_tokens':559,'completion_tokens':30},success=True)
+    assert book.path.read_bytes()==before
+    assert len(attempts)==6 and len(set(attempts))==1 and sum(waits)==pytest.approx(1.55)
+    assert attempts[0][0].is_file()  # Failed temporary state remains diagnostic only.
+    if stage=='reserve':assert len(json.loads(before)['calls'])==1
+    else:
+        assert book.recover_response(key='new',reservation=ticket,usage={'prompt_tokens':559,'completion_tokens':30},business_valid=True)
+        assert not book.recover_response(key='new',reservation=ticket,usage={'prompt_tokens':559,'completion_tokens':30},business_valid=True)
+        assert json.loads(book.path.read_text())['calls'][1]['charged_microusd']==272
+
+
+def test_non_windows_permission_failure_is_not_silently_retried(tmp_path,monkeypatch):
+    import time
+    from app.services import source_concept_budget as module
+    book=ledger(tmp_path,10);attempts=[];waits=[]
+    def denied(*args):attempts.append(args);raise PermissionError('permanent permission denied')
+    monkeypatch.setattr(module.os,'replace',denied);monkeypatch.setattr(time,'sleep',waits.append)
+    with pytest.raises(PermissionError):book.reserve('new',[])
+    assert len(attempts)==1 and not waits and not book.path.exists()

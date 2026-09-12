@@ -684,6 +684,7 @@ def source_concept_media_condition_for_term(
     *,
     include_needs_review: bool = False,
     include_evidence_fallback: bool = False,
+    include_production_alias_evidence: bool = False,
 ):
     """Return a read-only Media condition for SourceConcept expansion."""
 
@@ -697,9 +698,9 @@ def source_concept_media_condition_for_term(
         concept_ids,
         include_needs_review=include_needs_review,
     )
-    if not include_evidence_fallback or not keys:
+    if not (include_evidence_fallback or include_production_alias_evidence) or not keys:
         return identity_condition
-    overlay_media_ids = _overlay_fallback_media_ids(db, keys)
+    overlay_media_ids = _overlay_fallback_media_ids(db, keys) if include_evidence_fallback else set()
     overlay_media_ids.update(_production_alias_direct_evidence_media_ids(db,concept_ids))
     evidence_fallback_condition = Media.id.in_(sorted(overlay_media_ids)) if overlay_media_ids else None
     if identity_condition is None:

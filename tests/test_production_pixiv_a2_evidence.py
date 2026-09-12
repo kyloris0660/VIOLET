@@ -1,6 +1,22 @@
 import copy
+import json
 import pytest
 from scripts.production_pixiv_a2_evidence import pytest_outcome,latency_statistics,recompute_quality
+
+
+@pytest.mark.parametrize('field',['log','xml'])
+@pytest.mark.parametrize('absolute',[False,True])
+def test_validation_rejects_external_log_or_xml_before_parsing(tmp_path,field,absolute):
+    from scripts.check_production_pixiv_a2 import validation_evidence
+    private=tmp_path/'private';private.mkdir()
+    external=tmp_path/'external';external.write_text('1 passed',encoding='utf-8')
+    (private/'command.json').write_text(json.dumps({'argv':['python','-m','pytest'],
+        'status':'finished','source_head':'candidate'}),encoding='utf-8')
+    (private/'inside.log').write_text('1 passed',encoding='utf-8')
+    gate={'command':'command.json','log':'inside.log','xml':'inside.xml','passed':1,'failed':0,'skipped':0}
+    gate[field]=str(external) if absolute else '../external'
+    with pytest.raises(ValueError,match='private_evidence_location'):
+        validation_evidence(private,{'focused':gate},'candidate')
 
 
 @pytest.mark.parametrize('log,code', [

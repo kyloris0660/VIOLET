@@ -21,10 +21,14 @@ def require(value,reason):
     if not value:raise ValueError('a2_'+reason)
 
 
-def read(root,name):
+def evidence_path(root,name):
     path=(root/name).resolve(strict=True)
     require(path.is_relative_to(root.resolve()) and path.is_file(),'private_evidence_location')
-    return json.loads(path.read_text(encoding='utf-8'))
+    return path
+
+
+def read(root,name):
+    return json.loads(evidence_path(root,name).read_text(encoding='utf-8'))
 
 
 def check_public_result(value,root=ROOT):
@@ -54,11 +58,11 @@ def validation_evidence(private,record,candidate):
     all_failures=set();remediated=set()
     for label in ('focused','postgresql','non_e2e'):
         gate=record[label];command=read(private,gate['command'])
-        log=(private/gate['log']).read_text(encoding='utf-8')
+        log=evidence_path(private,gate['log']).read_text(encoding='utf-8')
         require(command['argv'][1:3]==['-m','pytest'],'validation_command')
         require(command.get('status')=='finished','validation_finished')
         if label!='non_e2e':require(command['source_head']==candidate,'validation_candidate')
-        actual,failures=pytest_outcome(command,log,private/gate['xml'] if gate.get('xml') else None)
+        actual,failures=pytest_outcome(command,log,evidence_path(private,gate['xml']) if gate.get('xml') else None)
         require(all(actual[key]==gate[key] for key in ('passed','failed','skipped')) and actual['passed']>0,'validation_counts')
         if label!='non_e2e':require(not failures and actual['failed']==0,'focused_or_postgresql_failure')
         else:
@@ -68,14 +72,14 @@ def validation_evidence(private,record,candidate):
             require(admission['source_head']==command['source_head'] and admission['full_suite_invocation']==1,'full_suite_admission')
         summary[label]={**actual,'source_head':command['source_head']}
     for item in record.get('remediation',[]):
-        command=read(private,item['command']);log=(private/item['log']).read_text(encoding='utf-8')
+        command=read(private,item['command']);log=evidence_path(private,item['log']).read_text(encoding='utf-8')
         require(command['source_head']==candidate and command['argv'][1:3]==['-m','pytest'],'remediation_candidate')
-        actual,failures=pytest_outcome(command,log,private/item['xml'] if item.get('xml') else None)
+        actual,failures=pytest_outcome(command,log,evidence_path(private,item['xml']) if item.get('xml') else None)
         require(not failures and actual['passed']>0,'remediation_failure')
         remediated.update(re.findall(r'^(\S+::\S+) PASSED(?:\s|$)',log,re.MULTILINE))
     known={HISTORICAL_NODE} & all_failures
     if known:
-        require('missing_original_ai_execution_evidence' in (private/record['non_e2e']['log']).read_text(encoding='utf-8'),'historical_reason')
+        require('missing_original_ai_execution_evidence' in evidence_path(private,record['non_e2e']['log']).read_text(encoding='utf-8'),'historical_reason')
     for failure in all_failures-known:
         mapped=record.get('node_mappings',{}).get(failure,{'nodes':[failure]})
         require(set(mapped['nodes'])<=remediated and mapped['nodes'],'unresolved_full_suite_failure')

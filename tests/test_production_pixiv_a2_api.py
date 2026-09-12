@@ -61,3 +61,37 @@ def test_full_scope_source_change_withdrawal_and_formal_replacement(real_api,cha
         assert media_ids==expected
     if change=='update':assert 1 in ids(client,'ReplacementGarden')
     assert 3 in ids(client,'AsterHistorical')
+
+
+def test_real_api_recalls_current_literal_alias_without_overlay_or_identity_promotion(real_api,monkeypatch):
+    from dataclasses import replace
+    from app.models import SourceConceptSignal
+    from app.services.production_pixiv_service import production_consumer,build_production_clustering
+    from app.services.pixiv_metadata_projection_service import build_canonical_pixiv_aggregates_from_session
+    from app.services import source_concept_search_service as source_search
+    client,factory,_,_=real_api
+    with factory() as db:
+        consumer=production_consumer(build_canonical_pixiv_aggregates_from_session(db))
+        consumer=replace(consumer,signals=tuple(replace(s,role_hint='work',trust_tier='strong',status='active',work_context_key=None)
+            if s.origin_type=='pixiv_tag_observation' and s.evidence_payload['work_id']!='910000003' else s for s in consumer.signals))
+        initial=build_production_clustering(consumer)
+        typed=[s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation' and s.role_hint=='work']
+        run=build_production_clustering(consumer,judgments=[{'left_signal_key':typed[0].signal_key,
+            'right_signal_key':typed[1].signal_key,'decision':'must_link','confidence':.99,'cache_key':'api-alias-recall-fixture'}])
+        apply(db,run,scope_for(db))
+        assert 4 not in source_search.source_layer_search_path_media_ids(db,'MoonPetal',include_needs_review=False)['identity']
+    monkeypatch.setattr(source_search,'_overlay_fallback_media_ids',lambda *a:(_ for _ in ()).throw(AssertionError('unrelated overlay enabled')))
+    assert 4 in ids(client,'MoonPetal')
+    assert 4 in ids(client,'MoonPetal SunPetal')
+    assert 4 not in ids(client,'MoonPetal -SunPetal')
+    with factory() as db:
+        signal=db.query(SourceConceptSignal).filter_by(created_by_run_id=run.resolution.run_id,
+            canonical_key='sunpetal',role_hint='unknown').one()
+        assert signal.role_hint=='unknown'
+        signal.origin_type='pixiv_title_observation';db.commit()
+    assert 4 not in ids(client,'MoonPetal')
+    with factory() as db:
+        signal=db.query(SourceConceptSignal).filter_by(created_by_run_id=run.resolution.run_id,
+            canonical_key='sunpetal',role_hint='unknown').one()
+        signal.origin_type='pixiv_tag_observation';db.get(SourceMetadataRecord,104).title='Changed revision';db.commit()
+    assert 4 not in ids(client,'MoonPetal')
