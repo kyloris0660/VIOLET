@@ -142,6 +142,20 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
                 completed=role_facts.get('completion_records',{}).get(completion_key)
                 if completed and role in {'unknown','person'} and any(_context_candidate_matches(row,signal.raw_value)
                     for row in completed['candidates']):contextual=completed
+                repair_key=role_facts.get('coverage_repair_by_aggregate',{}).get(signal.evidence_payload.get('aggregate_fingerprint'))
+                repair=role_facts.get('coverage_repair_records',{}).get(repair_key)
+                if (completed and repair and role in {'unknown','person'}
+                    and repair.get('parent_extraction_key')==completion_key
+                    and signal.raw_value in repair.get('target_coverage',{}).get('requested_raw_tags',[])
+                    and not any(_context_candidate_matches(row,signal.raw_value) for row in completed['candidates'])):
+                    outcome=repair['target_coverage'].get('outcomes',{}).get(signal.raw_value,{})
+                    if any(_context_candidate_matches(row,signal.raw_value) for row in repair['candidates']):
+                        contextual=repair
+                    elif outcome.get('disposition')=='non_name' and not candidates:
+                        trust=status='rejected';contextual=None
+                        evidence['production_non_identity_reason']='explicit_target_coverage_non_name'
+                    evidence['production_role_coverage_repair']={'extraction_key':repair_key,
+                        'parent_extraction_key':completion_key,'outcome':outcome}
             if contextual and not candidates:
                 matches=_specific_role_candidates([row for row in contextual['candidates']
                     if _context_candidate_matches(row,signal.raw_value)])

@@ -27,6 +27,7 @@ from .source_name_candidate_extraction_service import (
 
 ROLE_SCHEMA='violet.production-pixiv-role-result.v1'
 COMPLETION_ORIGIN='production_pixiv_residual_roles_v1'
+COVERAGE_REPAIR_ORIGIN='production_pixiv_role_coverage_repair_v1'
 COMPLETION_PROMPT=(
     'Production residual role completion v1. The requested raw tags are listed in each record data_type_label. '
     'Classify every requested spelling using ALL of its actual tags as context. '
@@ -37,6 +38,14 @@ COMPLETION_PROMPT=(
     'Provide work_context from an actual context tag when supported. Do not invent a context. '
     'Keep an uncertain name unknown_name_like needs_review; reject descriptions and meta tags. '
     'Do not create identity equivalence or Entity truth.'
+)
+COVERAGE_REPAIR_PROMPT=(
+    COMPLETION_PROMPT+' This is one coverage repair for previously omitted targets, not a re-judgment of answered names. '
+    'Return target_dispositions for EVERY requested raw spelling, with raw_value, disposition, and reason_code. '
+    'disposition must be candidate, unknown, or non_name. For candidate, also return the matching F7a candidate. '
+    'For unknown, preserve uncertainty; for non_name, give a short reason without inventing identity. '
+    'Aggregate rejected_summary counts do not account for individual requested tags. '
+    'Do not collapse multilingual spellings or answer only names in the surrounding context.'
 )
 
 
@@ -86,12 +95,16 @@ def _identity(unit,model):
 
 def _production_messages(messages):
     payload=json.loads(messages[1]['content'])
-    selected=[row for row in payload.get('records',[]) if row.get('data_origin')==COMPLETION_ORIGIN]
+    selected=[row for row in payload.get('records',[]) if row.get('data_origin') in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN}]
     if not selected:return messages
+    origins={row['data_origin'] for row in selected}
+    if len(origins)!=1:raise ValueError('mixed_production_role_prompt_versions')
+    origin=next(iter(origins))
+    prompt=COVERAGE_REPAIR_PROMPT if origin==COVERAGE_REPAIR_ORIGIN else COMPLETION_PROMPT
     for row in selected:row.pop('deterministic_hints',None)
-    payload['production_prompt_adapter']=COMPLETION_ORIGIN
+    payload['production_prompt_adapter']=origin
     system=messages[0]['content']
-    if not system.endswith(COMPLETION_PROMPT):system+='\n'+COMPLETION_PROMPT
+    if not system.endswith(prompt):system+='\n'+prompt
     return [{**messages[0],'content':system},
         {**messages[1],'content':json.dumps(payload,ensure_ascii=False,sort_keys=True)}]
 
@@ -457,7 +470,146 @@ def complete_contextual_production_roles(consumer,vocabulary,role_facts,*,provid
     if unit_limit:units=units[:unit_limit]
     extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress,
         workers=workers,provider_factory=provider_factory)
+    by_key={unit.extraction_key:unit for unit in units}
+    accounted={key:role_target_coverage(by_key[key],record) for key,record in extracted['records'].items()}
     return {**role_facts,'completion_records':{**role_facts.get('completion_records',{}),**extracted['records']},
         'completion_by_aggregate':{**role_facts.get('completion_by_aggregate',{}),
             **{aggregate:key for aggregate,key in mapping.items() if key in extracted['records']}},
-        'completion_summary':{**extracted['summary'],**plan,'selected_units':len(units)}}
+        'completion_summary':{**extracted['summary'],**plan,'selected_units':len(units),
+            'parsed_response_units':len(extracted['records']),
+            'units_with_unaccounted_targets':sum(bool(row['missing_raw_tags']) for row in accounted.values()),
+            'unaccounted_requested_tag_occurrences':sum(len(accounted[key]['missing_raw_tags'])
+                for key in mapping.values() if key in accounted),
+            'unit_response_count_is_not_target_completion':True}}
+
+
+def role_target_coverage(unit,record):
+    """A valid envelope or aggregate rejection count does not answer each tag."""
+    from .production_pixiv_semantics import _context_candidate_matches
+    raw_dispositions=record.get('validated_response',{}).get('target_dispositions',[])
+    if not isinstance(raw_dispositions,list):raw_dispositions=[]
+    by_raw=defaultdict(list)
+    for row in raw_dispositions:
+        if isinstance(row,dict) and row.get('raw_value') in unit.raw_values:
+            by_raw[row['raw_value']].append(row)
+    outcomes={};missing=[]
+    for raw in unit.raw_values:
+        matched=[row for row in record.get('candidates',[]) if _context_candidate_matches(row,raw)]
+        if matched:
+            outcomes[raw]={'disposition':'candidate','reported_roles':sorted({row['candidate_role'] for row in matched})}
+            continue
+        rows=by_raw.get(raw,[])
+        if (len(rows)==1 and rows[0].get('disposition') in {'unknown','non_name'}
+            and isinstance(rows[0].get('reason_code'),str) and rows[0]['reason_code'].strip()):
+            outcomes[raw]={'disposition':rows[0]['disposition'],'reason_code':rows[0]['reason_code']}
+        elif not rows and record.get('verdict') in {'no_explicit_name','rejected_general_only','rejected_popularity_or_meta_only'}:
+            # Unlike anonymous counts in a mixed positive answer, a validated
+            # whole-group non-name verdict covers all names in that question.
+            outcomes[raw]={'disposition':'non_name','reason_code':'f7a_whole_group_'+record['verdict']}
+        else:missing.append(raw)
+    return {'requested_raw_tags':list(unit.raw_values),'outcomes':outcomes,'missing_raw_tags':missing,
+        'fully_accounted':not missing,'identity_equivalence_authorized':False}
+
+
+def _original_completion_questions(consumer,vocabulary,role_facts):
+    # Reconstruct the exact original question, not a new interpretation of its
+    # targets. Legacy caches remain immutable and their answered names survive.
+    baseline={**role_facts,'completion_records':{},'completion_by_aggregate':{},
+        'coverage_repair_records':{},'coverage_repair_by_aggregate':{}}
+    units,mapping,_=plan_contextual_role_completion(consumer,vocabulary,baseline)
+    by_key={unit.extraction_key:unit for unit in units}
+    grounded=set()
+    for aggregate,key in role_facts.get('completion_by_aggregate',{}).items():
+        if aggregate not in mapping:
+            # The currently accepted baseline already supplies every role
+            # needed here. No new question or historical target claim is made.
+            grounded.add(aggregate);continue
+        if mapping.get(aggregate)!=key or key not in by_key:
+            raise ValueError('original_role_question_reconstruction_changed')
+    return by_key,grounded
+
+
+def plan_role_coverage_repair(consumer,vocabulary,role_facts):
+    originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts)
+    # Preserve the whole finite denominator, but spend a shared limited budget
+    # on currently unresolved, non-rejected names before already rejected tags.
+    adapted=adapt_production_semantics(consumer,vocabulary,role_facts)
+    unresolved=defaultdict(set)
+    for signal in adapted.signals:
+        if signal.origin_type=='pixiv_tag_observation' and signal.role_hint in {'unknown','person'} and signal.status!='rejected':
+            unresolved[signal.evidence_payload['aggregate_fingerprint']].add(signal.raw_value)
+    priority=defaultdict(int);priority_occurrences=0
+    units={};mapping={};parents={};target_occurrences=0;already_attempted=0
+    for aggregate,parent in sorted(role_facts.get('completion_by_aggregate',{}).items()):
+        if aggregate in grounded:continue
+        if aggregate in role_facts.get('coverage_repair_by_aggregate',{}):
+            already_attempted+=1;continue
+        original=originals[parent];record=role_facts['completion_records'][parent]
+        targets=role_target_coverage(original,record)['missing_raw_tags']
+        if not targets:continue
+        signature=canonical_fingerprint({'schema':COVERAGE_REPAIR_ORIGIN,'parent':parent,
+            'parent_response':canonical_fingerprint(record),'tags':original.unit_group.tags,'targets':targets})
+        key='production-role-coverage-repair:'+signature
+        mapping[aggregate]=key;parents[key]=parent;target_occurrences+=len(targets)
+        current_missing=len(set(targets)&unresolved[aggregate])
+        priority[key]=max(priority[key],current_missing);priority_occurrences+=current_missing
+        group=replace(original.unit_group,group_key='a2-role-coverage:'+signature[:24],
+            data_origin=COVERAGE_REPAIR_ORIGIN,
+            data_type_label='Requested unresolved raw tags: '+json.dumps(targets,ensure_ascii=False))
+        units[key]=replace(original,extraction_key=key,normalized_value='missing role dispositions '+signature,
+            canonical_key=signature,raw_values=tuple(targets),context_key=signature,unit_group=group,
+            deterministic_resolution='one_target_coverage_repair')
+    ordered=sorted(units.values(),key=lambda unit:(-priority[unit.extraction_key],unit.extraction_key))
+    return ordered,mapping,{'repair_units':len(units),'aggregate_occurrences':len(mapping),
+        'requested_tag_occurrences':target_occurrences,'already_attempted_aggregates':already_attempted,
+        'currently_unresolved_non_rejected_target_occurrences':priority_occurrences,
+        'priority_policy':'current_unresolved_names_first_no_denominator_truncation',
+        'currently_grounded_aggregates_without_new_question':len(grounded),
+        'parent_extraction_keys':parents,'identity_equivalence_authorized':False}
+
+
+def summarize_role_response_coverage(consumer,vocabulary,role_facts):
+    originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts)
+    counts=defaultdict(int);remaining=[];complete=0
+    for aggregate,parent in sorted(role_facts.get('completion_by_aggregate',{}).items()):
+        if aggregate in grounded:continue
+        coverage=role_target_coverage(originals[parent],role_facts['completion_records'][parent])
+        outcomes=dict(coverage['outcomes'])
+        repair_key=role_facts.get('coverage_repair_by_aggregate',{}).get(aggregate)
+        repair=role_facts.get('coverage_repair_records',{}).get(repair_key)
+        if repair:
+            if repair.get('parent_extraction_key')!=parent:raise ValueError('role_coverage_repair_parent_changed')
+            for raw,value in repair.get('target_coverage',{}).get('outcomes',{}).items():
+                if raw in coverage['missing_raw_tags']:outcomes[raw]=value
+        missing=[raw for raw in originals[parent].raw_values if raw not in outcomes]
+        for value in outcomes.values():counts[value['disposition']]+=1
+        counts['unaccounted']+=len(missing)
+        if missing:remaining.append({'aggregate_fingerprint':aggregate,'raw_tags':missing,
+            'repair_attempted':repair is not None})
+        else:complete+=1
+    return {'counts':dict(counts),'requested_tag_occurrences':sum(counts.values()),
+        'original_response_aggregate_count':len(role_facts.get('completion_by_aggregate',{})),
+        'currently_grounded_aggregates_without_new_question':len(grounded),
+        'historical_targets_not_rederived_for_grounded_aggregates':True,
+        'fully_accounted_aggregates':complete,'unaccounted_aggregate_count':len(remaining),
+        'unaccounted_targets':remaining,'response_completion_does_not_assert_identity':True}
+
+
+def repair_missing_role_coverage(consumer,vocabulary,role_facts,*,provider,budget,cache_dir,progress=None,
+    batch_size=5,unit_limit=0,workers=1,provider_factory=None):
+    if type(batch_size) is not int or not 1<=batch_size<=10:raise ValueError('production_context_batch_size_invalid')
+    if type(unit_limit) is not int or unit_limit<0:raise ValueError('production_context_unit_limit_invalid')
+    units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
+    if unit_limit:units=units[:unit_limit]
+    extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,
+        batch_size=batch_size,progress=progress,workers=workers,provider_factory=provider_factory)
+    by_key={unit.extraction_key:unit for unit in units}
+    records={key:{**record,'parent_extraction_key':plan['parent_extraction_keys'][key],
+        'target_coverage':role_target_coverage(by_key[key],record)} for key,record in extracted['records'].items()}
+    result={**role_facts,'coverage_repair_records':{**role_facts.get('coverage_repair_records',{}),**records},
+        'coverage_repair_by_aggregate':{**role_facts.get('coverage_repair_by_aggregate',{}),
+            **{aggregate:key for aggregate,key in mapping.items() if key in records}},
+        'coverage_repair_summary':{**extracted['summary'],**{key:value for key,value in plan.items()
+            if key!='parent_extraction_keys'},'selected_units':len(units)}}
+    result['role_response_coverage']=summarize_role_response_coverage(consumer,vocabulary,result)
+    return result

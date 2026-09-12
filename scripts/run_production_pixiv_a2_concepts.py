@@ -40,7 +40,7 @@ def peak_memory_bytes():
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action',choices=('roles','contextual-roles','complete-contextual-roles','cluster','adjudicate'))
+    parser.add_argument('action',choices=('roles','contextual-roles','complete-contextual-roles','repair-role-coverage','cluster','adjudicate'))
     parser.add_argument('--artifacts',required=True,type=Path)
     parser.add_argument('--profile',required=True,type=Path)
     parser.add_argument('--aggregates',required=True,type=Path)
@@ -88,19 +88,24 @@ def main():
     budget=AdjudicationBudget(out/'llm-budget-private.json',model=llm['model'],cap_usd=10,input_per_million=0.4,output_per_million=1.6)
     started=time.monotonic()
     with (exclusive(out/'llm-task.lock') if args.action!='cluster' else nullcontext()):
-        if args.action in {'contextual-roles','complete-contextual-roles'}:
+        if args.action in {'contextual-roles','complete-contextual-roles','repair-role-coverage'}:
             from app.services.production_pixiv_role_extraction import extract_contextual_production_roles,plan_contextual_role_extraction
             if args.action=='complete-contextual-roles':
                 from app.services.production_pixiv_role_extraction import (
                     complete_contextual_production_roles as extract_contextual_production_roles,
                     plan_contextual_role_completion as plan_contextual_role_extraction,
                 )
+            if args.action=='repair-role-coverage':
+                from app.services.production_pixiv_role_extraction import (
+                    repair_missing_role_coverage as extract_contextual_production_roles,
+                    plan_role_coverage_repair as plan_contextual_role_extraction,
+                )
             if not facts:raise RuntimeError('existing_role_facts_required_for_contextual_supplement')
             provider,summary=primary_openai_provider_from_settings()
             if provider is None:raise RuntimeError('approved_primary_model_unavailable')
             units,mapping,plan=plan_contextual_role_extraction(consumer,vocabulary,facts)
             write(out/f'{args.label}-context-plan-private.json',plan)
-            print(json.dumps(plan),flush=True)
+            print(json.dumps({key:value for key,value in plan.items() if key!='parent_extraction_keys'}),flush=True)
             def context_progress(value):
                 write(out/f'{args.label}-context-progress-private.json',value)
                 print(json.dumps(value),flush=True)
@@ -108,9 +113,12 @@ def main():
                 cache_dir=out/'role-cache',progress=context_progress,batch_size=args.context_batch_size,
                 **({'unit_limit':args.limit,'workers':args.text_workers,
                     'provider_factory':lambda:primary_openai_provider_from_settings()[0]}
-                    if args.action=='complete-contextual-roles' else {}))
+                    if args.action in {'complete-contextual-roles','repair-role-coverage'} else {}))
             write(out/f'{args.label}-roles-private.json',result)
-            print(json.dumps(result['completion_summary'] if args.action=='complete-contextual-roles' else result['context_summary']),flush=True)
+            summary_key={'complete-contextual-roles':'completion_summary','repair-role-coverage':'coverage_repair_summary'}.get(args.action,'context_summary')
+            print(json.dumps(result[summary_key]),flush=True)
+            if args.action=='repair-role-coverage':
+                print(json.dumps({key:value for key,value in result['role_response_coverage'].items() if key!='unaccounted_targets'}),flush=True)
             return
         if args.action=='roles':
             units,plan=plan_role_extraction(consumer,vocabulary)
