@@ -152,6 +152,9 @@ def derive_result(private,repo=ROOT):
         and all(r['valid_bindings_after_mutation']==0 and r.get('valid_bindings_after_rollback')==source['valid_bindings_before']
             and r.get('original_revision')==r.get('restored_revision') for r in source['cases']),'raw_source_recovery')
     browser=read(private,manifest['browser']);launch=read(private,manifest['launcher'])
+    from scripts.production_pixiv_a2_evidence import verify_browser_actions,verify_launcher_action
+    browser_actions=verify_browser_actions(browser)
+    verify_launcher_action(launch,repo,head)
     require(browser['candidate_head']==launch['candidate_head']==head and browser['api_result_sets_verified'],'fresh_browser_candidate')
     require(launch['before_pid']!=launch['after_pid'] and launch['after_pid']>0
         and launch['database']==backup['database'] and launch['healthy'],'launcher_identity')
@@ -191,7 +194,7 @@ def derive_result(private,repo=ROOT):
         'quality':quality_actual,
         'workload':{'query_count':len(workload['queries']),'failed_queries':0,**http_latency,
             'source_layer_latency_ms':source_latency,'applicable_source_layer_p95_gate_ms':p95_gate},
-        'browser':{key:browser[key] for key in ('originals_loaded','thumbnails_loaded')},
+        'browser':{**{key:browser[key] for key in ('originals_loaded','thumbnails_loaded')},**browser_actions},
         'launcher':{'new_process':True,'apply_enabled':launch['apply_enabled']},'validation':validation,
         'recovery':{'independent_restore':True,'owned_rollback_replay':True,'independent_support_preserved':True,'batch_business_equivalent':True,
             'historical_http_spacing_evidence':'Lead accepted task 43 exception; not reconstructable',

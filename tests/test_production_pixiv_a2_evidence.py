@@ -64,3 +64,31 @@ def test_absent_former_identity_case_cannot_disappear_from_denominator():
     value['cases']=[];value['projection_rows']=value['projection_rows'][:1]
     with pytest.raises(ValueError,match='quality_case_missing'):
         recompute_quality(value,oracle,baseline=baseline)
+
+
+def test_browser_requires_loaded_fullscreen_and_actual_dom_sets():
+    from scripts.production_pixiv_a2_evidence import verify_browser_actions
+    browser={'actions':[],'search':{'ids':[1],'api_ids':[1]},'old_tag':{'dom_ids':[1],'api_ids':[1]},
+        'source_chip':{'kind':'source_concept','param':'q','conceptIds':'1','href':'http://127.0.0.1/?q=x','navigated_url':'http://127.0.0.1/?q=x'},
+        'recovery_page':{'status':200,'method':'GET','mutation_performed':False,'text':'rows',
+            'request_url':'http://127.0.0.1/api/admin/dynamic-library-sync/recovery-items?root_id=2'}}
+    for mid in (1,2,3):
+        browser['actions'] += [{'action':'open_fullscreen','media_id':mid,'overlay_active':True,
+            'image':{'src':f'http://127.0.0.1/api/media/{mid}/file','width':900,'height':700}}]
+        browser['actions'] += [{'action':kind,'media_id':mid} for kind in ('thumbnail_to_detail','close_fullscreen','return_gallery')]
+    assert verify_browser_actions(browser)['fullscreen_samples']==3
+    browser['actions'][0]['image']['width']=0
+    with pytest.raises(ValueError,match='fullscreen_original_not_loaded'):verify_browser_actions(browser)
+
+
+def test_launcher_uses_recorded_process_and_profile_not_historical_pid_liveness(tmp_path):
+    from scripts.production_pixiv_a2_evidence import verify_launcher_action
+    launch={'after_pid':123,'database':'prod',
+        'normal_entry_invocation':{'executable':str(tmp_path/'V.I.O.L.E.T. Production Launcher.exe'),
+            'arguments':[],'action':'Restart','sha256':'a'*64},
+        'server_process_at_action':{'ProcessId':123,'ParentProcessId':45,'CreationDate':'observed-time','CommandLine':'python run.py'},
+        'profile_at_action':{'candidate_head':'b'*40,'pixiv_product_enabled':True,'pixiv_product_apply_enabled':False,
+            'database':'prod','code_root':str(tmp_path),'sha256':'c'*64}}
+    assert verify_launcher_action(launch,tmp_path,'b'*40)
+    launch['profile_at_action']['candidate_head']='old'
+    with pytest.raises(ValueError,match='profile_observation_changed'):verify_launcher_action(launch,tmp_path,'b'*40)

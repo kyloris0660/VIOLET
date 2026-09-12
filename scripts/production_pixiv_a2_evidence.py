@@ -6,6 +6,54 @@ from collections import Counter
 from xml.etree import ElementTree
 
 
+def verify_browser_actions(browser):
+    from urllib.parse import urlparse,parse_qs
+    actions=browser.get('actions',[])
+    opened={r['media_id']:r for r in actions if r['action']=='open_fullscreen'}
+    if len(opened)<3:raise ValueError('a2_fullscreen_samples_missing')
+    for mid,row in opened.items():
+        image=row['image']
+        if (not row.get('overlay_active') or image.get('width',0)<=0 or image.get('height',0)<=0
+            or urlparse(image['src']).path!=f'/api/media/{mid}/file'):
+            raise ValueError('a2_fullscreen_original_not_loaded')
+        kinds={r['action'] for r in actions if r.get('media_id')==mid}
+        if not {'thumbnail_to_detail','close_fullscreen','return_gallery'}<=kinds:
+            raise ValueError('a2_media_navigation_missing')
+    search=browser['search'];old=browser['old_tag'];chip=browser['source_chip']
+    if set(search['ids'])!=set(search['api_ids']) or set(old['dom_ids'])!=set(old['api_ids']) or not old['api_ids']:
+        raise ValueError('a2_browser_dom_api_sets_differ')
+    if (chip['kind']!='source_concept' or chip['param']!='q' or not chip.get('conceptIds')
+        or parse_qs(urlparse(chip['href']).query)!=parse_qs(urlparse(chip['navigated_url']).query)):
+        raise ValueError('a2_browser_source_chip_navigation_changed')
+    recovery=browser['recovery_page']
+    if (recovery['status']!=200 or recovery.get('method')!='GET'
+        or recovery.get('mutation_performed') is not False or not recovery.get('text')
+        or urlparse(recovery['request_url']).path!='/api/admin/dynamic-library-sync/recovery-items'):
+        raise ValueError('a2_browser_recovery_page_not_observed')
+    return {'fullscreen_samples':len(opened),'search_dom_api_equal':True,'old_tag_dom_api_equal':True,'recovery_read_observed':True}
+
+
+def verify_launcher_action(launch,repo,candidate):
+    from pathlib import Path
+    entry=launch.get('normal_entry_invocation',{});process=launch.get('server_process_at_action',{})
+    profile=launch.get('profile_at_action',{})
+    if (Path(entry.get('executable','')).name!='V.I.O.L.E.T. Production Launcher.exe'
+        or entry.get('arguments')!=[] or entry.get('action')!='Restart'
+        or not re.fullmatch('[a-f0-9]{64}',entry.get('sha256',''))):
+        raise ValueError('a2_normal_launcher_action_missing')
+    if (process.get('ProcessId')!=launch['after_pid'] or not process.get('ParentProcessId')
+        or not process.get('CreationDate') or not process.get('CommandLine')
+        or not re.search(r'run\.py|uvicorn',process['CommandLine'])):
+        raise ValueError('a2_launcher_process_observation_missing')
+    if (profile.get('candidate_head')!=candidate or profile.get('pixiv_product_enabled') is not True
+        or profile.get('pixiv_product_apply_enabled') is not False
+        or profile.get('database')!=launch['database']
+        or Path(profile.get('code_root','')).resolve()!=Path(repo).resolve()
+        or not re.fullmatch('[a-f0-9]{64}',profile.get('sha256',''))):
+        raise ValueError('a2_launcher_profile_observation_changed')
+    return True
+
+
 def pytest_outcome(command, log, xml_path=None):
     counts={key:int((re.findall(r'(\d+) '+key+r'\b',log) or ['0'])[-1])
             for key in ('passed','failed','skipped')}
