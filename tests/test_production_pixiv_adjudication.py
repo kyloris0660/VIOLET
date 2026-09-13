@@ -150,6 +150,25 @@ def test_existing_named_confidence_remains_compatible_with_budget_gate(tmp_path,
     assert receipt['error_count']==0 and judgments[0]['confidence']==0.9
 
 
+@pytest.mark.parametrize('response_count',[0,1,2])
+def test_budgeted_pair_accepts_only_single_answer_list_and_reuses_it(tmp_path,monkeypatch,response_count):
+    signals,edges=_eligible_llm_edges(1)
+    class ListAnswer(MeteredProvider):
+        async def complete_json(self,*args,**kwargs):
+            response=await super().complete_json(*args,**kwargs)
+            return [response]*response_count
+    provider=ListAnswer()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    judgments,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=config(tmp_path))
+    assert receipt['error_count']==(0 if response_count==1 else 1)
+    if response_count==1:
+        assert judgments[0]['error_state'] is None
+        again,reused=service.run_bounded_llm_adjudication(edges,signals=signals,config=config(tmp_path))
+        assert provider.calls==1 and reused['cache_hits']==1
+        assert reused['task_budget']==receipt['task_budget']
+        assert again[0]['decision']==judgments[0]['decision']
+
+
 def test_failed_call_unknown_usage_is_charged_and_success_cache_survives(tmp_path,monkeypatch):
     signals,edges=_eligible_llm_edges(2)
     provider=MeteredProvider(fail_on_call=2)

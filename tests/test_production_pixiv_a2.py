@@ -177,6 +177,27 @@ def test_partial_release_admission_leaves_existing_projection_unchanged(database
     verify_full_input(live,live,coverage)
 
 
+def test_omitted_completion_universe_cannot_replace_existing_projection(database):
+    from app.services.production_pixiv_service import build_production_inputs
+    from app.services.production_pixiv_release_inputs import verify_role_completion
+    from app.services.production_pixiv_role_extraction import (
+        ROLE_SCHEMA,plan_contextual_role_completion,summarize_role_response_coverage)
+    from app.services.production_pixiv_semantics import build_semantic_vocabulary
+    scope=scope_for(database);apply(database,build(database),scope)
+    before=[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    runs=[(r.id,r.status) for r in database.query(SourceConceptProductRun).order_by(SourceConceptProductRun.id)]
+    aggregates,_=build_production_inputs(database,scope);consumer=production_consumer(aggregates)
+    vocabulary=build_semantic_vocabulary([])
+    facts={'schema_version':ROLE_SCHEMA,'records':{},'completion_by_aggregate':{},'completion_records':{}}
+    assert plan_contextual_role_completion(consumer,vocabulary,facts)[1]
+    facts['role_response_coverage']=summarize_role_response_coverage(consumer,vocabulary,facts)
+    assert facts['role_response_coverage']['requested_tag_occurrences']==0
+    with pytest.raises(ValueError,match='expected_role_completion_mapping_missing'):
+        verify_role_completion(aggregates,vocabulary,facts,{'calls':[]})
+    assert before==[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    assert runs==[(r.id,r.status) for r in database.query(SourceConceptProductRun).order_by(SourceConceptProductRun.id)]
+
+
 def test_accepted_alias_recalls_untyped_literal_tags_without_identity_union(database):
     from dataclasses import replace
     from app.models import SourceConceptSignal

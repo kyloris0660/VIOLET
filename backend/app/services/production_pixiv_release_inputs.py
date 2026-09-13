@@ -109,7 +109,7 @@ def verify_role_completion(aggregates,vocabulary,facts,ledger):
     """Recompute the retained role denominator and bind exhausted calls."""
     from .production_pixiv_service import production_consumer
     from .production_pixiv_role_extraction import summarize_role_response_coverage
-    coverage=summarize_role_response_coverage(production_consumer(aggregates),vocabulary,facts)
+    coverage=summarize_role_response_coverage(production_consumer(aggregates),vocabulary,facts,require_complete=True)
     if coverage['counts'].get('unaccounted',0) or coverage!=facts.get('role_response_coverage'):
         raise ValueError('semantic_original_role_target_processing_incomplete')
     calls={row['id']:row for row in ledger['calls']}

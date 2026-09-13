@@ -111,6 +111,22 @@ def publish_raw_response(raw_dir, work, attempt, result, required_pages=()):
     return destination, valid
 
 
+def record_command_response(out,raw_dir,journal,work,attempt,result,required_pages=()):
+    """Keep post-command evidence handling outside provider retry decisions."""
+    try:
+        stdout,replayable=publish_raw_response(raw_dir,work,attempt,result,required_pages)
+        stderr=raw_dir/f'{work}-attempt-{attempt}.stderr'
+        with stderr.open('x',encoding='utf-8') as stream:
+            stream.write(result.stderr or '');stream.flush();os.fsync(stream.fileno())
+        append(journal,{'event':'returned','work_id':work,'attempt':attempt,'returncode':result.returncode,
+            'stdout':str(stdout.relative_to(out)),'replayable':replayable})
+    except OSError as exc:
+        # The subprocess already returned. Local disk failure is not a new
+        # transport attempt; stop and retain the published/orphan evidence.
+        raise RuntimeError('metadata_command_evidence_persistence_failed') from exc
+    return result
+
+
 @contextmanager
 def exclusive(path):
     with path.open('a+b') as stream:
@@ -298,13 +314,7 @@ def main():
             except (subprocess.TimeoutExpired,OSError) as exc:
                 append(journal,{'event':'transport_failure','work_id':work,'attempt':attempt,'exception':type(exc).__name__})
                 raise
-            stdout,replayable=publish_raw_response(raw_dir,work,attempt,result,required_pages_by_work[work])
-            stderr=raw_dir/f'{work}-attempt-{attempt}.stderr'
-            with stderr.open('x',encoding='utf-8') as stream:
-                stream.write(result.stderr or '');stream.flush();os.fsync(stream.fileno())
-            append(journal,{'event':'returned','work_id':work,'attempt':attempt,'returncode':result.returncode,
-                'stdout':str(stdout.relative_to(out)),'replayable':replayable})
-            return result
+            return record_command_response(out,raw_dir,journal,work,attempt,result,required_pages_by_work[work])
         def checkpoint(result):
             value=asdict(result);results_count[result.state]+=1
             append(out/f'metadata-outcomes-{target}-private.jsonl',{'scope':scope['canonical_fingerprint'],**value})

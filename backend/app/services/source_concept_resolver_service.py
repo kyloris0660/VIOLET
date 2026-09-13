@@ -4158,13 +4158,13 @@ def run_bounded_llm_adjudication(
             response = _run_async_json(provider, messages)
             if budget:
                 provider_pause['transport_failures'] = 0
+            if isinstance(response,list) and (not budget or len(response)==1):
+                response=response[0] if response else {}
             normalized_confidence = source_confidence_score(response.get('confidence'),None) if isinstance(response,Mapping) else None
             if budget and (not isinstance(response, Mapping) or response.get('decision') not in {'must_link','cannot_link','needs_review'}
                 or isinstance(response.get('confidence'),bool) or normalized_confidence is None
                 or not math.isfinite(normalized_confidence) or not 0 <= normalized_confidence <= 1):
                 raise ValueError('adjudication_response_schema_invalid')
-            if isinstance(response, list):
-                response = response[0] if response else {}
             if not isinstance(response, Mapping):
                 response = {}
             decision = str(response.get("decision") or "needs_review").lower()

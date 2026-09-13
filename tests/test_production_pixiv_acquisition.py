@@ -45,6 +45,48 @@ def run(db, runner, **kwargs):
         env={}, command_runner=runner, sleeper=lambda _:None, **kwargs)
 
 
+@pytest.mark.parametrize('failure_point',['stderr_open','stderr_fsync','returned_journal'])
+def test_saved_metadata_evidence_failure_stops_without_refetch_and_replays(db,tmp_path,monkeypatch,failure_point):
+    from collections import Counter
+    from pathlib import Path
+    from scripts import run_production_pixiv_a2_metadata as script
+    prepare(db);raw=tmp_path/'metadata-raw';raw.mkdir();journal=tmp_path/'dispatch.jsonl'
+    attempts=Counter();calls=[]
+    original_open=Path.open;original_fsync=script.os.fsync;original_append=script.append
+    def opened(path,*args,**kwargs):
+        if failure_point=='stderr_open' and path.suffix=='.stderr':raise OSError('local stderr open failure')
+        return original_open(path,*args,**kwargs)
+    def flushed(fd):
+        if failure_point=='stderr_fsync' and list(raw.glob('*.stderr')):raise OSError('local stderr fsync failure')
+        return original_fsync(fd)
+    def appended(path,value):
+        if failure_point=='returned_journal' and value.get('event')=='returned':raise OSError('local returned journal failure')
+        return original_append(path,value)
+    monkeypatch.setattr(Path,'open',opened);monkeypatch.setattr(script.os,'fsync',flushed)
+    monkeypatch.setattr(script,'append',appended)
+    def capture(command,**kwargs):
+        work=command[-1].rsplit('/',1)[-1];calls.append(work);attempts[work]+=1
+        script.append(journal,{'event':'dispatch','work_id':work,'attempt':attempts[work],'scope':'fixed'})
+        result=subprocess.CompletedProcess(command,0,output(work),'')
+        return script.record_command_response(tmp_path,raw,journal,work,attempts[work],result,[0])
+    with pytest.raises(RuntimeError,match='metadata_command_evidence_persistence_failed'):
+        run(db,capture)
+    assert calls==['123456789']
+    monkeypatch.setattr(Path,'open',original_open);monkeypatch.setattr(script.os,'fsync',original_fsync)
+    monkeypatch.setattr(script,'append',original_append)
+    events=[json.loads(line) for line in journal.read_text().splitlines()]
+    prior,cached=script.recover_raw_payloads(tmp_path,events,'fixed',{'123456789':[0]})
+    assert prior['123456789']==1 and list(cached)==['123456789']
+    saved=cached['123456789'].read_bytes()
+    def no_network(*args,**kwargs):pytest.fail('saved valid response must not be fetched again')
+    result=run_bounded_acquisition(db,['123456789'],entrypoint=('gallery-dl',),authentication_passed=True,
+        accept_local_credential_risk=True,env={},command_runner=no_network,sleeper=lambda _:None,
+        prior_attempt_counts=dict(prior),metadata_replay_outputs={'123456789':saved.decode('utf-8')})
+    assert len(result)==1 and result[0].page_count==1 and result[0].state=='metadata_complete'
+    assert not result[0].request_attempted and result[0].attempt_count==1
+    assert cached['123456789'].read_bytes()==saved and calls==['123456789']
+
+
 def test_exhausted_work_and_isolated_timeout_do_not_starve_healthy_tail(db):
     prepare(db)
     calls=[]; callbacks=[]

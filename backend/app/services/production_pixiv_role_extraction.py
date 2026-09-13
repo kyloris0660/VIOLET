@@ -724,12 +724,14 @@ def role_target_coverage(unit,record):
         'fully_accounted':not missing,'identity_equivalence_authorized':False}
 
 
-def _original_completion_questions(consumer,vocabulary,role_facts):
+def _original_completion_questions(consumer,vocabulary,role_facts,*,require_complete=False):
     # Reconstruct the exact original question, not a new interpretation of its
     # targets. Legacy caches remain immutable and their answered names survive.
     baseline={**role_facts,'completion_records':{},'completion_by_aggregate':{},
         'coverage_repair_records':{},'coverage_repair_by_aggregate':{}}
     units,mapping,_=plan_contextual_role_completion(consumer,vocabulary,baseline)
+    if require_complete and set(mapping)-set(role_facts.get('completion_by_aggregate',{})):
+        raise ValueError('expected_role_completion_mapping_missing')
     by_key={unit.extraction_key:unit for unit in units}
     grounded=set()
     for aggregate,key in role_facts.get('completion_by_aggregate',{}).items():
@@ -789,8 +791,8 @@ def plan_role_coverage_repair(consumer,vocabulary,role_facts):
         'parent_extraction_keys':parents,'identity_equivalence_authorized':False}
 
 
-def summarize_role_response_coverage(consumer,vocabulary,role_facts):
-    originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts)
+def summarize_role_response_coverage(consumer,vocabulary,role_facts,*,require_complete=False):
+    originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts,require_complete=require_complete)
     counts=defaultdict(int);remaining=[];complete=0
     for aggregate,parent in sorted(role_facts.get('completion_by_aggregate',{}).items()):
         if aggregate in grounded:continue

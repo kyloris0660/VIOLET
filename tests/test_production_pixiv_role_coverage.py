@@ -398,7 +398,7 @@ def test_repair_requires_exact_original_question_identity(tmp_path):
         plan_role_coverage_repair(value,vocabulary,facts)
 
 
-def test_already_grounded_context_does_not_require_a_new_or_invented_old_question(tmp_path):
+def test_already_grounded_context_does_not_require_a_new_or_invented_old_question(tmp_path,monkeypatch):
     from app.services.production_pixiv_role_extraction import summarize_role_response_coverage
     value,vocabulary,facts,provider,_=partial_facts(tmp_path)
     template=next(iter(facts['completion_records'].values()))['candidates'][0]
@@ -412,6 +412,37 @@ def test_already_grounded_context_does_not_require_a_new_or_invented_old_questio
     coverage=summarize_role_response_coverage(value,vocabulary,facts)
     assert coverage['currently_grounded_aggregates_without_new_question']==1
     assert coverage['requested_tag_occurrences']==0 and len(provider.calls)==1
+    from app.services.production_pixiv_release_inputs import verify_role_completion
+    monkeypatch.setattr('app.services.production_pixiv_service.production_consumer',lambda _:value)
+    facts['role_response_coverage']=coverage
+    assert verify_role_completion([],vocabulary,facts,{'calls':[]})==coverage
+
+
+@pytest.mark.parametrize('removed_count',[1,2])
+def test_release_rejects_missing_completion_mappings_even_with_matching_report(tmp_path,monkeypatch,removed_count):
+    from copy import deepcopy
+    from app.services.production_pixiv_role_extraction import summarize_role_response_coverage
+    from app.services.production_pixiv_release_inputs import verify_role_completion
+    left=context(['MysteryAlpha'],'12345678');right=context(['MysteryBeta'],'23456789')
+    value=replace(left,signals=(*left.signals,*right.signals))
+    vocabulary=build_semantic_vocabulary([])
+    provider=Responses(lambda group:([],[{'raw_value':row['raw_tag'],'disposition':'unknown',
+        'reason_code':'insufficient_identity'} for row in group['tags']]))
+    budget=task_budget(tmp_path,provider)
+    facts=complete_contextual_production_roles(value,vocabulary,{'schema_version':ROLE_SCHEMA,'records':{}},
+        provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    assert len(facts['completion_by_aggregate'])==2
+    monkeypatch.setattr('app.services.production_pixiv_service.production_consumer',lambda _:value)
+    facts['role_response_coverage']=summarize_role_response_coverage(value,vocabulary,facts)
+    ledger=json.loads(budget.path.read_text())
+    assert verify_role_completion([],vocabulary,facts,ledger)==facts['role_response_coverage']
+    shortened=deepcopy(facts)
+    for aggregate in list(shortened['completion_by_aggregate'])[:removed_count]:
+        del shortened['completion_by_aggregate'][aggregate]
+    shortened['role_response_coverage']=summarize_role_response_coverage(value,vocabulary,shortened)
+    assert shortened['role_response_coverage']['counts'].get('unaccounted',0)==0
+    with pytest.raises(ValueError,match='expected_role_completion_mapping_missing'):
+        verify_role_completion([],vocabulary,shortened,ledger)
 
 
 def test_shared_budget_block_preserves_original_answers_and_missing_target_accounting(tmp_path,monkeypatch):
