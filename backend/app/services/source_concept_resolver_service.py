@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import json
 import math
+import os
 import re
 import time
 from collections import Counter, defaultdict
@@ -70,6 +71,7 @@ LLM_CACHE_POLICY_VERSION = "source_concept_llm_adjudication_cache_v1"
 LLM_DECISION_SCHEMA_VERSION = "source_concept_pair_decision_schema_v1"
 LLM_ADJUDICATION_POLICY_VERSION = "source_concept_budget_driven_adjudication_v1"
 LLM_PROVIDER_POLICY_VERSION = "primary_openai_compatible_no_fallback_v1"
+PRODUCTION_PAIR_PROMPT_VERSION = "production_pixiv_pair_semantic_identity_v2"
 DEFAULT_SOURCE_CONCEPT_LLM_CACHE_ROOT = Path(".local_manifests") / "source_concept_llm_adjudication_cache"
 
 SOURCE_CONCEPT_ALLOWED_WRITE_TABLES = (
@@ -290,6 +292,14 @@ class LLMAdjudicationConfig:
     cache_policy_version: str = LLM_CACHE_POLICY_VERSION
     decision_schema_version: str = LLM_DECISION_SCHEMA_VERSION
     adjudication_policy_version: str = LLM_ADJUDICATION_POLICY_VERSION
+    task_budget_path: str | None = None
+    input_price_per_million: float | None = None
+    output_price_per_million: float | None = None
+    semantic_cache_reuse: bool = False
+    semantic_cache_dirs: tuple[str, ...] = ()
+    # A production orchestration shares this across its work and other-name
+    # passes. Cache reads remain available after paid dispatch is paused.
+    provider_pause_state: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -1789,6 +1799,13 @@ def _declared_context_keys(signal: SourceConceptSignalDraft) -> set[str]:
     return contexts
 
 
+def _production_work_scope(signal: SourceConceptSignalDraft) -> str | None:
+    scope = (signal.evidence_payload or {}).get('production_candidate_scope')
+    if signal.provider == 'pixiv' and isinstance(scope,str) and re.fullmatch(r'pixiv:work:[1-9][0-9]{0,11}',scope):
+        return scope
+    return None
+
+
 def _context_candidates_by_scope(
     signals: Sequence[SourceConceptSignalDraft],
     context_alias_by_key: Mapping[str, str] | None = None,
@@ -1807,6 +1824,9 @@ def _context_candidates_by_scope(
             contexts[("media", signal.media_id)].update(str(context) for context in signal_contexts)
         if signal.source_metadata_record_id is not None:
             contexts[("record", signal.source_metadata_record_id)].update(str(context) for context in signal_contexts)
+        production_scope = _production_work_scope(signal)
+        if production_scope:
+            contexts[("production_work", production_scope)].update(str(context) for context in signal_contexts)
     return contexts
 
 
@@ -1819,10 +1839,17 @@ class UnionFind:
 
     def find(self, key: str) -> str:
         self.add(key)
-        parent = self.parent[key]
-        if parent != key:
-            self.parent[key] = self.find(parent)
-        return self.parent[key]
+        root = key
+        # Lexical-root unions can form a chain longer than Python's call stack
+        # before an old member is visited. Preserve the root and compress the
+        # same path iteratively, without changing any identity decision.
+        while self.parent[root] != root:
+            root = self.parent[root]
+        while key != root:
+            parent = self.parent[key]
+            self.parent[key] = root
+            key = parent
+        return root
 
     def union(self, left: str, right: str) -> None:
         left_root = self.find(left)
@@ -1991,6 +2018,10 @@ def signal_context_key(
     context_by_scope: Mapping[tuple[str, int], set[str]],
     context_alias_by_key: Mapping[str, str] | None = None,
 ) -> tuple[str | None, str | None]:
+    derived=(signal.evidence_payload or {}).get('production_adjudicated_work_context')
+    if (_production_work_scope(signal) and isinstance(derived,dict)
+        and derived.get('reason') in {'explicit_work_context','parenthetical_context','unique_source_or_media_work_context'}):
+        return _context_alias_key(derived.get('key'),context_alias_by_key),derived['reason']
     if signal.work_context_key:
         return _context_alias_key(signal.work_context_key, context_alias_by_key), "explicit_work_context"
     if signal.parenthetical_context:
@@ -1998,6 +2029,10 @@ def signal_context_key(
     _parsed_base, parsed_context = parse_parenthetical(signal.raw_value)
     if parsed_context:
         return _context_alias_key(parsed_context, context_alias_by_key), "parenthetical_context"
+    if signal.role_hint == 'work' and _production_work_scope(signal):
+        # Co-occurring work names are candidates for alias adjudication. They
+        # are not each other's enclosing franchise or series context.
+        return None, None
     return _infer_unique_context(signal, context_by_scope, context_alias_by_key=context_alias_by_key)
 
 
@@ -2262,6 +2297,12 @@ def _signal_blocking_keys(
         keys.add(alias_component)
     if signal.source_metadata_record_id is not None and signal.role_hint in {"character", "person", "unknown"}:
         keys.add(f"record_context:{signal.source_metadata_record_id}")
+    production_scope = (signal.evidence_payload or {}).get('production_candidate_scope')
+    if _production_work_scope(signal) and signal.role_hint in {'character', 'person', 'unknown', 'work'}:
+        # PX projections intentionally omit database IDs. Their versioned
+        # production adapter supplies the same logical work scope across
+        # pages and batches so co-occurrence candidates are not lost.
+        keys.add('record_context:' + production_scope)
     if signal.media_id is not None and signal.role_hint in {"character", "person", "unknown"}:
         keys.add(f"media_context:{signal.media_id}")
     return keys
@@ -2889,6 +2930,74 @@ def _cache_root(config: LLMAdjudicationConfig) -> Path:
     return DEFAULT_SOURCE_CONCEPT_LLM_CACHE_ROOT
 
 
+def _decision_input_key(summary: Mapping[str, Any]) -> str:
+    """Only opaque occurrence IDs differ; all decision-bearing fields remain."""
+    sides = [{key:value for key,value in summary[side].items() if key != 'signal_key'} for side in ('left','right')]
+    return value_hash(sorted(sides,key=lambda row:json.dumps(row,sort_keys=True,ensure_ascii=False)),40)
+
+
+def _pair_budget_identity(config, metadata, decision_input_key):
+    key='decision-input:'+decision_input_key if config.semantic_cache_reuse else metadata['cache_key']
+    if config.prompt_version==PRODUCTION_PAIR_PROMPT_VERSION:
+        # New instructions require new-version answers, but cannot reset the
+        # three-attempt lifetime of the same source question. Legacy A2 calls
+        # used this logical identity directly as their reservation key.
+        logical='decision-input:'+decision_input_key
+        return key+':prompt:'+config.prompt_version,(logical,)
+    return key,()
+
+
+def _pair_system_instructions(config):
+    text=("You are adjudicating unconfirmed source-layer name signals. "
+        "Return JSON only with keys decision, confidence, and optional reason_code. "
+        "decision must be must_link, cannot_link, or needs_review. "
+        "Do not create Entity truth. Do not include chain-of-thought.")
+    if config.prompt_version==PRODUCTION_PAIR_PROMPT_VERSION:
+        text+=(" Judge semantic identity, not string equality. canonical_key and surface_key "
+            "are normalized spellings, not authoritative identity IDs. Different names, scripts, "
+            "translations, transliterations, or established aliases can refer to the same identity. "
+            "The source role hints character and person are compatible; their difference alone "
+            "does not establish distinct identities. Use recognized name knowledge together with "
+            "the supplied work context; do not invent missing source context. A shared work or "
+            "co-occurrence alone does not establish sameness, and ambiguous titles or nicknames "
+            "may refer to several identities. cannot_link requires support for distinct identities, "
+            "not merely different canonical keys, names, or compatible role hints. Return "
+            "needs_review when identity evidence is insufficient or ambiguous. Keep source titles "
+            "as context rather than promoting them into character identity. Give a brief reason_code "
+            "for the identity basis, without private reasoning or additional names.")
+    return text
+
+
+def _compatible_decision_cache(config: LLMAdjudicationConfig) -> dict[str, Any]:
+    if not config.semantic_cache_reuse:
+        return {}
+    expected={'resolver_version':RESOLVER_VERSION,'adjudication_policy_version':config.adjudication_policy_version,
+        'prompt_template_version':config.prompt_version,'decision_schema_version':config.decision_schema_version,
+        'cache_policy_version':config.cache_policy_version,'provider_policy_version':LLM_PROVIDER_POLICY_VERSION,
+        'provider_model':config.model_label,'compatible_for_exact_reuse':True}
+    records={}
+    for root in sorted({_cache_root(config),*(Path(path) for path in config.semantic_cache_dirs)}):
+        for path in sorted([*(root/'records').glob('*.json'),*(root/'response-recovery').glob('*.json')]):
+            try:
+                record=json.loads(path.read_text(encoding='utf-8'))
+                if record.get('error_state') or any(record.get(k)!=v for k,v in expected.items()):
+                    continue
+                key=_decision_input_key(record['input_signal_summary'])
+            except OSError as exc:
+                raise RuntimeError('adjudication_cache_read_failed') from exc
+            except (ValueError,TypeError,KeyError):
+                continue
+            if key in records and (records[key] is None or
+                (llm_public_decision(records[key].get('decision')),
+                 source_confidence_score(records[key].get('confidence'),0.5)) !=
+                (llm_public_decision(record.get('decision')),
+                 source_confidence_score(record.get('confidence'),0.5))):
+                records[key]=None  # Disagreeing old answers are not reusable.
+            else:
+                records[key]=record
+    return records
+
+
 def _legacy_cache_dirs(config: LLMAdjudicationConfig, durable_root: Path) -> list[Path]:
     dirs: list[Path] = []
     for raw in config.legacy_cache_dirs:
@@ -2911,7 +3020,10 @@ def _legacy_cache_dirs(config: LLMAdjudicationConfig, durable_root: Path) -> lis
 def _atomic_write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(f".{path.name}.{time.time_ns()}.tmp")
-    tmp_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    with tmp_path.open('x',encoding='utf-8') as stream:
+        json.dump(payload,stream,ensure_ascii=False,indent=2,sort_keys=True)
+        stream.flush()
+        os.fsync(stream.fileno())
     tmp_path.replace(path)
 
 
@@ -3127,6 +3239,8 @@ def _write_failure_cache_record(
     config: LLMAdjudicationConfig,
     provider_summary: Mapping[str, Any],
     error_type: str,
+    response_payload: Any = None,
+    error_code: str | None = None,
 ) -> None:
     paths = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))
     _atomic_write_json(
@@ -3149,6 +3263,8 @@ def _write_failure_cache_record(
             "run_id": config.run_id,
             "compatible_for_exact_reuse": False,
             "error_state": {"type": error_type},
+            "error_code": error_code,
+            "provider_response_private": response_payload,
             "raw_private_payload_label": "source-concept-llm-cache-private-failure",
             "redacted_public_summary": {"error_type": error_type, "source_layer_only": True},
             "left_signal_key": block_payload["left"]["signal_key"],
@@ -3163,15 +3279,17 @@ def _load_exact_cache_record(
     metadata: Mapping[str, Any],
     config: LLMAdjudicationConfig,
 ) -> Mapping[str, Any] | None:
-    path = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))["record"]
-    if not path.exists():
-        return None
-    try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if isinstance(record, Mapping) and _cache_record_is_exact_compatible(record, metadata=metadata, config=config):
-        return record
+    primary = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))["record"]
+    for path in (primary,root/'response-recovery'/primary.name):
+        if not path.exists():continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise RuntimeError('adjudication_cache_read_failed') from exc
+        except Exception:
+            continue
+        if isinstance(record, Mapping) and _cache_record_is_exact_compatible(record, metadata=metadata, config=config):
+            return record
     return None
 
 
@@ -3208,16 +3326,19 @@ def inspect_llm_adjudication_cache_coverage(
     *,
     signals: Sequence[SourceConceptSignalDraft],
     config: LLMAdjudicationConfig,
+    _decision_cache: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     selected_edges = select_llm_adjudication_edges(edges, signals=signals, config=config)
     signal_by_key = {signal.signal_key: signal for signal in signals}
     context_alias_by_key = _context_equivalence_lookup(signals)
     context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
     root = _cache_root(config)
+    decision_cache = _compatible_decision_cache(config) if _decision_cache is None else _decision_cache
     legacy_dirs = _legacy_cache_dirs(config, root)
     exact_hits = 0
     legacy_hits = 0
     semantic_prior = 0
+    semantic_hits = 0
     missing = 0
     for edge in selected_edges:
         left = signal_by_key.get(edge.left_signal_key)
@@ -3242,6 +3363,9 @@ def inspect_llm_adjudication_cache_coverage(
         if _legacy_cache_record(legacy_dirs=legacy_dirs, legacy_fingerprint=legacy_fingerprint):
             legacy_hits += 1
             continue
+        if decision_cache.get(_decision_input_key(block_payload)):
+            semantic_hits += 1
+            continue
         semantic_prior += _semantic_prior_count(
             root,
             pair_identity=str(metadata["pair_identity"]),
@@ -3256,7 +3380,8 @@ def inspect_llm_adjudication_cache_coverage(
         "selected_pair_count": len(selected_edges),
         "exact_compatible_cache_hit_count": exact_hits,
         "legacy_compatible_cache_hit_count": legacy_hits,
-        "compatible_cache_hit_count": exact_hits + legacy_hits,
+        "compatible_cache_hit_count": exact_hits + legacy_hits + semantic_hits,
+        "same_decision_input_cache_hit_count": semantic_hits,
         "semantic_prior_judgment_count": semantic_prior,
         "missing_pair_count": missing,
     }
@@ -3366,6 +3491,7 @@ def _llm_must_link_guard(
         return False, "work_context_conflict", payload
     same_scope = (
         (left.media_id is not None and left.media_id == right.media_id)
+        or (_production_work_scope(left) is not None and _production_work_scope(left) == _production_work_scope(right))
         or (
             left.source_metadata_record_id is not None
             and left.source_metadata_record_id == right.source_metadata_record_id
@@ -3430,6 +3556,8 @@ def _llm_must_link_guard(
             return True, None, payload
     short_without_context = (
         not (left_context or right_context)
+        and not (left.role_hint == right.role_hint == 'work'
+                 and _production_work_scope(left) and _production_work_scope(right))
         and (
             (left_surface and _surface_is_ambiguous(left_surface, ambiguity_profiles))
             or (right_surface and _surface_is_ambiguous(right_surface, ambiguity_profiles))
@@ -3831,14 +3959,15 @@ def run_bounded_llm_adjudication(
     if not config.enabled:
         return [], {"used": False, "plan": asdict(plan), "reason": "disabled"}
     selected_edges = select_llm_adjudication_edges(edges, signals=signals, config=config)
-    coverage = inspect_llm_adjudication_cache_coverage(edges, signals=signals, config=config)
+    decision_cache = _compatible_decision_cache(config)
+    coverage = inspect_llm_adjudication_cache_coverage(edges, signals=signals, config=config,_decision_cache=decision_cache)
     selected_count = max(1, len(selected_edges))
     projected_new_call_cost_usd = round(
         float(plan.projected_cost_usd) * (int(coverage.get("missing_pair_count", 0) or 0) / selected_count),
         6,
     )
     emergency_ceiling_blocked = "llm_emergency_call_ceiling_exceeded" in str(plan.reason or "")
-    budget_blocked_after_cache = projected_new_call_cost_usd > config.max_budget_usd
+    budget_blocked_after_cache = not config.task_budget_path and projected_new_call_cost_usd > config.max_budget_usd
     if plan.status == "blocked" and (emergency_ceiling_blocked or budget_blocked_after_cache):
         return [], {
             "used": False,
@@ -3857,6 +3986,12 @@ def run_bounded_llm_adjudication(
         }
     if not selected_edges:
         return [], {"used": False, "plan": asdict(plan), "reason": "no_eligible_pairs"}
+    budget = None
+    if config.task_budget_path:
+        from .source_concept_budget import AdjudicationBudget
+        budget = AdjudicationBudget(config.task_budget_path, model=config.model_label,
+            cap_usd=config.max_budget_usd, input_per_million=config.input_price_per_million,
+            output_per_million=config.output_price_per_million)
     provider = None
     provider_summary: dict[str, Any] = {
         "provider_mode": "primary_openai",
@@ -3869,7 +4004,8 @@ def run_bounded_llm_adjudication(
         if provider is None:
             if config.fail_if_unavailable:
                 raise RuntimeError(f"llm_provider_unavailable:{provider_summary.get('unavailable_reason')}")
-            return [], {"used": False, "plan": asdict(plan), "provider": provider_summary, "reason": "provider_unavailable"}
+            if not config.task_budget_path:
+                return [], {"used": False, "plan": asdict(plan), "provider": provider_summary, "reason": "provider_unavailable"}
 
     durable_cache_root = _cache_root(config)
     durable_cache_root.mkdir(parents=True, exist_ok=True)
@@ -3881,9 +4017,13 @@ def run_bounded_llm_adjudication(
     errors: list[dict[str, Any]] = []
     cache_hits = 0
     exact_cache_hits = 0
+    semantic_cache_hits = 0
     legacy_cache_imports = 0
     cache_misses = 0
     provider_successes = 0
+    dispatched_calls = 0
+    budget_blocked_pairs = []
+    provider_pause = config.provider_pause_state if config.provider_pause_state is not None else {}
     durable_cache_write_successes = 0
     semantic_prior_count = int(coverage.get("semantic_prior_judgment_count", 0) or 0)
     provider_identity = {
@@ -3910,8 +4050,17 @@ def run_bounded_llm_adjudication(
             block_payload=block_payload,
         )
         metadata = llm_cache_metadata(block_payload, config=config)
+        decision_input_key = _decision_input_key(block_payload)
+        admission_key,logical_keys = _pair_budget_identity(config,metadata,decision_input_key)
         exact_record = _load_exact_cache_record(durable_cache_root, metadata=metadata, config=config)
         if exact_record is not None:
+            if budget:
+                saved=exact_record.get('budget_response')
+                if saved:
+                    budget.recover_response(key=saved['key'],reservation=saved['reservation'],
+                        usage=saved['usage'],business_valid=True)
+                else:
+                    budget.recover_response(key=admission_key,usage={},business_valid=True)
             cache_hits += 1
             exact_cache_hits += 1
             cached = _judgment_from_cache_record(
@@ -3947,16 +4096,32 @@ def run_bounded_llm_adjudication(
             cached["legacy_cache_imported"] = True
             judgments.append(cached)
             continue
+        compatible = decision_cache.get(decision_input_key)
+        if compatible:
+            if budget and compatible.get('budget_response'):
+                saved=compatible['budget_response']
+                budget.recover_response(key=saved['key'],reservation=saved['reservation'],
+                    usage=saved['usage'],business_valid=True)
+            cached = _judgment_from_cache_record(compatible,block_payload=block_payload,
+                selected_pair_id=selected_pair_id,cache_status='hit',reuse_level='same_decision_input_new_occurrence')
+            migrated = _durable_cache_record_from_judgment(cached,metadata=metadata,block_payload=block_payload,
+                config=config,provider_summary=provider_summary,provider_model=compatible['provider_model'])
+            migrated['reused_from_cache_key']=compatible['cache_key']
+            _write_durable_cache_record(durable_cache_root,migrated)
+            cached.update(cache_key=metadata['cache_key'],judgment_id=metadata['cache_key'])
+            judgments.append(cached)
+            cache_hits += 1
+            semantic_cache_hits += 1
+            durable_cache_write_successes += 1
+            continue
         cache_misses += 1
+        if budget and provider_pause.get('reason'):
+            budget_blocked_pairs.append({'cache_key':metadata['cache_key'],'reason':provider_pause['reason']})
+            continue
         messages = [
             {
                 "role": "system",
-                "content": (
-                    "You are adjudicating unconfirmed source-layer name signals. "
-                    "Return JSON only with keys decision, confidence, and optional reason_code. "
-                    "decision must be must_link, cannot_link, or needs_review. "
-                    "Do not create Entity truth. Do not include chain-of-thought."
-                ),
+                "content": _pair_system_instructions(config),
             },
             {
                 "role": "user",
@@ -3971,14 +4136,40 @@ def run_bounded_llm_adjudication(
                 ),
             },
         ]
+        reservation = None
+        response = None
+        durable_record = None
+        if budget:
+            from .source_concept_budget import AdjudicationBudgetBlocked
+            if provider is None:
+                budget_blocked_pairs.append({'cache_key':metadata['cache_key'],'reason':'primary_provider_unavailable'})
+                continue
+            if getattr(provider, 'model', None) != config.model_label:
+                raise RuntimeError('adjudication_actual_model_mismatch')
+            # Admission is durable before dispatch. A process crash retains
+            # its reservation and prevents an automatic duplicate charge.
+            try:
+                reservation = budget.reserve(admission_key, messages,logical_keys=logical_keys)
+            except AdjudicationBudgetBlocked as exc:
+                budget_blocked_pairs.append({'cache_key':metadata['cache_key'],'reason':str(exc)})
+                continue
+            provider.last_usage = {}
         try:
             if provider is None:
                 provider, provider_summary = primary_openai_provider_from_settings()
                 if provider is None:
                     raise RuntimeError(f"llm_provider_unavailable:{provider_summary.get('unavailable_reason')}")
+            dispatched_calls += 1
             response = _run_async_json(provider, messages)
-            if isinstance(response, list):
-                response = response[0] if response else {}
+            if budget:
+                provider_pause['transport_failures'] = 0
+            if isinstance(response,list) and (not budget or len(response)==1):
+                response=response[0] if response else {}
+            normalized_confidence = source_confidence_score(response.get('confidence'),None) if isinstance(response,Mapping) else None
+            if budget and (not isinstance(response, Mapping) or response.get('decision') not in {'must_link','cannot_link','needs_review'}
+                or isinstance(response.get('confidence'),bool) or normalized_confidence is None
+                or not math.isfinite(normalized_confidence) or not 0 <= normalized_confidence <= 1):
+                raise ValueError('adjudication_response_schema_invalid')
             if not isinstance(response, Mapping):
                 response = {}
             decision = str(response.get("decision") or "needs_review").lower()
@@ -4016,18 +4207,51 @@ def run_bounded_llm_adjudication(
                 provider_summary=provider_summary,
                 provider_model=getattr(provider, "model", None),
             )
+            if budget:
+                durable_record['budget_response']={**budget.response_identity(reservation),
+                    'usage':dict(getattr(provider,'last_usage',{}))}
             _write_durable_cache_record(durable_cache_root, durable_record)
+            if config.semantic_cache_reuse:
+                decision_cache[decision_input_key]=durable_record
+            if budget:
+                completed_reservation = reservation
+                reservation = None
+                budget.settle(completed_reservation, getattr(provider,'last_usage',{}), success=True)
             provider_successes += 1
             durable_cache_write_successes += 1
             judgments.append(judgment)
         except Exception as exc:  # pragma: no cover - provider failures are environment dependent
+            if budget and durable_record is not None and durable_record.get('budget_response'):
+                # The provider already returned a validated business answer.
+                # Preserve its exact response/attempt identity outside the
+                # failed publication path, leave the reservation recoverable,
+                # and stop instead of recording a model failure or retrying.
+                try:
+                    _atomic_write_json(durable_cache_root/'response-recovery'/f'{metadata["cache_key"]}.json',durable_record)
+                except OSError as recovery_error:
+                    raise RuntimeError('adjudication_valid_response_recovery_persistence_failed') from recovery_error
+                raise RuntimeError('adjudication_valid_response_persistence_failed') from exc
+            if budget and reservation:
+                budget.settle(reservation, getattr(provider,'last_usage',{}), success=False)
+            if budget and isinstance(exc,AdjudicationBudgetBlocked):
+                raise
+            if budget:
+                from .llm_translation_provider import LLMHTTPStatusError, LLMTransportError
+                if isinstance(exc,LLMHTTPStatusError) and exc.status_code in {401,403,429}:
+                    provider_pause['reason']='adjudication_provider_authentication_or_rate_limit'
+                elif isinstance(exc,(LLMTransportError,TimeoutError)):
+                    provider_pause['transport_failures']=provider_pause.get('transport_failures',0)+1
+                    if provider_pause['transport_failures']>=3:
+                        provider_pause['reason']='adjudication_provider_repeated_transport_failure'
             _write_failure_cache_record(
                 durable_cache_root,
                 metadata=metadata,
                 block_payload=block_payload,
                 config=config,
-                provider_summary=provider_summary,
+                provider_summary={**provider_summary,'model_name':getattr(provider,'model',None)},
                 error_type=type(exc).__name__,
+                response_payload=response,
+                error_code=str(exc) if isinstance(exc,ValueError) else type(exc).__name__,
             )
             error = {
                 "judgment_id": metadata["cache_key"],
@@ -4056,6 +4280,7 @@ def run_bounded_llm_adjudication(
                 raise
     return judgments, {
         "used": bool(judgments),
+        "same_decision_input_cache_hit_count": semantic_cache_hits,
         "plan": asdict(plan),
         "provider": provider_identity,
         "selected_pair_count": len(selected_edges),
@@ -4065,7 +4290,7 @@ def run_bounded_llm_adjudication(
         "cache_misses": cache_misses,
         "exact_compatible_cache_hit_count": exact_cache_hits,
         "legacy_compatible_cache_import_count": legacy_cache_imports,
-        "new_provider_call_count": cache_misses,
+        "new_provider_call_count": dispatched_calls,
         "new_provider_success_count": provider_successes,
         "failed_provider_call_count": len(errors),
         "remaining_missing_pair_count": max(0, len(selected_edges) - cache_hits - provider_successes),
@@ -4082,6 +4307,9 @@ def run_bounded_llm_adjudication(
         "cost_avoided_by_cache_reuse_usd": round(float(plan.projected_cost_usd) * (cache_hits / selected_count), 6),
         "estimated_cost_this_run_usd": round(float(plan.projected_cost_usd) * (cache_misses / selected_count), 6),
         "cache_dir_public": "[private]",
+        "task_budget": budget.summary() if budget else None,
+        "budget_blocked_pairs": budget_blocked_pairs,
+        "provider_pause_reason": provider_pause.get('reason') if budget else None,
     }
 
 
@@ -4097,6 +4325,9 @@ def _infer_unique_context(
         contexts.update(context_by_scope.get(("record", signal.source_metadata_record_id), set()))
     if signal.media_id is not None:
         contexts.update(context_by_scope.get(("media", signal.media_id), set()))
+    production_scope = _production_work_scope(signal)
+    if production_scope:
+        contexts.update(context_by_scope.get(("production_work", production_scope), set()))
     contexts = {_context_alias_key(context, context_alias_by_key) or context for context in contexts}
     contexts.discard(_context_alias_key(signal.canonical_key, context_alias_by_key) or "")
     if len(contexts) == 1:
@@ -4238,7 +4469,10 @@ def resolve_source_concepts(
     run_id: str,
     llm_config: LLMAdjudicationConfig | None = None,
     llm_judgments: Sequence[Mapping[str, Any]] | None = None,
+    concept_namespace: str | None = None,
 ) -> SourceConceptResolutionResult:
+    if concept_namespace is not None and not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", concept_namespace):
+        raise ValueError("source_concept_namespace_invalid")
     context_alias_by_key, context_equivalence_diagnostics = _context_equivalence_analysis(signals)
     context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
     alias_component_by_key = _alias_component_lookup(signals)
@@ -4340,6 +4574,10 @@ def resolve_source_concepts(
             context_alias_by_key=context_alias_by_key,
             ambiguity_profiles=ambiguity_profiles,
         )
+        if concept_namespace is not None:
+            # Physical support ownership is distinct from semantic identity.
+            # One fixed consumer namespace spans every batch and generation.
+            concept_key = _concept_key_from_parts(concept_namespace, concept_key)
         concept_items.append((concept_key, ordered_signals, tuple(component_edges.get(root, []))))
     concept_key_counts = Counter(concept_key for concept_key, _signals, _edges in concept_items)
     if any(count > 1 for count in concept_key_counts.values()):

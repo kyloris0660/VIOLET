@@ -218,6 +218,7 @@ def check_and_migrate_schema(engine):
         migrate_add_source_concept_product_media_bindings,
         migrate_add_source_binding_revisions,
         migrate_add_source_concept_fallback_search_index,
+        migrate_add_source_concept_withdrawal_indexes,
         migrate_add_dynamic_library_sync_tables,
     ]
     
@@ -1407,6 +1408,45 @@ def migrate_add_source_concept_fallback_search_index(engine, inspector):
         ):
             conn.execute(text(statement))
         conn.commit()
+
+
+def migrate_add_source_concept_withdrawal_indexes(engine, inspector):
+    """Repair model-declared FK indexes omitted by legacy source migrations.
+
+    Owned withdrawal deletes many concepts/signals in one guarded transaction.
+    Without leading child indexes, PostgreSQL's FK triggers repeatedly scan
+    unrelated consumers' rows even after this run's children have been removed.
+    Only existing source-layer tables receive non-unique model indexes.
+    """
+    from sqlalchemy import inspect
+    from .models import (
+        SourceConceptEvidence, SourceConceptFallbackSearchIndex,
+        SourceConceptSignal, SourceConceptSignalLink,
+    )
+
+    lookups = (
+        (SourceConceptSignalLink, 'concept_id'),
+        (SourceConceptEvidence, 'signal_id'),
+        (SourceConceptSignal, 'resolution_run_id'),
+        (SourceConceptFallbackSearchIndex, 'source_signal_id'),
+        (SourceConceptFallbackSearchIndex, 'neighbor_signal_id'),
+    )
+    with engine.begin() as conn:
+        # The startup inspector can predate tables created by earlier steps.
+        current = inspect(conn)
+        for model, column in lookups:
+            table = model.__table__
+            if not current.has_table(table.name):
+                continue
+            # PostgreSQL can truncate generated names. Match the access path
+            # from the catalog instead of checking its untruncated model name.
+            if any(item['column_names'] == [column] and not item['unique']
+                   for item in current.get_indexes(table.name)):
+                continue
+            index = next(item for item in table.indexes
+                         if [part.name for part in item.columns] == [column]
+                         and not item.unique)
+            index.create(bind=conn, checkfirst=True)
 
 
 def migrate_add_external_tag_category_lookup_cache(engine, inspector):

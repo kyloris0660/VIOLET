@@ -1,10 +1,10 @@
 # Current Mainline Roadmap
 
-<!-- CURRENT_PHASE: PRODUCTION-IMPORT-RECOVERY -->
+<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A2 -->
 
-当前路线为生产导入可靠性修复与实际恢复，依据28号任务执行。PR #151 已接受并合并；A1报告与契约为历史工程证据。
-三个连续步骤和授权见 `docs/plans/production-import-recovery.md`。当前状态只以 `docs/state/current-phase.json` 为准。
-负责人复审与合并、候选部署和长期启动入口分别核实；执行代理不合并、不推 main、不追加 reviewer。不启动 Pixiv A2/A3。
+当前路线为已正式授权的A2：固定全量Pixiv metadata与完整概念链进入原生产。PR #151与#152已接受并合并，39号发布对齐已完成。
+三个连续步骤见`docs/plans/production-pixiv-a2.md`；唯一当前状态为`docs/state/current-phase.json`。
+43号授权下A2所有批次累计上限USD 30，原USD 9.998387消费及调用身份保留；不合并、不推main、不触发额外reviewer、不进入A3。历史报告和原工程证据保留。
 
 ## 历史 PX3 基线记录
 

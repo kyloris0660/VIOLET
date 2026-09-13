@@ -125,6 +125,9 @@ def _validated_input_selection(
 ) -> dict[str, Any] | None:
     if selection is None:
         return None
+    if selection.get('schema_version') == 'violet.production-pixiv-fixed-scope-selection.v1':
+        from .production_pixiv_service import validate_scope_selection
+        return validate_scope_selection(run, selection)
     payload = dict(selection)
     supplied_fingerprint = payload.pop("canonical_fingerprint", None)
     percentage = payload.get("percentage")
@@ -286,8 +289,11 @@ def _product_business_projection(
     source_mode: str,
     input_selection: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if source_mode not in {"repository_synthetic", "existing_source_metadata"}:
+    if source_mode not in {"repository_synthetic", "existing_source_metadata", "production_scope"}:
         raise PixivProductIntegrationError("px3_source_mode_invalid")
+    formal = (input_selection or {}).get('schema_version') == 'violet.production-pixiv-fixed-scope-selection.v1'
+    if (source_mode == 'production_scope') != formal:
+        raise PixivProductIntegrationError('production_pixiv_scope_selection_required')
     if run.invariants.get("all_input_bundles_accounted") is not True:
         raise PixivProductIntegrationError("px3_px2_input_accounting_invalid")
     if run.invariants.get("all_candidate_pairs_accounted") is not True:
@@ -315,14 +321,14 @@ def _product_business_projection(
         "resolver_version": RESOLVER_VERSION,
         "context_policy_version": PX2_CONTEXT_POLICY_VERSION,
         "candidate_policy_version": PX2_CANDIDATE_POLICY_VERSION,
-        "product_policy_version": PX3_POLICY_VERSION,
+        "product_policy_version": (input_selection['policy_version'] if source_mode == 'production_scope' else PX3_POLICY_VERSION),
         "clusters": list(clusters),
         "candidate_dispositions": list(candidates),
         "ambiguity_records": list(ambiguities),
     }
     validated_selection = _validated_input_selection(run, input_selection)
     if validated_selection is not None:
-        if source_mode != "existing_source_metadata":
+        if source_mode not in {"existing_source_metadata", "production_scope"}:
             raise PixivProductIntegrationError("px3_canary_selection_source_invalid")
         projection["input_selection"] = validated_selection
     assert_public_safe_projection(projection)
@@ -382,7 +388,7 @@ def build_pixiv_product_plan(
         "resolver_version": RESOLVER_VERSION,
         "context_policy_version": PX2_CONTEXT_POLICY_VERSION,
         "candidate_policy_version": PX2_CANDIDATE_POLICY_VERSION,
-        "product_policy_version": PX3_POLICY_VERSION,
+        "product_policy_version": business['product_policy_version'],
         "counts": counts,
         "clusters": business["clusters"],
         "candidate_dispositions": business["candidate_dispositions"],
@@ -408,6 +414,16 @@ def build_pixiv_product_plan(
     }
     if "input_selection" in business:
         plan["input_selection"] = business["input_selection"]
+    if source_mode == 'production_scope':
+        plan['schema_version'] = 'violet.production-pixiv-product-plan.v1'
+        plan['contract_id'] = 'production_pixiv_a2_v1'
+        plan['execution_boundary'] = {
+            'fixed_scope_required': True, 'atomic_owned_replacement': True,
+            'accepted_dry_run_required': True, 'source_revision_guard_required': True,
+            'backup_restore_before_original_apply': True,
+        }
+        plan['authorities'] = {'source_concept_support_only': True, 'confirmed_entity_write': False,
+                               'original_file_mutation': False, 'owner_acceptance_claimed': False}
     plan["canonical_fingerprint"] = canonical_fingerprint(plan)
     assert_public_safe_projection(plan)
     return plan
@@ -829,6 +845,7 @@ def apply_pixiv_product_plan(
     accepted_selection_fingerprint: str | None = None,
     accepted_product_fingerprint: str | None = None,
     accepted_binding_fingerprint: str | None = None,
+    commit: bool = True,
 ) -> dict[str, Any]:
     plan = build_pixiv_product_plan(
         run,
@@ -837,7 +854,9 @@ def apply_pixiv_product_plan(
         input_selection=input_selection,
     )
     with session.no_autoflush:
-        edges = plan_media_bindings(session, run, lock=apply)
+        fixed_media_ids = (input_selection or {}).get('fixed_media_ids') if source_mode == 'production_scope' else None
+        fixed_bindings = (input_selection or {}).get('fixed_bindings') if source_mode == 'production_scope' else None
+        edges = plan_media_bindings(session, run, lock=apply, media_ids=fixed_media_ids, fixed_bindings=fixed_bindings)
     plan['media_binding'] = binding_plan_summary(edges)
     selection_fingerprint = (
         input_selection['canonical_fingerprint'] if input_selection else
@@ -849,13 +868,13 @@ def apply_pixiv_product_plan(
     )
     if not apply:
         return plan
-    if source_mode == 'existing_source_metadata' or accepted_product_fingerprint is not None:
+    if source_mode in {'existing_source_metadata', 'production_scope'} or accepted_product_fingerprint is not None:
         if (accepted_selection_fingerprint != selection_fingerprint
             or accepted_product_fingerprint != plan['product_result_fingerprint']
             or accepted_binding_fingerprint != plan['media_binding']['local_binding_fingerprint']):
             raise PixivProductIntegrationError('px3_accepted_plan_mismatch')
-    if source_mode == 'existing_source_metadata' and session.query(SourceConceptProductRun.id).filter(
-        SourceConceptProductRun.source_mode == 'existing_source_metadata',
+    if source_mode in {'existing_source_metadata', 'production_scope'} and session.query(SourceConceptProductRun.id).filter(
+        SourceConceptProductRun.source_mode.in_(['existing_source_metadata', 'production_scope']),
         SourceConceptProductRun.status == 'active',
         SourceConceptProductRun.run_key != plan['run_key'],
     ).first() is not None:
@@ -919,6 +938,8 @@ def apply_pixiv_product_plan(
     ).count() != 0
     preexisting_core = _core_business_snapshot(session, run)
     preexisting_count = sum(preexisting_core["counts"].values())
+    if source_mode == 'production_scope' and (preexisting_count or preexisting_resolution_run):
+        raise PixivProductIntegrationError('production_pixiv_unowned_core_collision')
     enriched = replace(
         run.resolution,
         summary={
@@ -936,7 +957,7 @@ def apply_pixiv_product_plan(
                 enriched.signals,
                 source_run_ids=[enriched.run_id],
             ),
-            run_label="scv2_px3_pixiv_product_integration",
+            run_label=("production_pixiv_fixed_scope" if source_mode == 'production_scope' else "scv2_px3_pixiv_product_integration"),
             commit=False,
         )
         if persistence.get("forbidden_truth_table_write_count") != 0:
@@ -950,7 +971,7 @@ def apply_pixiv_product_plan(
             "ambiguity_record_count": len(business["ambiguity_records"]),
         }
         receipt = {
-            "schema_version": PX3_OPERATION_RECEIPT_SCHEMA,
+            "schema_version": ("violet.production-pixiv-operation-receipt.v1" if source_mode == 'production_scope' else PX3_OPERATION_RECEIPT_SCHEMA),
             "receipt_scope": "single_api_apply_invocation",
             "mode": "apply",
             "scope_key": scope_key,
@@ -973,7 +994,7 @@ def apply_pixiv_product_plan(
         existing.status = "active"
         existing.resolver_run_id = run.resolution.run_id
         existing.resolver_version = RESOLVER_VERSION
-        existing.policy_version = PX3_POLICY_VERSION
+        existing.policy_version = business['product_policy_version']
         existing.input_fingerprint = run.consumer.input_fingerprint
         existing.result_fingerprint = plan["product_result_fingerprint"]
         existing.business_fingerprint = run.business_projection_fingerprint
@@ -1024,11 +1045,13 @@ def apply_pixiv_product_plan(
             raise PixivProductIntegrationError(
                 "px3_product_projection_persist_mismatch"
             )
-        session.commit()
+        if commit:
+            session.commit()
     except Exception:
         session.rollback()
         raise
-    invalidate_source_concept_search_cache()
+    if commit:
+        invalidate_source_concept_search_cache()
     applied = dict(plan)
     applied.update(
         {
@@ -1119,7 +1142,7 @@ def _rollback_ownership_fingerprint(session, product_run, *, allow_source_withdr
     return canonical_fingerprint(payload)
 
 
-def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]:
+def rollback_pixiv_product_run(session: Session, run_key: str, *, commit: bool = True) -> dict[str, Any]:
     row = session.query(SourceConceptProductRun).filter_by(run_key=run_key).one_or_none()
     if row is None:
         raise PixivProductIntegrationError("px3_product_run_not_found")
@@ -1208,8 +1231,12 @@ def rollback_pixiv_product_run(session: Session, run_key: str) -> dict[str, Any]
         "source_withdrawal_reconciled_count": len(guard.get('source_invalidations', [])),
         "forbidden_truth_table_write_count": 0,
     }
-    session.commit()
-    invalidate_source_concept_search_cache()
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+    if commit:
+        invalidate_source_concept_search_cache()
     result = {
         "run_key": row.run_key,
         "status": "rolled_back",
