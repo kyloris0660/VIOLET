@@ -157,6 +157,16 @@ def test_duplicate_quality_cases_cannot_pad_the_acceptance_count():
         recompute_quality(value,oracle)
 
 
+def test_old_missing_media_cannot_disappear_with_changed_source_projection():
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    baseline=copy.deepcopy(value)
+    baseline['cases'][0].update(passed=False,missing_recall_media_ids=[[12],[]])
+    with pytest.raises(ValueError,match='summary_disagrees_with_raw'):
+        recompute_quality(value,oracle,baseline=baseline)
+    for row in value['queries'].values():row['ids'].append(12)
+    assert recompute_quality(value,oracle,baseline=baseline)['failed_cases']==0
+
+
 @pytest.mark.parametrize('missing',['search_family','suggestion','creator'])
 def test_independent_nonidentity_oracles_require_each_case_without_baseline(missing):
     value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}

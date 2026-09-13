@@ -145,6 +145,10 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             shared=sides[0]['concepts']&sides[1]['concepts'];actual=[ids(quote(n)) for n in pair]
             decision=expected_pairs[pair]
             desired=[sides[0]['media']|sides[1]['media']]*2 if decision=='must_link' else [s['media'] for s in sides]
+            if decision=='must_link':
+                previous=next((r for r in (baseline or {}).get('cases',[]) if case_identity(r)==case_identity(case)),{})
+                frozen_missing={mid for missing in previous.get('missing_recall_media_ids',[]) for mid in missing}
+                desired=[want|frozen_missing for want in desired]
             passed=all(s['media'] for s in sides) and all(want<=got for want,got in zip(desired,actual))
             if decision=='must_link':passed=passed and bool(shared)
             elif decision=='cannot_link':
