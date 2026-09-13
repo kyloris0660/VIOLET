@@ -4,7 +4,7 @@
 
 当前状态以 docs/state/current-phase.json 为准。
 
-- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_TASK43_QUALITY_BLOCKED_DELIVERY_PACKAGING`。
+- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_TASK43_QUALITY_BLOCKED_PENDING_PROJECT_LEAD_REVIEW`。
 - 分支：`codex/production-pixiv-a2`；PR：`153`。
 - 已接受并合并基线：PR #152 / `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。
 - 工程目标完成：`False`；负责人接受：`pending_project_lead_review`。
@@ -22,7 +22,7 @@
 - 来源性能p95=315.834/max=834.689ms，240HTTP/720来源测量；副本与正常旧生产各3张真实媒体及chip/旧搜索/恢复页通过，代表截图已查看。
 - 639 passed/1 skipped和20 PostgreSQL passed绑定8f10418；历史4541/89/15保留，88非历史失败闭合，1项历史AI执行证据缺口不补造。
 - 普通启动预检发现原候选目录漂移，已备份并固定44db0da运行目录，普通EXE停止/启动与自动preflight/健康通过；原生产8623/66572、保护不变，新版未部署。
-- 完整注册契约实际失败且后续可独立门禁逐项执行；质量与新生产门禁未通过，target/safe_to_merge/route_approved均false。人工对照指南和操作恢复文档已生成，正在打包私有证据并更新同一PR153。
+- 完整注册契约实际失败且后续可独立门禁逐项执行；质量与新生产门禁未通过，target/safe_to_merge/route_approved均false。十例中文人工对照指南、操作恢复文档和私有审阅包已生成；上传包361164482 bytes、150505文件，完整档案726782423 bytes、150541文件，ZIP校验与10张指南图片引用通过。仅省去41个有索引的中间文件，完整档案及原失败保留。同一PR153已更新，测试/调试入口关闭，普通旧生产继续可用。
 
 ## 后续执行
 
