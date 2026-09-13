@@ -14,6 +14,15 @@ import subprocess
 ROOT=Path(__file__).resolve().parents[1]
 CONTRACT='production_pixiv_a2_v1'
 HISTORICAL_NODE='tests/test_phase45_scv2_sv1_controlled_scale_promotion_readiness.py::test_ai_accounting_keeps_original_and_current_invocation_separate'
+# The unique historical suite predates A2's two current-route test renames.
+# Other failed nodes must pass under their original identities; private JSON
+# cannot invent a remediation relationship.
+A2_ROUTE_TEST_RENAMES={
+    'tests/test_phase45_doc1_documentation_state.py::test_current_handoff_is_exact_a1_projection':
+        'tests/test_phase45_doc1_documentation_state.py::test_current_handoff_is_exact_a2_projection',
+    'tests/test_phase45_doc1_documentation_state.py::test_a1_state_and_active_docs_validate':
+        'tests/test_phase45_doc1_documentation_state.py::test_a2_state_and_active_docs_validate',
+}
 OPEN_STATES={'metadata_pending','metadata_retryable','normalization_failed','provider_identity_mismatch','unverified_source'}
 
 
@@ -82,6 +91,10 @@ def validation_evidence(private,record,candidate):
         require('missing_original_ai_execution_evidence' in evidence_path(private,record['non_e2e']['log']).read_text(encoding='utf-8'),'historical_reason')
     for failure in all_failures-known:
         mapped=record.get('node_mappings',{}).get(failure,{'nodes':[failure]})
+        if mapped.get('nodes')!=[failure]:
+            require(summary['non_e2e']['source_head']=='acc28adfb106ebafcfa0034607936e6da975af80'
+                and failure in A2_ROUTE_TEST_RENAMES and mapped.get('nodes')==[A2_ROUTE_TEST_RENAMES[failure]],
+                'unverified_remediation_node_mapping')
         require(set(mapped['nodes'])<=remediated and mapped['nodes'],'unresolved_full_suite_failure')
     summary['non_e2e']['known_historical_failures']=len(known)
     summary['non_e2e']['resolved_initial_failures']=len(all_failures-known)
@@ -116,6 +129,8 @@ def derive_result(private,repo=ROOT):
     require(timing['all_actual_http_request_intervals_verified'] is False
         and timing['ordinary_gaps_below_two_seconds']==1594 and timing['ordinary_gaps_below_1_99_seconds']==4
         and timing['minimum_wall_clock_dispatch_gap_seconds']==1.740068,'accepted_historical_timing_gap_retained')
+    from scripts.production_pixiv_a2_evidence import verify_forward_metadata_spacing
+    forward_spacing=verify_forward_metadata_spacing((private/'metadata-dispatch-private.jsonl').read_bytes(),timing)
     from app.services.source_concept_budget import AdjudicationBudget
     ledger=read(private,'llm-budget-private.json')
     cap=ledger['cap_microusd']/1000000
@@ -156,7 +171,7 @@ def derive_result(private,repo=ROOT):
         and all(r['valid_bindings_after_mutation']==0 and r.get('valid_bindings_after_rollback')==source['valid_bindings_before']
             and r.get('original_revision')==r.get('restored_revision') for r in source['cases']),'raw_source_recovery')
     browser=read(private,manifest['browser']);launch=read(private,manifest['launcher'])
-    from scripts.production_pixiv_a2_evidence import verify_browser_actions,verify_launcher_action
+    from scripts.production_pixiv_a2_evidence import verify_browser_actions,verify_launcher_action,recorded_code_root_matches
     browser_actions=verify_browser_actions(browser)
     verify_launcher_action(launch,repo,head)
     require(browser['candidate_head']==launch['candidate_head']==head and browser['api_result_sets_verified'],'fresh_browser_candidate')
@@ -164,7 +179,7 @@ def derive_result(private,repo=ROOT):
         and launch['database']==backup['database'] and launch['healthy'],'launcher_identity')
     actual_identity=launch.get('server_identity',{})
     require(actual_identity.get('pid')==launch['after_pid'] and actual_identity.get('db_name')==backup['database']
-        and Path(actual_identity.get('code_root','')).resolve()==repo,'launcher_actual_service_identity')
+        and recorded_code_root_matches(actual_identity.get('code_root'),repo),'launcher_actual_service_identity')
     images=[i for page in browser.get('pages',[]) for i in page.get('images',[])]
     originals=[i for i in images if re.search(r'/api/media/\d+/file',i.get('src','')) and i.get('width',0)>0 and i.get('height',0)>0]
     thumbnails=[i for i in images if '/thumbnail' in i.get('src','') and i.get('width',0)>0 and i.get('height',0)>0]
@@ -173,7 +188,7 @@ def derive_result(private,repo=ROOT):
         require((private/name).is_file() and (private/name).stat().st_size>1000,'browser_screenshot')
     quality=read(private,manifest['quality']);workload=read(private,manifest['workload'])
     require(quality['candidate_head']==workload['candidate_head']==head,'quality_candidate')
-    from scripts.production_pixiv_a2_evidence import recompute_quality,latency_statistics
+    from scripts.production_pixiv_a2_evidence import recompute_quality,recompute_workload
     quality_actual=recompute_quality(quality,read(private,quality['oracle_input']),
         suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'),
         creator_oracle=read(private,'independent-creator-homonym-oracle-private.json'),
@@ -182,8 +197,8 @@ def derive_result(private,repo=ROOT):
         and quality_actual['failed_cases']==0,'independent_quality')
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
     baseline=read(private,manifest['workload_baseline'])
-    source_latency=latency_statistics(workload['source_layer_measurements'])
-    http_latency=latency_statistics(workload['queries'])
+    frozen_workload=[json.loads(line) for line in (private/'accepted-240-query-workload-private.jsonl').read_text(encoding='utf-8').splitlines()]
+    source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload)
     require(source_latency==workload['accepted_source_layer_latency_ms'] and http_latency==workload['latency_ms'],'query_statistics')
     p95_gate=750
     require(source_latency['p95_ms']<=p95_gate and source_latency['max_ms']<=3000,'full_scale_source_search_performance')
@@ -201,6 +216,7 @@ def derive_result(private,repo=ROOT):
         'browser':{**{key:browser[key] for key in ('originals_loaded','thumbnails_loaded')},**browser_actions},
         'launcher':{'new_process':True,'apply_enabled':launch['apply_enabled']},'validation':validation,
         'recovery':{'independent_restore':True,'owned_rollback_replay':True,'independent_support_preserved':True,'batch_business_equivalent':True,
+            'forward_metadata_spacing':forward_spacing,
             'historical_http_spacing_evidence':'Lead accepted task 43 exception; not reconstructable',
             'historical_command_gaps_below_two_seconds':1594,'historical_minimum_command_gap_seconds':1.740068}}
     check_public_result(value,root=repo)

@@ -322,6 +322,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 'temperature':saved['temperature'],'max_tokens':saved['max_tokens']})
             if expected!=saved['input_fingerprint']:raise ValueError('role_raw_question_identity_mismatch')
             groups=[SourceCandidateInputGroup(**row) for row in saved['request_groups']]
+            current=_production_messages(extraction_messages(groups))
+            if current!=saved['request_messages']:raise ValueError('role_raw_current_prompt_mismatch')
         else:
             rows=json.loads(saved['content'])['records']
             groups=[self.units[row['group_key']].unit_group for row in rows]

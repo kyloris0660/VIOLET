@@ -33,6 +33,11 @@ def verify_browser_actions(browser):
     return {'fullscreen_samples':len(opened),'search_dom_api_equal':True,'old_tag_dom_api_equal':True,'recovery_read_observed':True}
 
 
+def recorded_code_root_matches(value,repo):
+    from pathlib import Path
+    return isinstance(value,str) and bool(value.strip()) and Path(value).is_absolute() and Path(value).resolve()==Path(repo).resolve()
+
+
 def verify_launcher_action(launch,repo,candidate):
     from pathlib import Path
     entry=launch.get('normal_entry_invocation',{});process=launch.get('server_process_at_action',{})
@@ -48,7 +53,7 @@ def verify_launcher_action(launch,repo,candidate):
     if (profile.get('candidate_head')!=candidate or profile.get('pixiv_product_enabled') is not True
         or profile.get('pixiv_product_apply_enabled') is not False
         or profile.get('database')!=launch['database']
-        or Path(profile.get('code_root','')).resolve()!=Path(repo).resolve()
+        or not recorded_code_root_matches(profile.get('code_root'),repo)
         or not re.fullmatch('[a-f0-9]{64}',profile.get('sha256',''))):
         raise ValueError('a2_launcher_profile_observation_changed')
     return True
@@ -106,6 +111,23 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
         entry=names.setdefault(key(raw),{'concepts':set(),'media':set()})
         entry['concepts'].add(concept);entry['media'].add(media)
     expected_pairs={tuple(sorted(key(n) for n in row['names'])):row['expected'] for row in oracle['identity_pairs']}
+    def case_identity(case):
+        if 'expected' in case and 'names' in case:
+            return ('identity',*sorted(key(n) for n in case['names']))
+        category=case['category']
+        if category=='accepted_search_equivalence_only':return ('search_family',case['accepted_family_id'])
+        if category in {'media_set_AND','media_set_negative'}:return (category,*map(key,case['names']))
+        if category.startswith('suggestion_'):return ('suggestion',case['media_id'],case['kind'])
+        if 'expected_account_union_media_ids' in case:return ('creator',case['query'])
+        raise ValueError('a2_quality_case_recomputation_unavailable')
+    actual_case_ids=[case_identity(c) for c in quality['cases']]
+    if len(set(actual_case_ids))!=len(actual_case_ids):raise ValueError('a2_quality_case_duplicate')
+    required_cases={case_identity(c) for c in (baseline or {}).get('cases',[])}
+    required_cases.update(('search_family',r['family_id']) for r in oracle.get('search_only_families',[]))
+    required_cases.update(('creator',r['query']) for r in (creator_oracle or {}).get('selected_families',[]))
+    required_cases.update(('suggestion',r['media_id'],kind) for r in (suggestion_oracle or {}).get('samples',[])
+        for kind in ('suggested_positive','suggested_negative','accepted_positive_control'))
+    if not required_cases<=set(actual_case_ids):raise ValueError('a2_quality_case_missing')
     queries=quality['queries'];results=[];seen=set()
     import json
     quote=lambda n:json.dumps(n,ensure_ascii=False)
@@ -140,6 +162,11 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             passed=desired==actual
         elif category=='accepted_search_equivalence_only':
             family=next(r for r in oracle['search_only_families'] if r['family_id']==case['accepted_family_id'])
+            previous=next((r for r in (baseline or {}).get('cases',[]) if case_identity(r)==case_identity(case)),None)
+            sample_ids=[r['media_id'] for r in case['samples']]
+            if (len(set(sample_ids))!=len(sample_ids) or previous is not None
+                and set(sample_ids)!={r['media_id'] for r in previous['samples']}):
+                raise ValueError('a2_frozen_search_samples_changed')
             checks=[[ids(f'id:{s["media_id"]} '+quote(n)) for n in family['names']] for s in case['samples']]
             passed=bool(checks) and all(all(x=={sample['media_id']} for x in row)
                 for sample,row in zip(case['samples'],checks))
@@ -165,7 +192,8 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             for account in accounts:
                 missing=source[account['provider_creator_id']]-set(account['bound_media_ids'])
                 if missing!=set(account['missing_bound_media_ids']):raise ValueError('a2_creator_support_summary_changed')
-            passed=(set(case['expected_account_union_media_ids'])<=ids(quote(case['query']))
+            actual=ids(quote(case['query']));expected=set(case['expected_account_union_media_ids'])
+            passed=(expected==actual and queries[quote(case['query'])].get('total')==len(expected)
                 and all(len(c)==1 for c in concepts) and len(set.union(*concepts))==len(concepts)
                 and not any(a['missing_bound_media_ids'] for a in accounts))
         else:raise ValueError('a2_quality_case_recomputation_unavailable')
@@ -179,3 +207,70 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
     if not required<=seen:raise ValueError('a2_quality_case_missing')
     return {'case_count':len(results),'failed_cases':sum(not r for r in results),
             'categories':dict(Counter(c['category'] for c in quality['cases']))}
+
+
+def recompute_workload(workload, baseline, frozen_cases):
+    """Bind the accepted HTTP and three source-layer passes before statistics."""
+    import json
+    from urllib.parse import urlsplit,parse_qs
+    expected={row['case_id']:row for row in frozen_cases}
+    if not expected or len(expected)!=len(frozen_cases):raise ValueError('a2_frozen_workload_duplicate')
+    def indexed(rows):
+        result={row['case_id']:row for row in rows}
+        if len(result)!=len(rows) or set(result)!=set(expected):raise ValueError('a2_workload_case_coverage')
+        for identity,row in result.items():
+            case=expected[identity]
+            if row['terms']!=case['terms'] or row['category']!=case['category']:
+                raise ValueError('a2_workload_case_identity')
+            query=' '.join(json.dumps(term,ensure_ascii=False) for term in case['terms'])
+            if row['query']!=query or row['status_code']!=200:raise ValueError('a2_workload_query_identity')
+        return result
+    indexed(baseline['queries'])
+    actual=indexed(workload['queries'])
+    for row in actual.values():
+        request=urlsplit(row['request_url'])
+        if request.path!='/api/search' or parse_qs(request.query)!= {'q':[row['query']],'limit':['64']}:
+            raise ValueError('a2_workload_request_parameters')
+    source=workload['source_layer_measurements'];seen=set()
+    for row in source:
+        identity=(row['case_id'],row['repeat'])
+        if identity in seen or row['case_id'] not in expected:raise ValueError('a2_workload_source_coverage')
+        seen.add(identity)
+        if (row['terms']!=expected[row['case_id']]['terms'] or row['include_needs_review'] is not False
+            or row['include_evidence_fallback'] is not True):raise ValueError('a2_workload_source_parameters')
+    if seen!={(case_id,repeat) for case_id in expected for repeat in range(3)}:
+        raise ValueError('a2_workload_source_coverage')
+    return latency_statistics(source),latency_statistics(workload['queries'])
+
+
+def verify_forward_metadata_spacing(journal_bytes, historical_timing):
+    """The accepted journal digest marks the immutable historical prefix."""
+    import hashlib,json
+    from datetime import datetime
+    lines=journal_bytes.splitlines(keepends=True);digest=hashlib.sha256();boundary=None
+    for index,line in enumerate(lines):
+        digest.update(line)
+        if digest.hexdigest()==historical_timing['journal_sha256']:
+            boundary=index+1;break
+    if boundary is None:raise ValueError('a2_historical_metadata_journal_changed')
+    historical=[json.loads(line) for line in lines[:boundary]]
+    dispatch=[r for r in historical if r['event']=='dispatch']
+    if len(dispatch)!=historical_timing['total_acquisition_commands']:
+        raise ValueError('a2_historical_metadata_dispatch_count')
+    previous=datetime.fromisoformat(dispatch[-1]['at']) if dispatch else None
+    if previous is not None and previous.tzinfo is None:raise ValueError('a2_metadata_dispatch_timezone')
+    gaps=[]
+    for line in lines[boundary:]:
+        row=json.loads(line)
+        if row['event']!='dispatch':continue
+        current=datetime.fromisoformat(row['at'])
+        if current.tzinfo is None:raise ValueError('a2_metadata_dispatch_timezone')
+        if previous is not None:
+            gap=(current-previous).total_seconds()
+            if gap<2:raise ValueError('a2_forward_metadata_dispatch_spacing')
+            gaps.append(gap)
+        previous=current
+    return {'historical_dispatch_count':len(dispatch),'forward_dispatch_count':sum(
+        json.loads(line)['event']=='dispatch' for line in lines[boundary:]),
+        'minimum_forward_dispatch_gap_seconds':min(gaps) if gaps else None,
+        'observed_boundary':'metadata_command_dispatch','provider_internal_http_intervals_claimed':False}

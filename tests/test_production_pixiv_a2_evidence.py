@@ -59,6 +59,14 @@ def quality_fixture():
         'cases':[{'names':['a','b'],'expected':'must_link','category':'supported_multilingual_identity','passed':True}]},
 
 
+def add_suggestion_controls(value,sample):
+    for kind,query in [('suggested_negative',f'id:{sample["media_id"]} -"{sample["suggested_tag"]}"'),
+        ('accepted_positive_control',f'id:{sample["media_id"]} "{sample["accepted_control_tag"]}"')]:
+        value['cases'].append({'category':'suggestion_'+kind,'kind':kind,'media_id':sample['media_id'],
+            'query':query,'expected_ids':[sample['media_id']],'actual_ids':[sample['media_id']],'total':1,'passed':True})
+        value['queries'][query]={'status_code':200,'ids':[sample['media_id']],'total':1}
+
+
 def test_frozen_quality_is_recomputed_even_if_boolean_stays_true():
     value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
     assert recompute_quality(value,oracle)['failed_cases']==0
@@ -72,6 +80,7 @@ def test_frozen_quality_is_recomputed_even_if_boolean_stays_true():
 def test_suggestion_expected_set_cannot_be_rewritten_with_the_observed_result():
     value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
     sample={'media_id':20,'suggested_tag':'draft','accepted_control_tag':'kept'}
+    add_suggestion_controls(value,sample)
     case={'category':'suggestion_suggested_positive','kind':'suggested_positive','media_id':20,
         'query':'id:20 "draft"','expected_ids':[],'actual_ids':[],'total':0,'passed':True}
     value['cases'].append(case)
@@ -86,6 +95,7 @@ def test_suggestion_expected_set_cannot_be_rewritten_with_the_observed_result():
 def test_suggestion_summary_cannot_replace_actual_query_receipt(change):
     value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
     sample={'media_id':20,'suggested_tag':'draft','accepted_control_tag':'kept'}
+    add_suggestion_controls(value,sample)
     query='id:20 "draft"'
     value['cases'].append({'category':'suggestion_suggested_positive','kind':'suggested_positive','media_id':20,
         'query':query,'expected_ids':[],'actual_ids':[],'total':0,'passed':True})
@@ -97,7 +107,7 @@ def test_suggestion_summary_cannot_replace_actual_query_receipt(change):
     with pytest.raises(ValueError):recompute_quality(value,oracle,suggestion_oracle={'samples':[sample]})
 
 
-@pytest.mark.parametrize('change',['valid','missing','http_failure','wrong_ids'])
+@pytest.mark.parametrize('change',['valid','missing','http_failure','wrong_ids','extra_ids','wrong_total'])
 def test_creator_union_uses_actual_query_receipt(change):
     value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
     family={'query':'ArtistTwin','expected_union_media_ids':[20,21],
@@ -112,7 +122,9 @@ def test_creator_union_uses_actual_query_receipt(change):
     else:
         if change=='missing':del value['queries'][query]
         elif change=='http_failure':value['queries'][query]['status_code']=500
-        else:value['queries'][query]['ids']=[20]
+        elif change=='wrong_ids':value['queries'][query]['ids']=[20]
+        elif change=='extra_ids':value['queries'][query].update(ids=[20,21,999],total=3)
+        else:value['queries'][query]['total']=3
         with pytest.raises(ValueError):recompute_quality(value,oracle,creator_oracle={'selected_families':[family]})
 
 
@@ -122,6 +134,84 @@ def test_absent_former_identity_case_cannot_disappear_from_denominator():
     value['cases']=[];value['projection_rows']=value['projection_rows'][:1]
     with pytest.raises(ValueError,match='quality_case_missing'):
         recompute_quality(value,oracle,baseline=baseline)
+
+
+@pytest.mark.parametrize('case',[
+    {'category':'accepted_search_equivalence_only','accepted_family_id':'family'},
+    {'category':'media_set_AND','names':['x','y']},
+    {'category':'media_set_negative','names':['x','y']},
+    {'category':'suggestion_suggested_positive','kind':'suggested_positive','media_id':20},
+    {'category':'bare_name_distinct_creator_accounts','query':'ArtistTwin','expected_account_union_media_ids':[20,21]},
+])
+def test_all_frozen_quality_categories_retain_their_denominator(case):
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    baseline=copy.deepcopy(value);baseline['cases'].append(case)
+    with pytest.raises(ValueError,match='quality_case_missing'):
+        recompute_quality(value,oracle,baseline=baseline)
+
+
+def test_duplicate_quality_cases_cannot_pad_the_acceptance_count():
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    value['cases']*=80
+    with pytest.raises(ValueError,match='quality_case_duplicate'):
+        recompute_quality(value,oracle)
+
+
+@pytest.mark.parametrize('missing',['search_family','suggestion','creator'])
+def test_independent_nonidentity_oracles_require_each_case_without_baseline(missing):
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    kwargs={}
+    if missing=='search_family':oracle['search_only_families']=[{'family_id':'f','names':['a','b']}]
+    elif missing=='suggestion':kwargs['suggestion_oracle']={'samples':[{'media_id':20}]}
+    else:kwargs['creator_oracle']={'selected_families':[{'query':'ArtistTwin'}]}
+    with pytest.raises(ValueError,match='quality_case_missing'):recompute_quality(value,oracle,**kwargs)
+
+
+def workload_fixture():
+    from urllib.parse import urlencode
+    cases=[{'case_id':str(i),'category':'name','terms':[name]} for i,name in enumerate(('a','b'))]
+    rows=[{**case,'query':json.dumps(case['terms'][0]),'status_code':200,'ms':1,
+        'request_url':'http://127.0.0.1:8012/api/search?'+urlencode({'q':json.dumps(case['terms'][0]),'limit':64})} for case in cases]
+    source=[{'case_id':case['case_id'],'repeat':repeat,'terms':case['terms'],
+        'include_needs_review':False,'include_evidence_fallback':True,'ms':1}
+        for case in cases for repeat in range(3)]
+    return {'queries':rows,'source_layer_measurements':source},{'queries':copy.deepcopy(rows)},cases
+
+
+@pytest.mark.parametrize('change',['none','repeated_fast_query','changed_terms','wrong_limit','source_duplicate','source_missing','source_terms','source_flags'])
+def test_workload_covers_frozen_queries_parameters_and_source_repetitions(change):
+    from scripts.production_pixiv_a2_evidence import recompute_workload
+    value,baseline,cases=workload_fixture()
+    if change=='none':
+        assert recompute_workload(value,baseline,cases)==({'p50_ms':1,'p95_ms':1,'max_ms':1},)*2
+        return
+    if change=='repeated_fast_query':value['queries'][1]=copy.deepcopy(value['queries'][0])
+    elif change=='changed_terms':value['queries'][1]['terms']=['a']
+    elif change=='wrong_limit':value['queries'][1]['request_url']=value['queries'][1]['request_url'].replace('limit=64','limit=1')
+    elif change=='source_duplicate':value['source_layer_measurements'][-1]=copy.deepcopy(value['source_layer_measurements'][0])
+    elif change=='source_missing':value['source_layer_measurements'].pop()
+    elif change=='source_terms':value['source_layer_measurements'][0]['terms']=['other']
+    else:value['source_layer_measurements'][0]['include_needs_review']=True
+    with pytest.raises(ValueError):recompute_workload(value,baseline,cases)
+
+
+@pytest.mark.parametrize('change',['none','two_seconds','early','clock_backwards','altered_history','missing_timezone'])
+def test_historical_spacing_exception_does_not_exempt_new_dispatches(change):
+    import hashlib
+    from scripts.production_pixiv_a2_evidence import verify_forward_metadata_spacing
+    original=(json.dumps({'event':'dispatch','work_id':'old','at':'2026-09-11T00:00:00+00:00'})+'\n').encode()
+    audit={'journal_sha256':hashlib.sha256(original).hexdigest(),'total_acquisition_commands':1}
+    data=original
+    times={'two_seconds':'2026-09-11T00:00:02+00:00','early':'2026-09-11T00:00:01.9+00:00',
+        'clock_backwards':'2026-09-10T23:59:59+00:00','missing_timezone':'2026-09-11T00:00:03'}
+    if change in times:data+=(json.dumps({'event':'dispatch','work_id':'new','at':times[change]})+'\n').encode()
+    if change=='altered_history':data=data.replace(b'old',b'changed')
+    if change in {'none','two_seconds'}:
+        result=verify_forward_metadata_spacing(data,audit)
+        assert result['forward_dispatch_count']==(change=='two_seconds')
+        assert result['provider_internal_http_intervals_claimed'] is False
+    else:
+        with pytest.raises(ValueError):verify_forward_metadata_spacing(data,audit)
 
 
 def test_every_search_equivalence_sample_must_recall_its_actual_media():
@@ -183,3 +273,35 @@ def test_launcher_uses_recorded_process_and_profile_not_historical_pid_liveness(
     assert verify_launcher_action(launch,tmp_path,'b'*40)
     launch['profile_at_action']['candidate_head']='old'
     with pytest.raises(ValueError,match='profile_observation_changed'):verify_launcher_action(launch,tmp_path,'b'*40)
+
+
+@pytest.mark.parametrize('root_value',[None,'','.'])
+def test_launcher_cannot_infer_unrecorded_code_root_from_working_directory(tmp_path,monkeypatch,root_value):
+    from scripts.production_pixiv_a2_evidence import verify_launcher_action
+    monkeypatch.chdir(tmp_path)
+    launch={'after_pid':123,'database':'prod',
+        'normal_entry_invocation':{'executable':str(tmp_path/'V.I.O.L.E.T. Production Launcher.exe'),
+            'arguments':[],'action':'Restart','sha256':'a'*64},
+        'server_process_at_action':{'ProcessId':123,'ParentProcessId':45,'CreationDate':'time','CommandLine':'python run.py'},
+        'profile_at_action':{'candidate_head':'b'*40,'pixiv_product_enabled':True,'pixiv_product_apply_enabled':False,
+            'database':'prod','sha256':'c'*64}}
+    if root_value is not None:launch['profile_at_action']['code_root']=root_value
+    with pytest.raises(ValueError,match='profile_observation_changed'):verify_launcher_action(launch,tmp_path,'b'*40)
+
+
+def test_unrelated_passing_node_cannot_resolve_a_historical_failure(tmp_path):
+    from scripts.check_production_pixiv_a2 import validation_evidence
+    def write(name,value):
+        (tmp_path/name).write_text(json.dumps(value) if isinstance(value,dict) else value,encoding='utf-8')
+    passed='tests/test_current.py::test_unrelated';failed='tests/test_bug.py::test_bug'
+    command={'argv':['python','-m','pytest'],'status':'finished','exit_code':0,'source_head':'current'}
+    write('current-command.json',command);write('current.log',passed+' PASSED\n1 passed\n')
+    write('history-command.json',{**command,'argv':['python','-m','pytest','tests','--ignore=tests/e2e','-q'],
+        'exit_code':1,'source_head':'history'})
+    write('history.log','FAILED '+failed+'\n1 passed, 1 failed\n')
+    write('full-non-e2e-admission-private.json',{'source_head':'history','full_suite_invocation':1})
+    gate={'command':'current-command.json','log':'current.log','passed':1,'failed':0,'skipped':0}
+    record={'focused':gate,'postgresql':gate,'non_e2e':{**gate,'command':'history-command.json','log':'history.log','failed':1},
+        'remediation':[gate],'node_mappings':{failed:{'nodes':[passed]}},'full_non_e2e_invocations':1}
+    with pytest.raises(ValueError,match='unverified_remediation_node_mapping'):
+        validation_evidence(tmp_path,record,'current')

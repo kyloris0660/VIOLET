@@ -75,6 +75,28 @@ def test_role_raw_saved_before_settlement_resumes_without_repay(tmp_path,monkeyp
     assert budget.summary()['call_count']==1
 
 
+def test_saved_role_request_must_match_current_prompt_before_publishing_units(tmp_path,monkeypatch):
+    import asyncio
+    import app.services.production_pixiv_role_extraction as roles
+    from app.services.source_name_candidate_extraction_service import extraction_messages
+    provider=Provider();budget=task_budget(tmp_path,provider);units=multiple_units()[:1]
+    cache=tmp_path/'roles';wrapped=roles.BudgetedExtractionProvider(provider,budget,cache,units)
+    asyncio.run(wrapped.complete_chat(extraction_messages([units[0].unit_group])))
+    saved=json.loads(next((cache/'raw').glob('*.json')).read_text())
+    raw_before={p:p.read_bytes() for p in (cache/'raw').rglob('*.json')};ledger_before=budget.path.read_bytes()
+    original=roles._production_messages
+    def changed(messages):
+        result=__import__('copy').deepcopy(original(messages))
+        result[0]['content']+='\nChanged current semantic instructions.'
+        return result
+    monkeypatch.setattr(roles,'_production_messages',changed)
+    published=[];monkeypatch.setattr(wrapped,'save_units',lambda content:published.append(content))
+    with pytest.raises(ValueError,match='role_raw_current_prompt_mismatch'):
+        wrapped.recover_saved(saved)
+    assert not published and len(provider.calls)==1 and budget.path.read_bytes()==ledger_before
+    assert all(path.read_bytes()==value for path,value in raw_before.items())
+
+
 def test_paid_invalid_role_retries_only_invalid_unit_and_keeps_raw(tmp_path):
     import asyncio
     from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
