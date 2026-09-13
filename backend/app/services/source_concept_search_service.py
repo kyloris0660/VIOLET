@@ -358,7 +358,10 @@ def _production_alias_direct_evidence_media_ids(db: Session, concept_ids: Sequen
     occurrences are keyword evidence, not additional identity memberships.
     Expand only the directly matched production concepts' active names; never
     follow the other concepts or aliases attached to the returned occurrences.
-    Original artwork titles and stale source bindings are excluded.
+    Only untyped occurrences may supplement the matched concepts. A typed
+    occurrence in another component retains that identity boundary, including
+    a component held for review by a cannot-link. Original titles and stale
+    source bindings are excluded.
     """
     if not concept_ids:return set()
     names=[row[0] for row in db.query(SourceConceptAlias.alias_key).join(
@@ -368,12 +371,21 @@ def _production_alias_direct_evidence_media_ids(db: Session, concept_ids: Sequen
         current_product_alias_condition(SourceConceptAlias)).distinct().all()]
     if not names:return set()
     binding=SourceConceptProductMediaBinding
+    other_link=aliased(SourceConceptSignalLink);other_concept=aliased(SourceConcept)
+    accepted_elsewhere=exists().where(and_(
+        other_link.signal_id==SourceConceptSignal.id,
+        other_link.run_id==SourceConceptEvidence.run_id,
+        other_link.concept_id==other_concept.id,other_link.concept_id.notin_(concept_ids),
+        other_link.link_status=='active',other_concept.status=='active',
+    )).correlate(SourceConceptSignal,SourceConceptEvidence)
     return {int(row[0]) for row in db.query(binding.media_id).join(
         SourceConceptEvidence,SourceConceptEvidence.id==binding.evidence_id).join(
         SourceConceptSignal,SourceConceptSignal.id==SourceConceptEvidence.signal_id).filter(
         SourceConceptSignal.origin_type=='pixiv_tag_observation',
         SourceConceptSignal.status.in_(FALLBACK_ELIGIBLE_SIGNAL_STATUSES),
         or_(SourceConceptSignal.canonical_key.in_(names),SourceConceptSignal.normalized_key.in_(names)),
+        or_(SourceConceptEvidence.concept_id.in_(concept_ids),
+            and_(SourceConceptSignal.role_hint=='unknown',~accepted_elsewhere)),
         current_binding_columns_condition(binding,SourceConceptProductRun,SourceMetadataRecord),
         SourceConceptProductRun.source_mode=='production_scope').distinct().all()}
 

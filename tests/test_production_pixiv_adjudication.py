@@ -20,6 +20,71 @@ def config(tmp_path):
         output_price_per_million=1.6,semantic_cache_reuse=True)
 
 
+@pytest.mark.parametrize('failure_point',['record','pair_index','settlement'])
+@pytest.mark.parametrize('reuse',['exact','same_input'])
+def test_valid_provider_response_survives_local_cache_or_settlement_failure(tmp_path,monkeypatch,failure_point,reuse):
+    from app.services.source_concept_budget import AdjudicationBudget
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path);write=service._atomic_write_json;settle=AdjudicationBudget.settle
+    def unavailable(path,payload):
+        if (failure_point=='record' and path.parent.name=='records') or (failure_point=='pair_index' and path.parent.parent.name=='pair-index'):
+            raise PermissionError('local cache publication unavailable')
+        return write(path,payload)
+    monkeypatch.setattr(service,'_atomic_write_json',unavailable)
+    if failure_point=='settlement':
+        monkeypatch.setattr(AdjudicationBudget,'settle',lambda *a,**k:(_ for _ in ()).throw(PermissionError('local settlement unavailable')))
+    with pytest.raises(RuntimeError,match='adjudication_valid_response_persistence_failed'):
+        service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    ledger=json.loads((tmp_path/'budget.json').read_text())
+    assert provider.calls==1 and len(ledger['calls'])==1 and ledger['calls'][0]['status']=='reserved'
+    recovered=next((service._cache_root(cfg)/'response-recovery').glob('*.json'));saved=recovered.read_bytes()
+    response=json.loads(saved)
+    assert not response['error_state'] and response['budget_response']['usage']=={'prompt_tokens':100,'completion_tokens':50}
+    monkeypatch.setattr(service,'_atomic_write_json',write);monkeypatch.setattr(AdjudicationBudget,'settle',settle)
+    if reuse=='same_input':
+        signals=[replace(s,signal_key='new:'+s.signal_key) for s in signals]
+        edges=[replace(e,edge_key='new:'+e.edge_key,left_signal_key='new:'+e.left_signal_key,right_signal_key='new:'+e.right_signal_key) for e in edges]
+    for _ in range(2):
+        rows,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+        assert receipt['error_count']==0 and receipt['new_provider_call_count']==0 and len(rows)==1 and not rows[0]['error_state']
+    ledger=json.loads((tmp_path/'budget.json').read_text())
+    assert provider.calls==1 and len(ledger['calls'])==1 and ledger['calls'][0]['status']=='success'
+    assert ledger['calls'][0]['charged_microusd']==120 and recovered.read_bytes()==saved
+
+
+def test_unwritable_response_recovery_stops_and_preserves_inflight_admission(tmp_path,monkeypatch):
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path);write=service._atomic_write_json
+    monkeypatch.setattr(service,'_atomic_write_json',lambda *a,**k:(_ for _ in ()).throw(PermissionError('all cache writes unavailable')))
+    with pytest.raises(RuntimeError,match='adjudication_valid_response_recovery_persistence_failed'):
+        service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    original=(tmp_path/'budget.json').read_bytes()
+    assert provider.calls==1 and json.loads(original)['calls'][0]['status']=='reserved'
+    monkeypatch.setattr(service,'_atomic_write_json',write)
+    rows,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    assert provider.calls==1 and not rows and receipt['remaining_missing_pair_count']==1
+    assert receipt['budget_blocked_pairs'] and (tmp_path/'budget.json').read_bytes()==original
+
+
+@pytest.mark.parametrize('semantic',[False,True])
+def test_cache_read_io_failure_does_not_become_another_paid_miss(tmp_path,monkeypatch,semantic):
+    from pathlib import Path
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=replace(config(tmp_path),semantic_cache_reuse=semantic)
+    service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    original=(tmp_path/'budget.json').read_bytes();read_text=Path.read_text
+    def denied(path,*args,**kwargs):
+        if path.parent.name=='records':raise PermissionError('temporarily unreadable saved answer')
+        return read_text(path,*args,**kwargs)
+    monkeypatch.setattr(Path,'read_text',denied)
+    with pytest.raises(RuntimeError,match='adjudication_cache_read_failed'):
+        service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    assert provider.calls==1 and (tmp_path/'budget.json').read_bytes()==original
+
+
 def test_semantic_identity_prompt_revision_retains_old_answer_cost_and_reuses_new_answer(tmp_path,monkeypatch):
     signals,edges=_eligible_llm_edges(1)
     class PromptAware(MeteredProvider):

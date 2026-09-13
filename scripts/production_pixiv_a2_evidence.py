@@ -110,6 +110,7 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
     import json
     quote=lambda n:json.dumps(n,ensure_ascii=False)
     def ids(query):
+        if query not in queries:raise ValueError('a2_quality_query_missing')
         row=queries[query]
         if row['status_code']!=200:raise ValueError('a2_quality_query_failed')
         return set(row['ids'])
@@ -153,7 +154,7 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             if (kind not in {'suggested_positive','suggested_negative','accepted_positive_control'}
                 or case['query']!=query or case['expected_ids']!=expected):
                 raise ValueError('a2_frozen_suggestion_expectation_changed')
-            passed=set(expected)==set(case['actual_ids']) and case['total']==len(expected)
+            passed=set(expected)==ids(query) and queries[query].get('total')==len(expected)
         elif 'expected_account_union_media_ids' in case:
             family=next((r for r in (creator_oracle or {}).get('selected_families',[]) if r['query']==case['query']),None)
             if not family or set(case['expected_account_union_media_ids'])!=set(family['expected_union_media_ids']):
@@ -164,7 +165,7 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             for account in accounts:
                 missing=source[account['provider_creator_id']]-set(account['bound_media_ids'])
                 if missing!=set(account['missing_bound_media_ids']):raise ValueError('a2_creator_support_summary_changed')
-            passed=(set(case['expected_account_union_media_ids'])<=set(case['actual_api_media_ids'])
+            passed=(set(case['expected_account_union_media_ids'])<=ids(quote(case['query']))
                 and all(len(c)==1 for c in concepts) and len(set.union(*concepts))==len(concepts)
                 and not any(a['missing_bound_media_ids'] for a in accounts))
         else:raise ValueError('a2_quality_case_recomputation_unavailable')

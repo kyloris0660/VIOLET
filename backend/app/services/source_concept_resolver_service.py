@@ -2977,13 +2977,15 @@ def _compatible_decision_cache(config: LLMAdjudicationConfig) -> dict[str, Any]:
         'provider_model':config.model_label,'compatible_for_exact_reuse':True}
     records={}
     for root in sorted({_cache_root(config),*(Path(path) for path in config.semantic_cache_dirs)}):
-        for path in sorted((root/'records').glob('*.json')):
+        for path in sorted([*(root/'records').glob('*.json'),*(root/'response-recovery').glob('*.json')]):
             try:
                 record=json.loads(path.read_text(encoding='utf-8'))
                 if record.get('error_state') or any(record.get(k)!=v for k,v in expected.items()):
                     continue
                 key=_decision_input_key(record['input_signal_summary'])
-            except (OSError,ValueError,TypeError,KeyError):
+            except OSError as exc:
+                raise RuntimeError('adjudication_cache_read_failed') from exc
+            except (ValueError,TypeError,KeyError):
                 continue
             if key in records and (records[key] is None or
                 (llm_public_decision(records[key].get('decision')),
@@ -3277,15 +3279,17 @@ def _load_exact_cache_record(
     metadata: Mapping[str, Any],
     config: LLMAdjudicationConfig,
 ) -> Mapping[str, Any] | None:
-    path = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))["record"]
-    if not path.exists():
-        return None
-    try:
-        record = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-    if isinstance(record, Mapping) and _cache_record_is_exact_compatible(record, metadata=metadata, config=config):
-        return record
+    primary = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))["record"]
+    for path in (primary,root/'response-recovery'/primary.name):
+        if not path.exists():continue
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except OSError as exc:
+            raise RuntimeError('adjudication_cache_read_failed') from exc
+        except Exception:
+            continue
+        if isinstance(record, Mapping) and _cache_record_is_exact_compatible(record, metadata=metadata, config=config):
+            return record
     return None
 
 
@@ -4134,6 +4138,7 @@ def run_bounded_llm_adjudication(
         ]
         reservation = None
         response = None
+        durable_record = None
         if budget:
             from .source_concept_budget import AdjudicationBudgetBlocked
             if provider is None:
@@ -4216,6 +4221,16 @@ def run_bounded_llm_adjudication(
             durable_cache_write_successes += 1
             judgments.append(judgment)
         except Exception as exc:  # pragma: no cover - provider failures are environment dependent
+            if budget and durable_record is not None and durable_record.get('budget_response'):
+                # The provider already returned a validated business answer.
+                # Preserve its exact response/attempt identity outside the
+                # failed publication path, leave the reservation recoverable,
+                # and stop instead of recording a model failure or retrying.
+                try:
+                    _atomic_write_json(durable_cache_root/'response-recovery'/f'{metadata["cache_key"]}.json',durable_record)
+                except OSError as recovery_error:
+                    raise RuntimeError('adjudication_valid_response_recovery_persistence_failed') from recovery_error
+                raise RuntimeError('adjudication_valid_response_persistence_failed') from exc
             if budget and reservation:
                 budget.settle(reservation, getattr(provider,'last_usage',{}), success=False)
             if budget and isinstance(exc,AdjudicationBudgetBlocked):

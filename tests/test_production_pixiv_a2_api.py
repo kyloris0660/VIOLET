@@ -5,6 +5,37 @@ from test_production_pixiv_a1 import real_api,ids
 from test_production_pixiv_a2 import scope_for,build,apply
 
 
+@pytest.mark.parametrize('other_status',['active','needs_review'])
+def test_alias_literal_recall_respects_another_typed_cannot_link_concept(real_api,other_status):
+    from dataclasses import replace
+    from app.services.production_pixiv_service import production_consumer,build_production_clustering
+    from app.services.pixiv_metadata_projection_service import build_canonical_pixiv_aggregates_from_session
+    client,factory,_,_=real_api
+    with factory() as db:
+        consumer=production_consumer(build_canonical_pixiv_aggregates_from_session(db))
+        consumer=replace(consumer,signals=tuple(replace(s,role_hint='work',work_context_key=None,
+            status=other_status if s.evidence_payload['work_id']=='910000003' else 'active',
+            trust_tier='medium' if other_status=='needs_review' and s.evidence_payload['work_id']=='910000003' else 'strong')
+            if s.origin_type=='pixiv_tag_observation' else s for s in consumer.signals))
+        initial=build_production_clustering(consumer)
+        by_work={s.evidence_payload['work_id']:s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation'}
+        a,b,c=[by_work[w] for w in ('910000001','910000002','910000003')]
+        judgments=[{'left_signal_key':left.signal_key,'right_signal_key':right.signal_key,
+            'decision':decision,'confidence':.99,'cache_key':'separated-alias-'+str(index)}
+            for index,(left,right,decision) in enumerate(((a,b,'must_link'),(b,c,'cannot_link')))]
+        run=build_production_clustering(consumer,judgments=judgments)
+        links={r.signal_key:r.concept_key for r in run.resolution.links}
+        assert links[a.signal_key]==links[b.signal_key] and links[c.signal_key]!=links[b.signal_key]
+        apply(db,run,scope_for(db))
+    # The literal SunPetal query may match both identities. MoonPetal may not
+    # inherit the same-name occurrence that the accepted constraint separated.
+    assert 4 in ids(client,'SunPetal')
+    assert 4 not in ids(client,'MoonPetal')
+    assert ids(client,'MoonPetal')=={1,2,3}
+    assert 4 not in ids(client,'MoonPetal SunPetal')
+    assert ids(client,'SunPetal -MoonPetal')=={4}
+
+
 def test_cumulative_projection_search_and_owned_rollback_preserve_independent_consumer(real_api):
     client,factory,independent,engine=real_api
     baseline={query:ids(client,query) for query in ('AsterCurrent','AsterHistorical','AsterCurrent MoonGarden','AsterCurrent -MoonGarden')}

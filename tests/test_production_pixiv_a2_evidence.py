@@ -75,10 +75,45 @@ def test_suggestion_expected_set_cannot_be_rewritten_with_the_observed_result():
     case={'category':'suggestion_suggested_positive','kind':'suggested_positive','media_id':20,
         'query':'id:20 "draft"','expected_ids':[],'actual_ids':[],'total':0,'passed':True}
     value['cases'].append(case)
+    value['queries'][case['query']]={'status_code':200,'ids':[],'total':0}
     assert recompute_quality(value,oracle,suggestion_oracle={'samples':[sample]})['failed_cases']==0
     case.update(expected_ids=[20],actual_ids=[20],total=1)
     with pytest.raises(ValueError,match='frozen_suggestion_expectation_changed'):
         recompute_quality(value,oracle,suggestion_oracle={'samples':[sample]})
+
+
+@pytest.mark.parametrize('change',['missing','http_failure','wrong_ids','wrong_total'])
+def test_suggestion_summary_cannot_replace_actual_query_receipt(change):
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    sample={'media_id':20,'suggested_tag':'draft','accepted_control_tag':'kept'}
+    query='id:20 "draft"'
+    value['cases'].append({'category':'suggestion_suggested_positive','kind':'suggested_positive','media_id':20,
+        'query':query,'expected_ids':[],'actual_ids':[],'total':0,'passed':True})
+    value['queries'][query]={'status_code':200,'ids':[],'total':0}
+    if change=='missing':del value['queries'][query]
+    elif change=='http_failure':value['queries'][query]['status_code']=500
+    elif change=='wrong_ids':value['queries'][query]['ids']=[20]
+    else:value['queries'][query]['total']=1
+    with pytest.raises(ValueError):recompute_quality(value,oracle,suggestion_oracle={'samples':[sample]})
+
+
+@pytest.mark.parametrize('change',['valid','missing','http_failure','wrong_ids'])
+def test_creator_union_uses_actual_query_receipt(change):
+    value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    family={'query':'ArtistTwin','expected_union_media_ids':[20,21],
+        'creators':[{'provider_creator_id':'left','expected_media_ids':[20]},
+                    {'provider_creator_id':'right','expected_media_ids':[21]}]}
+    value['cases'].append({'category':'bare_name_distinct_creator_accounts','query':'ArtistTwin',
+        'expected_account_union_media_ids':[20,21],'actual_api_media_ids':[20,21],'passed':True,
+        'accounts':[{'provider_creator_id':name,'concept_ids':[mid],'bound_media_ids':[mid],'missing_bound_media_ids':[]}
+            for name,mid in [('left',20),('right',21)]]})
+    query='"ArtistTwin"';value['queries'][query]={'status_code':200,'ids':[20,21],'total':2}
+    if change=='valid':assert recompute_quality(value,oracle,creator_oracle={'selected_families':[family]})['failed_cases']==0
+    else:
+        if change=='missing':del value['queries'][query]
+        elif change=='http_failure':value['queries'][query]['status_code']=500
+        else:value['queries'][query]['ids']=[20]
+        with pytest.raises(ValueError):recompute_quality(value,oracle,creator_oracle={'selected_families':[family]})
 
 
 def test_absent_former_identity_case_cannot_disappear_from_denominator():
