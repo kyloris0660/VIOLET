@@ -1438,6 +1438,11 @@ def migrate_add_source_concept_withdrawal_indexes(engine, inspector):
             table = model.__table__
             if not current.has_table(table.name):
                 continue
+            # PostgreSQL can truncate generated names. Match the access path
+            # from the catalog instead of checking its untruncated model name.
+            if any(item['column_names'] == [column] and not item['unique']
+                   for item in current.get_indexes(table.name)):
+                continue
             index = next(item for item in table.indexes
                          if [part.name for part in item.columns] == [column]
                          and not item.unique)

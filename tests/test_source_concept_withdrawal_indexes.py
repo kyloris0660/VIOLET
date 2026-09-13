@@ -57,3 +57,16 @@ def test_index_repair_accepts_fresh_model_indexes_without_duplicates():
         database.migrate_add_source_concept_withdrawal_indexes(engine,inspect(engine))
         assert before=={model.__tablename__:inspect(engine).get_indexes(model.__tablename__) for model in models}
     finally:engine.dispose()
+
+@pytest.mark.parametrize('column',('source_signal_id','neighbor_signal_id'))
+def test_existing_catalog_index_name_does_not_create_duplicate(column):
+    engine,inspector=legacy_engine()
+    try:
+        with engine.begin() as conn:
+            conn.execute(text(f'CREATE INDEX existing_short_fk_index ON blombooru_source_concept_fallback_search_index ({column})'))
+        database.migrate_add_source_concept_withdrawal_indexes(engine,inspector)
+        matching=[row for row in inspect(engine).get_indexes('blombooru_source_concept_fallback_search_index')
+            if row['column_names']==[column] and not row['unique']]
+        assert len(matching)==1
+        assert matching[0]['name']=='existing_short_fk_index'
+    finally:engine.dispose()
