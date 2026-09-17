@@ -76,6 +76,9 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
         if aggregate not in aggregate_keys:raise ValueError('semantic_terminal_role_source_changed')
         for answer in answers.values():
             attempts=answer.get('attempt_ids',[])
+            # Retained annotations may have been superseded by an actual
+            # answer. Effective terminal admission and its complete ledger
+            # set are checked below, never inferred from this shape check.
             if (len(attempts)<3 or len(set(attempts))!=len(attempts) or answer.get('identity_confirmed') is not False
                 or answer.get('reason_code')!='three_prior_logical_attempts_exhausted'):
                 raise ValueError('semantic_terminal_role_attempt_evidence_missing')
@@ -111,7 +114,7 @@ def verify_semantic_manifest(manifest, aggregates, vocabulary, facts, judgments,
 def verify_role_completion(aggregates,vocabulary,facts,ledger):
     """Recompute the retained role denominator and bind exhausted calls."""
     from .production_pixiv_service import production_consumer
-    from .production_pixiv_role_extraction import summarize_role_response_coverage,_original_completion_questions,BudgetedExtractionProvider
+    from .production_pixiv_role_extraction import summarize_role_response_coverage,_original_completion_questions,BudgetedExtractionProvider,role_target_coverage
     from dataclasses import replace
     import json
     consumer=production_consumer(aggregates)
@@ -125,6 +128,14 @@ def verify_role_completion(aggregates,vocabulary,facts,ledger):
         if aggregate in grounded or parent not in originals:
             raise ValueError('semantic_terminal_original_question_missing')
         unit=originals[parent]
+        original_coverage=role_target_coverage(unit,facts['completion_records'][parent])
+        effective=dict(original_coverage['outcomes'])
+        repair=facts.get('coverage_repair_records',{}).get(facts.get('coverage_repair_by_aggregate',{}).get(aggregate))
+        if repair:
+            for raw,outcome in repair.get('target_coverage',{}).get('outcomes',{}).items():
+                if raw in original_coverage['missing_raw_tags']:effective[raw]=outcome
+        for raw,outcome in facts.get('role_reused_target_answers',{}).get(aggregate,{}).items():
+            if raw not in effective:effective[raw]=outcome
         for raw,answer in answers.items():
             if raw not in unit.raw_values:
                 raise ValueError('semantic_terminal_raw_target_changed')
@@ -133,6 +144,11 @@ def verify_role_completion(aggregates,vocabulary,facts,ledger):
             if (answer.get('logical_key')!=logical or len(answer['attempt_ids'])<3
                 or len(set(answer['attempt_ids']))!=len(answer['attempt_ids'])):
                 raise ValueError('semantic_terminal_original_target_identity_changed')
+            actual=[row['id'] for row in ledger['calls'] if logical in row.get('logical_keys',[])]
+            if len(actual)!=len(answer['attempt_ids']) or set(actual)!=set(answer['attempt_ids']):
+                raise ValueError('semantic_terminal_complete_attempt_set_changed')
+            if raw not in effective and len(actual)!=3:
+                raise ValueError('semantic_terminal_complete_attempt_set_not_three')
             for ticket in answer['attempt_ids']:
                 row=calls.get(ticket)
                 if not row or row['status'] not in {'success','failed'} or logical not in row.get('logical_keys',[]):

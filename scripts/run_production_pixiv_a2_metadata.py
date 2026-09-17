@@ -49,6 +49,15 @@ def append(path,value):
         stream.flush();os.fsync(stream.fileno())
 
 
+def complete_remote_page_domain(observed, declared):
+    """Check the received domain without expanding a provider-declared count."""
+    if not observed or len(declared)!=1:
+        return False
+    count=next(iter(declared))
+    return (type(count) is int and count>0 and len(observed)==count
+            and min(observed)==0 and max(observed)==count-1)
+
+
 def valid_raw_payload(path, work_id, required_pages=()):
     """A nonempty or orphan file is not proof of a reusable provider result."""
     from app.services.pixiv_metadata_ingestion_service import parse_gallery_dl_stdout, PixivMetadataGateError
@@ -58,11 +67,10 @@ def valid_raw_payload(path, work_id, required_pages=()):
         declared = {page.get('page_count') for page in pages}
         if not observed or len(declared) != 1:
             return False
-        count = next(iter(declared))
         # Complete JSON can still end at a page boundary. A full remote domain
         # also proves a genuinely nonexistent local page; otherwise all fixed
         # targets must be present before this response can suppress acquisition.
-        complete_remote = count is not None and observed == set(range(count))
+        complete_remote = complete_remote_page_domain(observed, declared)
         required = set(required_pages)
         return complete_remote or bool(required) and required <= observed
     except (OSError, UnicodeError, ValueError, TypeError, KeyError, PixivMetadataGateError):
@@ -276,8 +284,7 @@ def main():
                     outcomes.append({'work_id':work,'closed':False,'reason':str(exc).split(':',1)[0]});continue
                 observed=sorted({page['page_index'] for page in pages})
                 declared={page.get('page_count') for page in pages}
-                complete_remote_page_set=(len(declared)==1 and None not in declared
-                    and observed==list(range(next(iter(declared)))))
+                complete_remote_page_set=complete_remote_page_domain(observed,declared)
                 if not complete_remote_page_set:
                     outcomes.append({'work_id':work,'closed':False,'reason':'complete_provider_page_domain_unproven'});continue
                 evidence={'work_id':work,'source_record_ids':sorted(row.id for row in missing),

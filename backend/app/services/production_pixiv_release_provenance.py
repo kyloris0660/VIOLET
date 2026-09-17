@@ -289,6 +289,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
 
 
 def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
+    from collections import defaultdict
     selected=resolver.select_llm_adjudication_edges(edges,signals=signals,config=config)
     by_signal={s.signal_key:s for s in signals}
     aliases=resolver._context_equivalence_lookup(signals)
@@ -301,6 +302,8 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
     if set(by_pair)!={(e.left_signal_key,e.right_signal_key) for e in selected}:
         raise ValueError('semantic_selected_judgment_set_changed')
     calls={r['id']:r for r in ledger['calls']}
+    calls_by_key=defaultdict(list)
+    for call in calls.values():calls_by_key[call['key']].append(call)
     roots=[Path(config.durable_cache_dir),*(Path(p) for p in config.semantic_cache_dirs)]
     records={};evidence=[]
     def load(key):
@@ -338,15 +341,34 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
                 or source['confidence']!=record['confidence'] or source.get('provider_model')!=config.model_label
                 or source.get('prompt_template_version')!=config.prompt_version):
                 raise ValueError('semantic_judgment_reused_source_changed')
+        source_metadata=resolver.llm_cache_metadata({**block,**source['input_signal_summary']},config=config)
+        if source.get('cache_key')!=chain[-1]:
+            raise ValueError('semantic_judgment_original_source_identity_changed')
+        decision_key='decision-input:'+resolver._decision_input_key(source['input_signal_summary'])
+        expected_keys={decision_key}
+        if source_metadata['cache_key']==chain[-1]:expected_keys.add(source_metadata['cache_key'])
+        if config.prompt_version==resolver.PRODUCTION_PAIR_PROMPT_VERSION:
+            expected_keys={key+':prompt:'+config.prompt_version for key in expected_keys}
         response=source.get('budget_response')
         if response:
             call=calls.get(response['reservation'])
-            if not call or call['status']=='reserved' or call['key']!=response['key']:
+            if (not call or call['status']!='success' or call['key']!=response['key']
+                or call['key'] not in expected_keys):
                 raise ValueError('semantic_judgment_attempt_not_settled')
             if call.get('usage_known') and call['usage']!={k:response['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
                 raise ValueError('semantic_judgment_usage_changed')
+        else:
+            # Legacy sources can lack the reservation envelope. Only one
+            # successful call for this exact original input establishes a
+            # reusable source; unrelated or ambiguous tickets cannot fill it.
+            matches=[call for key in expected_keys for call in calls_by_key[key]
+                     if call['status']=='success']
+            if len(matches)!=1:
+                raise ValueError('semantic_legacy_judgment_source_attempt_missing_or_ambiguous')
+            call=matches[0]
         evidence.append({'cache_key':metadata['cache_key'],'source_chain':chain,
-                         'source_fingerprint':canonical_fingerprint(source)})
+                         'source_fingerprint':canonical_fingerprint(source),
+                         'source_attempt_id':call['id']})
     return {'selected_pair_count':len(selected),'judgment_count':len(judgments),'sources':evidence,'new_provider_calls':0}
 
 
