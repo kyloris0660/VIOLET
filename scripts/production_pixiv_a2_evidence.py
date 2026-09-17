@@ -53,6 +53,18 @@ def verify_preservation_snapshots(snapshots,*,candidate,database,system_identifi
 def verify_browser_actions(browser):
     from urllib.parse import urlparse,parse_qs
     actions=browser.get('actions',[])
+    attempt=browser.get('attempt_id')
+    if not isinstance(attempt,str) or not attempt.strip():raise ValueError('a2_browser_attempt_missing')
+    navigation=('thumbnail_to_detail','open_fullscreen','close_fullscreen','return_gallery')
+    flows={}
+    for row in actions:
+        if row.get('action') not in navigation:continue
+        flow=row.get('flow_id')
+        if row.get('attempt_id')!=attempt or not isinstance(flow,str) or not flow.strip():
+            raise ValueError('a2_browser_attempt_changed')
+        flows.setdefault((row['media_id'],flow),[]).append(row['action'])
+    if not flows or any(tuple(steps)!=navigation for steps in flows.values()):
+        raise ValueError('a2_media_navigation_order_changed')
     opened={r['media_id']:r for r in actions if r['action']=='open_fullscreen'}
     if len(opened)<3:raise ValueError('a2_fullscreen_samples_missing')
     for mid,row in opened.items():
@@ -60,9 +72,6 @@ def verify_browser_actions(browser):
         if (not row.get('overlay_active') or image.get('width',0)<=0 or image.get('height',0)<=0
             or urlparse(image['src']).path!=f'/api/media/{mid}/file'):
             raise ValueError('a2_fullscreen_original_not_loaded')
-        kinds={r['action'] for r in actions if r.get('media_id')==mid}
-        if not {'thumbnail_to_detail','close_fullscreen','return_gallery'}<=kinds:
-            raise ValueError('a2_media_navigation_missing')
     search=browser['search'];old=browser['old_tag'];chip=browser['source_chip']
     if set(search['ids'])!=set(search['api_ids']) or set(old['dom_ids'])!=set(old['api_ids']) or not old['api_ids']:
         raise ValueError('a2_browser_dom_api_sets_differ')
@@ -315,10 +324,35 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             'categories':dict(Counter(c['category'] for c in quality['cases']))}
 
 
-def recompute_workload(workload, baseline, frozen_cases):
+def recompute_workload(workload, baseline, frozen_cases, *, launch):
     """Bind the accepted HTTP and three source-layer passes before statistics."""
     import json
+    import ipaddress
     from urllib.parse import urlsplit,parse_qs
+    def origin(value):
+        parsed=urlsplit(value)
+        try:loopback=parsed.hostname=='localhost' or ipaddress.ip_address(parsed.hostname or '').is_loopback
+        except ValueError:loopback=False
+        if (not loopback or parsed.scheme not in {'http','https'} or parsed.username is not None
+            or parsed.password is not None or parsed.fragment):
+            raise ValueError('a2_workload_service_origin')
+        return parsed.scheme,parsed.hostname,parsed.port or (443 if parsed.scheme=='https' else 80)
+    base=workload.get('base_url','');controlled=launch.get('base_url','')
+    expected_origin=origin(controlled)
+    if origin(base)!=expected_origin or any(urlsplit(value).path not in {'','/'} or urlsplit(value).query for value in (base,controlled)):
+        raise ValueError('a2_workload_service_origin')
+    identity=workload.get('server_identity',{});after=workload.get('server_identity_after',{})
+    pid=launch.get('after_pid',launch.get('identity_pid'))
+    candidate=launch.get('candidate_head','');observed=identity.get('git_sha','')
+    code_root=launch.get('code_root') or launch.get('server_identity',{}).get('code_root')
+    if (type(pid) is not int or pid<=0 or identity.get('pid')!=pid
+        or not re.fullmatch('[0-9a-f]{40}',candidate) or workload.get('candidate_head')!=candidate
+        or not re.fullmatch('[0-9a-f]{7,40}',observed) or not candidate.startswith(observed)
+        or identity.get('port')!=expected_origin[2]
+        or not launch.get('database') or workload.get('database')!=launch['database'] or identity.get('db_name')!=launch['database']
+        or not code_root or not recorded_code_root_matches(identity.get('code_root'),code_root)
+        or any(identity.get(key)!=after.get(key) for key in ('pid','port','db_name','git_sha','code_root'))):
+        raise ValueError('a2_workload_candidate_service_changed')
     expected={row['case_id']:row for row in frozen_cases}
     if not expected or len(expected)!=len(frozen_cases):raise ValueError('a2_frozen_workload_duplicate')
     def indexed(rows):
@@ -335,7 +369,7 @@ def recompute_workload(workload, baseline, frozen_cases):
     actual=indexed(workload['queries'])
     for row in actual.values():
         request=urlsplit(row['request_url'])
-        if request.path!='/api/search' or parse_qs(request.query)!= {'q':[row['query']],'limit':['64']}:
+        if origin(row['request_url'])!=expected_origin or request.path!='/api/search' or parse_qs(request.query)!= {'q':[row['query']],'limit':['64']}:
             raise ValueError('a2_workload_request_parameters')
     source=workload['source_layer_measurements'];seen=set()
     for row in source:

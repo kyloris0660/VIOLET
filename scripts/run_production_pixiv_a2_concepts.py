@@ -82,13 +82,16 @@ def main():
         select_llm_adjudication_edges,PRODUCTION_PAIR_PROMPT_VERSION,
     )
     aggregates=read(args.aggregates);vocabulary=read(args.vocabulary);facts=read(args.role_facts) if args.role_facts else None
-    from app.services.production_pixiv_pair_correction import read_correction_prior
+    from app.services.production_pixiv_pair_correction import read_correction_prior,bind_correction_prior
     prior_rows=None;prior_proof=None;correction_history=None
     if args.action=='adjudicate' and facts and facts.get('semantic_corrections') and not args.prior_judgments:
         raise RuntimeError('correction_prior_judgments_required')
     if args.prior_judgments:
         prior_rows,prior_proof=read_correction_prior(out,args.prior_judgments.resolve().relative_to(out))
         correction_history={'prior':prior_proof,'stages':{}}
+        if facts and facts.get('semantic_corrections'):
+            correction_history['prior_binding']=bind_correction_prior(aggregates,vocabulary,facts,prior_proof,out,
+                semantic_cache_dirs=(str(Path(read(args.profile)['storage_root'])/'.local_manifests/source_concept_llm_adjudication_cache'),))
     consumer=production_consumer(aggregates)
     prefix=out/args.label
     identity={'aggregates':canonical_fingerprint(aggregates),'vocabulary':canonical_fingerprint(vocabulary),

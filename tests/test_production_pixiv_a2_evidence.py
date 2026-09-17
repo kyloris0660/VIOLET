@@ -202,7 +202,18 @@ def workload_fixture():
     source=[{'case_id':case['case_id'],'repeat':repeat,'terms':case['terms'],
         'include_needs_review':False,'include_evidence_fallback':True,'ms':1}
         for case in cases for repeat in range(3)]
-    return {'queries':rows,'source_layer_measurements':source},{'queries':copy.deepcopy(rows)},cases
+    launch=workload_launch_fixture()
+    identity={'pid':launch['identity_pid'],'port':8012,'db_name':launch['database'],
+        'git_sha':launch['candidate_head'][:7],'code_root':launch['code_root']}
+    return {'queries':rows,'source_layer_measurements':source,'candidate_head':launch['candidate_head'],
+        'database':launch['database'],'base_url':launch['base_url'],'server_identity':identity,
+        'server_identity_after':copy.deepcopy(identity)},{'queries':copy.deepcopy(rows)},cases
+
+
+def workload_launch_fixture():
+    from pathlib import Path
+    return {'candidate_head':'a'*40,'identity_pid':123,'database':'copy_test','base_url':'http://127.0.0.1:8012',
+        'code_root':str(Path(__file__).resolve().parent)}
 
 
 @pytest.mark.parametrize('change',['none','repeated_fast_query','changed_terms','wrong_limit','source_duplicate','source_missing','source_terms','source_flags'])
@@ -210,7 +221,7 @@ def test_workload_covers_frozen_queries_parameters_and_source_repetitions(change
     from scripts.production_pixiv_a2_evidence import recompute_workload
     value,baseline,cases=workload_fixture()
     if change=='none':
-        assert recompute_workload(value,baseline,cases)==({'p50_ms':1,'p95_ms':1,'max_ms':1},)*2
+        assert recompute_workload(value,baseline,cases,launch=workload_launch_fixture())==({'p50_ms':1,'p95_ms':1,'max_ms':1},)*2
         return
     if change=='repeated_fast_query':value['queries'][1]=copy.deepcopy(value['queries'][0])
     elif change=='changed_terms':value['queries'][1]['terms']=['a']
@@ -219,7 +230,27 @@ def test_workload_covers_frozen_queries_parameters_and_source_repetitions(change
     elif change=='source_missing':value['source_layer_measurements'].pop()
     elif change=='source_terms':value['source_layer_measurements'][0]['terms']=['other']
     else:value['source_layer_measurements'][0]['include_needs_review']=True
-    with pytest.raises(ValueError):recompute_workload(value,baseline,cases)
+    with pytest.raises(ValueError):recompute_workload(value,baseline,cases,launch=workload_launch_fixture())
+
+
+@pytest.mark.parametrize('change',['external','relative','wrong_port','mixed_origin','wrong_pid','wrong_head',
+    'wrong_database','changed_after','wrong_root','base_mismatch'])
+def test_workload_is_bound_to_the_same_observed_candidate_service(change):
+    from scripts.production_pixiv_a2_evidence import recompute_workload
+    value,baseline,cases=workload_fixture();launch=workload_launch_fixture()
+    if change in {'external','relative','wrong_port','mixed_origin'}:
+        replacement={'external':'https://external.invalid','relative':'','wrong_port':'http://127.0.0.1:8999',
+            'mixed_origin':'http://localhost:8012'}[change]
+        for row in (value['queries'][:1] if change=='mixed_origin' else value['queries']):
+            row['request_url']=row['request_url'].replace(launch['base_url'],replacement)
+    elif change=='wrong_pid':value['server_identity']['pid']=124
+    elif change=='wrong_head':value['candidate_head']='b'*40
+    elif change=='wrong_database':value['database']='other'
+    elif change=='changed_after':value['server_identity_after']['pid']=124
+    elif change=='wrong_root':value['server_identity']['code_root']=str(__import__('pathlib').Path(launch['code_root']).parent)
+    else:value['base_url']='http://127.0.0.1:8999'
+    with pytest.raises(ValueError,match='a2_workload_'):
+        recompute_workload(value,baseline,cases,launch=launch)
 
 
 @pytest.mark.parametrize('change',['none','two_seconds','early','clock_backwards','altered_history','missing_timezone'])
@@ -285,20 +316,41 @@ def test_separation_checks_query_behavior_and_allows_legitimate_cooccurrence():
         recompute_quality(value,{'identity_pairs':oracle['identity_pairs']})
 
 
-def test_browser_requires_loaded_fullscreen_and_actual_dom_sets():
-    from scripts.production_pixiv_a2_evidence import verify_browser_actions
-    browser={'actions':[],'search':{'ids':[1],'api_ids':[1]},'old_tag':{'dom_ids':[1],'api_ids':[1]},
+def browser_fixture():
+    browser={'attempt_id':'fresh-browser-attempt','actions':[],'search':{'ids':[1],'api_ids':[1]},'old_tag':{'dom_ids':[1],'api_ids':[1]},
         'source_chip':{'kind':'source_concept','param':'q','conceptIds':'1','href':'http://127.0.0.1/?q=x','navigated_url':'http://127.0.0.1/?q=x',
             'search':{'query':'x','request_url':'http://127.0.0.1/api/search?q=x','status_code':200,'dom_ids':[1],'api_ids':[1]}},
         'recovery_page':{'status':200,'method':'GET','mutation_performed':False,'text':'rows',
             'request_url':'http://127.0.0.1/api/admin/dynamic-library-sync/recovery-items?root_id=2'}}
     for mid in (1,2,3):
+        browser['actions'].append({'action':'thumbnail_to_detail','media_id':mid})
         browser['actions'] += [{'action':'open_fullscreen','media_id':mid,'overlay_active':True,
             'image':{'src':f'http://127.0.0.1/api/media/{mid}/file','width':900,'height':700}}]
-        browser['actions'] += [{'action':kind,'media_id':mid} for kind in ('thumbnail_to_detail','close_fullscreen','return_gallery')]
+        browser['actions'] += [{'action':kind,'media_id':mid} for kind in ('close_fullscreen','return_gallery')]
+    for row in browser['actions']:row.update(attempt_id=browser['attempt_id'],flow_id='flow-'+str(row['media_id']))
+    return browser
+
+
+def test_browser_requires_loaded_fullscreen_and_actual_dom_sets():
+    from scripts.production_pixiv_a2_evidence import verify_browser_actions
+    browser=browser_fixture()
     assert verify_browser_actions(browser)['fullscreen_samples']==3
-    browser['actions'][0]['image']['width']=0
+    browser['actions'][1]['image']['width']=0
     with pytest.raises(ValueError,match='fullscreen_original_not_loaded'):verify_browser_actions(browser)
+
+
+@pytest.mark.parametrize('mutation',['reversed','separate_attempts','separate_flows','missing_attempt','close_before_open'])
+def test_browser_requires_complete_ordered_navigation_in_one_attempt(mutation):
+    from scripts.production_pixiv_a2_evidence import verify_browser_actions
+    browser=browser_fixture()
+    if mutation=='reversed':browser['actions'].reverse()
+    elif mutation=='missing_attempt':del browser['attempt_id']
+    elif mutation=='close_before_open':browser['actions'][1],browser['actions'][2]=browser['actions'][2],browser['actions'][1]
+    else:
+        field='attempt_id' if mutation=='separate_attempts' else 'flow_id'
+        for index,row in enumerate(browser['actions']):row[field]=str(index)
+    with pytest.raises(ValueError,match='a2_browser_attempt|a2_media_navigation_order'):
+        verify_browser_actions(browser)
 
 
 def test_launcher_uses_recorded_process_and_profile_not_historical_pid_liveness(tmp_path):

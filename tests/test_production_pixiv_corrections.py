@@ -8,6 +8,31 @@ from test_production_pixiv_role_coverage import context,Responses,candidate
 from test_production_pixiv_role_extraction import task_budget
 
 
+@pytest.mark.parametrize('field',['display_name','normalized_value','canonical_key'])
+def test_correction_uses_the_same_multilingual_candidate_match_as_coverage(tmp_path,field):
+    from app.services.production_pixiv_role_extraction import role_target_coverage
+    consumer=context(['HeroName','AlternateHero']);vocabulary=build_semantic_vocabulary([])
+    base=adapt_production_semantics(consumer,vocabulary,{'schema_version':ROLE_SCHEMA,'records':{}})
+    target=next(s for s in base.signals if s.raw_value=='AlternateHero')
+    request={'aggregate_fingerprint':'aggregate-12345678','raw_targets':['AlternateHero'],
+        'supersedes':{'AlternateHero':signal_semantics(target)},
+        'conflict_evidence':['same group explicit role contradiction'],'authorization':'bounded test correction'}
+    units,_=correction_units(base,{},[request])
+    provider=Responses(lambda group:([{**candidate('HeroName'),field:'AlternateHero'}],[]))
+    budget=task_budget(tmp_path,provider)
+    result=extract_production_roles(units,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    record=result['records'][units[0].extraction_key]
+    assert not role_target_coverage(units[0],record)['missing_raw_tags']
+    facts={'schema_version':ROLE_SCHEMA,'records':{},'semantic_corrections':[request],'correction_records':result['records']}
+    adapted=adapt_production_semantics(consumer,vocabulary,facts)
+    assert next(s for s in adapted.signals if s.raw_value=='AlternateHero').role_hint=='character'
+    # Matching another spelling in this group does not extend correction scope.
+    assert next(s for s in adapted.signals if s.raw_value=='HeroName').role_hint==next(s for s in base.signals if s.raw_value=='HeroName').role_hint
+    again=adapt_production_semantics(consumer,vocabulary,facts)
+    assert again==adapted and len(provider.calls)==1
+    assert json.loads(budget.path.read_text())['calls'][0]['status']=='success'
+
+
 @pytest.mark.parametrize('candidate_role,expected_role',[('unknown_name_like','unknown'),('source_title','source_title')])
 def test_corrected_uncertain_answer_survives_real_resolver_without_promotion(tmp_path,candidate_role,expected_role):
     from app.services.source_concept_resolver_service import resolve_source_concepts,LLMAdjudicationConfig

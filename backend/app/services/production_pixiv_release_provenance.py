@@ -350,13 +350,10 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
     return {'selected_pair_count':len(selected),'judgment_count':len(judgments),'sources':evidence,'new_provider_calls':0}
 
 
-def verify_release_sources(aggregates,vocabulary,facts,judgments,manifest,private_root,*,semantic_cache_dirs=()):
+def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,private_root,*,semantic_cache_dirs=(),history=None):
     from .production_pixiv_service import production_consumer,build_production_clustering
     from .source_concept_budget import AdjudicationBudget
     private_root=Path(private_root).resolve(strict=True)
-    history=manifest.get('correction_history')
-    if facts.get('semantic_corrections') and not history:
-        raise ValueError('correction_admission_required')
     from .production_pixiv_pair_correction import verify_correction_admission
     def read(name):
         path=(private_root/name).resolve(strict=True)
@@ -405,3 +402,17 @@ def verify_release_sources(aggregates,vocabulary,facts,judgments,manifest,privat
             raise ValueError('semantic_processing_receipt_changed')
     return {'role_sources':roles,'work_sources':work,'remaining_sources':remaining,
             'correction_admissions':corrections,'new_provider_calls':0}
+
+
+def verify_release_sources(aggregates,vocabulary,facts,judgments,manifest,private_root,*,semantic_cache_dirs=()):
+    history=manifest.get('correction_history');binding=None
+    if facts.get('semantic_corrections'):
+        if not history:raise ValueError('correction_admission_required')
+        from .production_pixiv_pair_correction import bind_correction_prior
+        binding=bind_correction_prior(aggregates,vocabulary,facts,history['prior'],private_root,
+            semantic_cache_dirs=semantic_cache_dirs)
+        if binding!=history.get('prior_binding'):raise ValueError('correction_prior_binding_changed')
+    result=_replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,private_root,
+        semantic_cache_dirs=semantic_cache_dirs,history=history)
+    result['correction_prior_binding']=binding
+    return result

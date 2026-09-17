@@ -32,15 +32,9 @@ def test_previously_recalled_media_cannot_disappear_from_both_projection_and_api
 
 @pytest.mark.parametrize('target',['/','/?q=','/wrong?q=x'])
 def test_chip_without_a_real_gallery_query_is_rejected(target):
-    browser={'actions':[],'search':{'ids':[1],'api_ids':[1]},'old_tag':{'dom_ids':[1],'api_ids':[1]},
-        'source_chip':{'kind':'source_concept','param':'q','conceptIds':'1',
-                       'href':'http://127.0.0.1'+target,'navigated_url':'http://127.0.0.1'+target},
-        'recovery_page':{'status':200,'method':'GET','mutation_performed':False,'text':'rows',
-                         'request_url':'http://127.0.0.1/api/admin/dynamic-library-sync/recovery-items?root_id=2'}}
-    for mid in (1,2,3):
-        browser['actions'].append({'action':'open_fullscreen','media_id':mid,'overlay_active':True,
-                                  'image':{'src':f'http://127.0.0.1/api/media/{mid}/file','width':900,'height':700}})
-        browser['actions'].extend({'action':kind,'media_id':mid} for kind in ('thumbnail_to_detail','close_fullscreen','return_gallery'))
+    from test_production_pixiv_a2_evidence import browser_fixture
+    browser=browser_fixture()
+    browser['source_chip'].update(href='http://127.0.0.1'+target,navigated_url='http://127.0.0.1'+target)
     with pytest.raises(ValueError,match='source_chip'):
         verify_browser_actions(browser)
 
@@ -78,6 +72,84 @@ def test_repeated_corrections_keep_the_transitive_three_attempt_lifetime(tmp_pat
     signals=[replace(s,work_context_key='correction-three') for s in signals]
     _,plan=plan_corrected_pairs(edges,signals,rows,cfg,json.loads((tmp_path/'budget.json').read_text()))
     assert plan['dispatchable_call_ceiling']==0
+
+
+def test_complete_unrelated_prior_cannot_reset_an_exhausted_target(tmp_path,monkeypatch):
+    from test_production_pixiv_adjudication import config,MeteredProvider,_eligible_llm_edges,service
+    from app.services.production_pixiv_pair_correction import plan_corrected_pairs,read_correction_prior
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=replace(config(tmp_path),prompt_version=service.PRODUCTION_PAIR_PROMPT_VERSION)
+    rows,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    for context in ('one','two'):
+        signals=[replace(s,work_context_key=context) for s in signals]
+        cfg,_=plan_corrected_pairs(edges,signals,rows,cfg,json.loads((tmp_path/'budget.json').read_text()))
+        rows,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    changed=[replace(s,work_context_key='three') for s in signals]
+    _,legitimate=plan_corrected_pairs(edges,changed,rows,cfg,json.loads((tmp_path/'budget.json').read_text()))
+    assert legitimate['dispatchable_call_ceiling']==0
+    other=[replace(s,signal_key='foreign:'+s.signal_key,work_context_key='unrelated') for s in signals]
+    foreign_edges=[replace(e,left_signal_key='foreign:'+e.left_signal_key,right_signal_key='foreign:'+e.right_signal_key) for e in edges]
+    foreign,_=service.run_bounded_llm_adjudication(foreign_edges,signals=other,config=replace(cfg,logical_predecessors={}))
+    name=write_prior(tmp_path,foreign);verified,_=read_correction_prior(tmp_path,name)
+    with pytest.raises(ValueError,match='correction_prior_source_occurrence_missing'):
+        plan_corrected_pairs(edges,changed,verified,cfg,json.loads((tmp_path/'budget.json').read_text()))
+
+
+@pytest.mark.parametrize('mutation',['none','aggregates','vocabulary','unrelated_role_identity','prior_bytes',
+    'supersedes','plan_scope','base_roles','missing_provenance'])
+def test_prior_binding_uses_the_actual_correction_input_and_plan(tmp_path,monkeypatch,mutation):
+    import hashlib
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    from app.services.production_pixiv_corrections import signal_semantics
+    from app.services.production_pixiv_role_extraction import ROLE_SCHEMA
+    from app.services.production_pixiv_semantics import adapt_production_semantics,build_semantic_vocabulary
+    from app.services import production_pixiv_service,production_pixiv_release_provenance
+    from app.services.production_pixiv_pair_correction import bind_correction_prior,read_correction_prior
+    from test_production_pixiv_role_coverage import context
+    consumer=context(['Hero']);aggregates=[{'scope':'actual'}];vocabulary=build_semantic_vocabulary([])
+    previous={'schema_version':ROLE_SCHEMA,'records':{}}
+    previous_path=tmp_path/'previous-roles.json';previous_path.write_text(json.dumps(previous),encoding='utf-8')
+    digest=hashlib.sha256(previous_path.read_bytes()).hexdigest()
+    signal=adapt_production_semantics(consumer,vocabulary,previous).signals[0]
+    request={'aggregate_fingerprint':'aggregate-12345678','raw_targets':['Hero'],
+        'supersedes':{'Hero':signal_semantics(signal)},'conflict_evidence':['specific conflict'],'authorization':'fixture owner'}
+    plan={'source_role_facts':previous_path.name,'source_role_facts_sha256':digest,
+        'requests':[copy.deepcopy(request)],'scope_aggregates':['aggregate-12345678']}
+    facts={**previous,'semantic_corrections':[request],'correction_provenance':{
+        'prior_role_facts':previous_path.name,'prior_sha256':digest,'plan':'correction-plan.json'}}
+    prior_name=write_prior(tmp_path,[{'left_signal_key':'a','right_signal_key':'b'}])
+    manifest_path=tmp_path/'prior-semantic-manifest-private.json';manifest=json.loads(manifest_path.read_text())
+    manifest['input_identity'].update({k:canonical_fingerprint(v) for k,v in (
+        ('aggregates',aggregates),('vocabulary',vocabulary),('role_facts',previous))})
+    if mutation=='unrelated_role_identity':manifest['input_identity']['role_facts']=canonical_fingerprint({'other':'roles'})
+    manifest_path.write_text(json.dumps(manifest),encoding='utf-8');_,prior=read_correction_prior(tmp_path,prior_name)
+    replayed=[]
+    # Scope/identity validation is isolated here; actual selection and raw
+    # cache replay have separate integration coverage and the real full run.
+    def replay(old_aggregates,old_vocabulary,old_facts,rows,old_manifest,private,**kwargs):
+        assert old_aggregates==[{'scope':'actual'}] and old_vocabulary==build_semantic_vocabulary([])
+        assert old_facts==previous and old_manifest==manifest
+        replayed.append(True)
+        return {'work_sources':{'selected_pair_count':1},'remaining_sources':{'selected_pair_count':0}}
+    monkeypatch.setattr(production_pixiv_service,'production_consumer',lambda value:consumer)
+    monkeypatch.setattr(production_pixiv_release_provenance,'_replay_source_selection',replay)
+    if mutation=='aggregates':aggregates=[{'scope':'unrelated'}]
+    elif mutation=='vocabulary':vocabulary={**vocabulary,'unrelated':True}
+    elif mutation=='prior_bytes':previous_path.write_text('{}',encoding='utf-8')
+    elif mutation=='supersedes':
+        request['supersedes']['Hero']['role_hint']='work';plan['requests']=[copy.deepcopy(request)]
+    elif mutation=='plan_scope':plan['scope_aggregates']=['foreign']
+    elif mutation=='base_roles':facts['records']={'other':'changed'}
+    elif mutation=='missing_provenance':del facts['correction_provenance']
+    (tmp_path/'correction-plan.json').write_text(json.dumps(plan),encoding='utf-8')
+    if mutation=='none':
+        result=bind_correction_prior(aggregates,vocabulary,facts,prior,tmp_path)
+        assert result['selected_pair_count']==1 and result['new_correction_aggregate_count']==1 and replayed==[True]
+    else:
+        with pytest.raises(ValueError,match='correction_prior_|semantic_correction_previous_fact_changed'):
+            bind_correction_prior(aggregates,vocabulary,facts,prior,tmp_path)
+        assert not replayed
 
 
 def valid_preservation():

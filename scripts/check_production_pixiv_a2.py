@@ -202,7 +202,7 @@ def derive_result(private,repo=ROOT):
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
     baseline=read(private,manifest['workload_baseline'])
     frozen_workload=[json.loads(line) for line in evidence_path(private,'accepted-240-query-workload-private.jsonl').read_text(encoding='utf-8').splitlines()]
-    source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload)
+    source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload,launch=launch)
     require(source_latency==workload['accepted_source_layer_latency_ms'] and http_latency==workload['latency_ms'],'query_statistics')
     p95_gate=750
     require(source_latency['p95_ms']<=p95_gate and source_latency['max_ms']<=3000,'full_scale_source_search_performance')

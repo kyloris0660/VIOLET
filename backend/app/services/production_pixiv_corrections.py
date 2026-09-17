@@ -48,6 +48,7 @@ def apply_semantic_corrections(consumer,facts):
     requests=facts.get('semantic_corrections',[])
     if not requests:return consumer
     from .production_pixiv_role_extraction import role_target_coverage,_identity
+    from .production_pixiv_semantics import _context_candidate_matches
     from .source_name_candidate_extraction_service import validate_extraction_record
     from .source_concept_resolver_service import role_from_source_role,_trust_for_f7a_candidate
     from types import SimpleNamespace
@@ -77,7 +78,7 @@ def apply_semantic_corrections(consumer,facts):
         if signal.parenthetical_context or signal.evidence_payload.get('production_role_hint_evidence'):
             raise ValueError('semantic_correction_cannot_override_independent_strong_fact')
         replay,coverage=replayed[aggregate];outcome=coverage['outcomes'][signal.raw_value]
-        matches=[c for c in replay['candidates'] if canonical_source_key(c['raw_value'])==canonical_source_key(signal.raw_value)]
+        matches=[c for c in replay['candidates'] if _context_candidate_matches(c,signal.raw_value)]
         # F7a adds deterministic fragments from *other* tags in the context.
         # The explicitly requested literal's model answer is the correction;
         # a sibling's reversed parenthesis or popularity prefix is not a

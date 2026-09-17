@@ -90,6 +90,65 @@ def verify_correction_prior_sources(rows,config,ledger):
     return len(rows)
 
 
+def bind_correction_prior(aggregates,vocabulary,facts,prior,private_root,*,semantic_cache_dirs=()):
+    """Bind and replay the actual input predecessor of this correction batch."""
+    from .pixiv_metadata_projection_service import canonical_fingerprint
+    from .production_pixiv_corrections import correction_units
+    from .production_pixiv_semantics import adapt_production_semantics
+    from .production_pixiv_service import production_consumer
+    from .production_pixiv_release_provenance import _replay_source_selection
+    root=Path(private_root).resolve(strict=True)
+    def read(name):
+        path=(root/name).resolve(strict=True)
+        if not path.is_relative_to(root):raise ValueError('correction_prior_outside_task')
+        return json.loads(path.read_text(encoding='utf-8')),path
+    provenance=facts.get('incremental_correction_provenance') or facts.get('correction_provenance')
+    if not isinstance(provenance,dict):raise ValueError('correction_prior_input_provenance_required')
+    previous,previous_path=read(provenance['prior_role_facts'])
+    plan,plan_path=read(provenance['plan'])
+    previous_digest=hashlib.sha256(previous_path.read_bytes()).hexdigest()
+    if (previous_digest!=provenance.get('prior_sha256')
+        or plan.get('source_role_facts')!=provenance['prior_role_facts']
+        or plan.get('source_role_facts_sha256')!=previous_digest):
+        raise ValueError('correction_prior_role_facts_changed')
+    manifest,_=read(prior['manifest']);rows,actual_prior=read_correction_prior(root,prior['judgments'])
+    if actual_prior!=prior:raise ValueError('correction_prior_provenance_changed')
+    expected={name:canonical_fingerprint(value) for name,value in (
+        ('aggregates',aggregates),('vocabulary',vocabulary),('role_facts',previous))}
+    if any(manifest['input_identity'].get(name)!=digest for name,digest in expected.items()):
+        raise ValueError('correction_prior_semantic_input_changed')
+    mutable={'semantic_corrections','correction_records','correction_equivalent_sources','correction_provenance',
+        'incremental_correction_provenance','correction_execution','previous_execution_receipts'}
+    if any(previous.get(key)!=facts.get(key) for key in previous.keys()|facts.keys() if key not in mutable):
+        raise ValueError('correction_prior_unrelated_role_fact_changed')
+    before_requests={r['aggregate_fingerprint']:r for r in previous.get('semantic_corrections',[])}
+    current_requests={r['aggregate_fingerprint']:r for r in facts.get('semantic_corrections',[])}
+    if (len(before_requests)!=len(previous.get('semantic_corrections',[]))
+        or len(current_requests)!=len(facts.get('semantic_corrections',[]))
+        or any(current_requests.get(key)!=row for key,row in before_requests.items())):
+        raise ValueError('correction_prior_supersession_history_changed')
+    for field in ('correction_records','correction_equivalent_sources'):
+        if any(facts.get(field,{}).get(key)!=row for key,row in previous.get(field,{}).items()):
+            raise ValueError('correction_prior_answer_history_changed')
+    added=[current_requests[key] for key in sorted(current_requests.keys()-before_requests.keys())]
+    planned=plan.get('requests',[])
+    if (not added or sorted(added,key=lambda r:r['aggregate_fingerprint'])!=sorted(planned,key=lambda r:r['aggregate_fingerprint'])
+        or {r['aggregate_fingerprint'] for r in added}!=set(plan.get('scope_aggregates',[]))):
+        raise ValueError('correction_prior_plan_scope_changed')
+    old_consumer=adapt_production_semantics(production_consumer(aggregates),vocabulary,previous)
+    correction_units(old_consumer,previous,added)
+    # A retained legacy execution need not claim today's admission gate. Its
+    # actual answers and full selection are still rebuilt, never self-attested.
+    replay=_replay_source_selection(aggregates,vocabulary,previous,rows,manifest,root,
+        semantic_cache_dirs=semantic_cache_dirs)
+    return {'prior':prior,'input_identity':expected,'role_facts':str(previous_path.relative_to(root)),
+        'role_facts_sha256':previous_digest,'plan':str(plan_path.relative_to(root)),
+        'plan_sha256':hashlib.sha256(plan_path.read_bytes()).hexdigest(),'new_correction_aggregate_count':len(added),
+        'source_replay_fingerprint':canonical_fingerprint(replay),
+        'selected_pair_count':replay['work_sources']['selected_pair_count']+replay['remaining_sources']['selected_pair_count'],
+        'original_invocation_not_relabelled':True,'new_provider_calls':0}
+
+
 def plan_corrected_pairs(edges,signals,prior_judgments,config,ledger):
     verified_prior_count=verify_correction_prior_sources(prior_judgments,config,ledger)
     # Every recorded key association is part of the same lifetime. Keeping
@@ -117,7 +176,7 @@ def plan_corrected_pairs(edges,signals,prior_judgments,config,ledger):
     predecessors=defaultdict(set);changes=[]
     for row in prior_judgments:
         left=by_key.get(row['left_signal_key']);right=by_key.get(row['right_signal_key'])
-        if left is None or right is None:continue
+        if left is None or right is None:raise ValueError('correction_prior_source_occurrence_missing')
         current={'left':payload(left),'right':payload(right)}
         old=row['input_signal_summary']
         old_key=resolver._decision_input_key(old);new_key=resolver._decision_input_key(current)
