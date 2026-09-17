@@ -55,6 +55,24 @@ def scope_for(db, *, exclude=()):
     return build_fixed_scope(rows,watermark='2026-09-11T00:00:00Z',trusted_bindings=trusted)
 
 
+def test_postgresql_withdrawal_index_timeout_is_transaction_local(database):
+    from app.database import migrate_add_source_concept_withdrawal_indexes
+    from sqlalchemy import inspect
+    engine=database.get_bind()
+    if engine.dialect.name!='postgresql':pytest.skip('real PostgreSQL timeout scope')
+    observed=[]
+    def timeouts(connection):
+        return tuple(connection.execute(text('SHOW '+name)).scalar_one() for name in ('lock_timeout','statement_timeout'))
+    with engine.connect() as conn:before=timeouts(conn)
+    def observe(conn,cursor,statement,parameters,context,executemany):
+        if statement=="SET LOCAL statement_timeout = '120000ms'":observed.append(timeouts(conn))
+    event.listen(engine,'after_cursor_execute',observe)
+    try:migrate_add_source_concept_withdrawal_indexes(engine,inspect(engine))
+    finally:event.remove(engine,'after_cursor_execute',observe)
+    assert observed==[('5s','2min')]
+    with engine.connect() as conn:assert timeouts(conn)==before
+
+
 def build(db, works=None):
     aggregates=build_canonical_pixiv_aggregates_from_session(db,work_ids=works)
     return build_production_clustering(production_consumer(aggregates))

@@ -288,7 +288,8 @@ def test_separation_checks_query_behavior_and_allows_legitimate_cooccurrence():
 def test_browser_requires_loaded_fullscreen_and_actual_dom_sets():
     from scripts.production_pixiv_a2_evidence import verify_browser_actions
     browser={'actions':[],'search':{'ids':[1],'api_ids':[1]},'old_tag':{'dom_ids':[1],'api_ids':[1]},
-        'source_chip':{'kind':'source_concept','param':'q','conceptIds':'1','href':'http://127.0.0.1/?q=x','navigated_url':'http://127.0.0.1/?q=x'},
+        'source_chip':{'kind':'source_concept','param':'q','conceptIds':'1','href':'http://127.0.0.1/?q=x','navigated_url':'http://127.0.0.1/?q=x',
+            'search':{'query':'x','request_url':'http://127.0.0.1/api/search?q=x','status_code':200,'dom_ids':[1],'api_ids':[1]}},
         'recovery_page':{'status':200,'method':'GET','mutation_performed':False,'text':'rows',
             'request_url':'http://127.0.0.1/api/admin/dynamic-library-sync/recovery-items?root_id=2'}}
     for mid in (1,2,3):

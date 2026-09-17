@@ -5,6 +5,50 @@ import statistics
 from collections import Counter
 from xml.etree import ElementTree
 
+PRESERVED_TABLES=frozenset('blombooru_'+name for name in (
+    'media','albums','album_hierarchy','album_media','entities','entity_aliases','entity_evidence',
+    'entity_external_identities','entity_translations','media_entity_candidates','media_entity_assignments',
+    'media_tags','source_concept_signals','source_concepts','source_concept_aliases',
+    'source_concept_evidence','source_concept_signal_links'))
+PRESERVED_NONEMPTY=frozenset('blombooru_'+name for name in (
+    'media','source_concept_signals','source_concepts','source_concept_aliases',
+    'source_concept_evidence','source_concept_signal_links'))
+
+
+def verify_preserved_tables(snapshot):
+    import hashlib
+    tables=snapshot.get('tables',{})
+    if set(tables)!=PRESERVED_TABLES:raise ValueError('a2_preservation_table_inventory_changed')
+    empty=hashlib.sha256(b'').hexdigest()
+    for name,row in tables.items():
+        count=row.get('rows');digest=row.get('sha256')
+        if (type(count) is not int or count<0 or not isinstance(digest,str)
+            or not re.fullmatch('[a-f0-9]{64}',digest)
+            or (count==0)!=(digest==empty)
+            or (name in PRESERVED_NONEMPTY and count==0)):
+            raise ValueError('a2_preservation_row_digest_invalid:'+name)
+    return tables
+
+
+def verify_preservation_snapshots(snapshots,*,candidate,database,system_identifier,operation):
+    from datetime import datetime
+    if not operation or len(snapshots) not in (3,4):raise ValueError('a2_preservation_checkpoints_missing')
+    checkpoints=['before','after-rollback','after-reapply']+(['after-source'] if len(snapshots)==4 else [])
+    baseline=None;previous=None
+    for snapshot,checkpoint in zip(snapshots,checkpoints):
+        if (snapshot.get('candidate_head')!=candidate or snapshot.get('database')!=database
+            or snapshot.get('system_identifier')!=system_identifier
+            or snapshot.get('operation_id')!=operation or snapshot.get('checkpoint')!=checkpoint):
+            raise ValueError('a2_preservation_operation_binding_changed')
+        started=datetime.fromisoformat(snapshot['started_at']);finished=datetime.fromisoformat(snapshot['finished_at'])
+        if (not started.tzinfo or not finished.tzinfo or finished<started
+            or (previous and started<=previous)):
+            raise ValueError('a2_preservation_checkpoint_order_changed')
+        previous=finished;tables=verify_preserved_tables(snapshot)
+        if baseline is None:baseline=tables
+        elif tables!=baseline:raise ValueError('a2_raw_independent_preservation')
+    return {'table_count':len(baseline),'checkpoint_count':len(snapshots),'media_count':baseline['blombooru_media']['rows']}
+
 
 def verify_browser_actions(browser):
     from urllib.parse import urlparse,parse_qs
@@ -22,8 +66,19 @@ def verify_browser_actions(browser):
     search=browser['search'];old=browser['old_tag'];chip=browser['source_chip']
     if set(search['ids'])!=set(search['api_ids']) or set(old['dom_ids'])!=set(old['api_ids']) or not old['api_ids']:
         raise ValueError('a2_browser_dom_api_sets_differ')
+    href=urlparse(chip.get('href',''));navigated=urlparse(chip.get('navigated_url',''))
+    query=parse_qs(href.query,keep_blank_values=True).get('q',[])
+    observed=chip.get('search',{});request=urlparse(observed.get('request_url',''))
     if (chip['kind']!='source_concept' or chip['param']!='q' or not chip.get('conceptIds')
-        or parse_qs(urlparse(chip['href']).query)!=parse_qs(urlparse(chip['navigated_url']).query)):
+        or href.path!='/' or navigated.path!='/' or not href.netloc or href.scheme not in {'http','https'}
+        or (href.scheme,href.netloc)!=(navigated.scheme,navigated.netloc)
+        or len(query)!=1 or not query[0].strip()
+        or parse_qs(href.query,keep_blank_values=True)!=parse_qs(navigated.query,keep_blank_values=True)
+        or observed.get('query')!=query[0] or request.path!='/api/search'
+        or (request.scheme,request.netloc)!=(href.scheme,href.netloc)
+        or parse_qs(request.query,keep_blank_values=True).get('q')!=query
+        or observed.get('status_code')!=200 or not observed.get('api_ids')
+        or set(observed.get('dom_ids',[]))!=set(observed['api_ids'])):
         raise ValueError('a2_browser_source_chip_navigation_changed')
     recovery=browser['recovery_page']
     if (recovery['status']!=200 or recovery.get('method')!='GET'
@@ -100,7 +155,31 @@ def latency_statistics(rows):
             'p95_ms':round(values[math.ceil((len(values)-1)*.95)],3),'max_ms':round(max(values),3)}
 
 
-def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None):
+def frozen_identity_recall(pair,decision,baseline,*,recall_baseline=None):
+    """Preserve prior expected supports, not incidental mixed-search extras."""
+    from app.services.source_metadata_registry_service import canonical_source_key as key
+    pair=tuple(sorted(map(key,pair)))
+    def previous(source):
+        return next((row for row in (source or {}).get('cases',[])
+            if 'expected' in row and tuple(sorted(map(key,row['names'])))==pair),None)
+    original=previous(baseline)
+    frozen_source=recall_baseline if recall_baseline is not None else baseline
+    frozen_case=previous(frozen_source)
+    if original is None and frozen_case is None:return [set(),set()]
+    if frozen_case is None or frozen_case['expected']!=decision or original is not None and original['expected']!=decision:
+        raise ValueError('a2_frozen_identity_baseline_case_changed')
+    rows=frozen_source.get('projection_rows')
+    if not isinstance(rows,list) or not rows:raise ValueError('a2_frozen_identity_projection_required')
+    sides=[{row[4] for row in rows if key(row[0])==name} for name in pair]
+    if decision=='must_link':
+        missing={mid for row in (original or {},frozen_case)
+            for values in row.get('missing_recall_media_ids',[]) for mid in values}
+        both=set.union(*sides)|missing
+        return [both,both]
+    return sides
+
+
+def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None,recall_baseline=None):
     from app.services.source_metadata_registry_service import canonical_source_key as key
     projection=quality.get('projection_rows')
     if not isinstance(projection,list) or not projection:
@@ -156,10 +235,8 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             shared=sides[0]['concepts']&sides[1]['concepts'];actual=[ids(quote(n)) for n in pair]
             decision=expected_pairs[pair]
             desired=[sides[0]['media']|sides[1]['media']]*2 if decision=='must_link' else [s['media'] for s in sides]
-            if decision=='must_link':
-                previous=next((r for r in (baseline or {}).get('cases',[]) if case_identity(r)==case_identity(case)),{})
-                frozen_missing={mid for missing in previous.get('missing_recall_media_ids',[]) for mid in missing}
-                desired=[want|frozen_missing for want in desired]
+            frozen=frozen_identity_recall(pair,decision,baseline,recall_baseline=recall_baseline)
+            desired=[want|old for want,old in zip(desired,frozen)]
             passed=all(s['media'] for s in sides) and all(want<=got for want,got in zip(desired,actual))
             if decision=='must_link':passed=passed and bool(shared)
             elif decision=='cannot_link':

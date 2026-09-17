@@ -82,6 +82,13 @@ def main():
         select_llm_adjudication_edges,PRODUCTION_PAIR_PROMPT_VERSION,
     )
     aggregates=read(args.aggregates);vocabulary=read(args.vocabulary);facts=read(args.role_facts) if args.role_facts else None
+    from app.services.production_pixiv_pair_correction import read_correction_prior
+    prior_rows=None;prior_proof=None;correction_history=None
+    if args.action=='adjudicate' and facts and facts.get('semantic_corrections') and not args.prior_judgments:
+        raise RuntimeError('correction_prior_judgments_required')
+    if args.prior_judgments:
+        prior_rows,prior_proof=read_correction_prior(out,args.prior_judgments.resolve().relative_to(out))
+        correction_history={'prior':prior_proof,'stages':{}}
     consumer=production_consumer(aggregates)
     prefix=out/args.label
     identity={'aggregates':canonical_fingerprint(aggregates),'vocabulary':canonical_fingerprint(vocabulary),
@@ -193,12 +200,17 @@ def main():
                 return by_key[edge.left_signal_key].role_hint==by_key[edge.right_signal_key].role_hint=='work'
             work_edges=[edge for edge in run.resolution.edge_candidates if work_pair(edge)]
             def correction_admission(stage,edges,signals,current):
-                if not args.prior_judgments:return current
+                if prior_rows is None:return current
                 from app.services.production_pixiv_pair_correction import plan_corrected_pairs
-                configured,admission=plan_corrected_pairs(edges,signals,read(args.prior_judgments),current,read(out/'llm-budget-private.json'))
+                before=read(out/'llm-budget-private.json')
+                configured,admission=plan_corrected_pairs(edges,signals,prior_rows,current,before)
+                ledger_name=f'{args.label}-{stage}-correction-ledger-private.json'
+                write(out/ledger_name,before)
+                correction_history['stages'][stage]={'admission':f'{args.label}-{stage}-correction-admission-private.json',
+                    'ledger':ledger_name,'ledger_fingerprint':canonical_fingerprint(before)}
                 write(out/f'{args.label}-{stage}-correction-admission-private.json',admission)
                 print(json.dumps({'stage':stage+'_correction_admission',**{k:v for k,v in admission.items()
-                    if k not in {'changed_previous_inputs','missing'}}}),flush=True)
+                    if k not in {'changed_previous_inputs','missing','logical_predecessors'}}}),flush=True)
                 if not admission['budget_headroom_sufficient']:raise RuntimeError('correction_plan_exceeds_remaining_budget')
                 return configured
             config=correction_admission('work',work_edges,run.resolution.signals,config)
@@ -234,7 +246,8 @@ def main():
                 'processing':{key:receipt[key] for key in ('selected_pair_count','judgment_count','error_count','remaining_missing_pair_count')},
                 'adjudication_receipt':f'{args.label}-adjudication-private.json',
                 'work_selection':f'{args.label}-work-selected-pairs-private.json',
-                'remaining_selection':f'{args.label}-remaining-selected-pairs-private.json'})
+                'remaining_selection':f'{args.label}-remaining-selected-pairs-private.json',
+                'correction_history':correction_history})
         result={'input_identity':identity,'run_id':run.resolution.run_id,'seconds':time.monotonic()-started,
                 'peak_memory_bytes':peak_memory_bytes(),
                 'signal_count':len(run.resolution.signals),'edge_count':len(run.resolution.edge_candidates),

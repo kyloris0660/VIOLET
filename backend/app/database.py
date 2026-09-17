@@ -1432,6 +1432,9 @@ def migrate_add_source_concept_withdrawal_indexes(engine, inspector):
         (SourceConceptFallbackSearchIndex, 'neighbor_signal_id'),
     )
     with engine.begin() as conn:
+        if conn.dialect.name == 'postgresql':
+            conn.execute(text("SET LOCAL lock_timeout = '5000ms'"))
+            conn.execute(text("SET LOCAL statement_timeout = '120000ms'"))
         # The startup inspector can predate tables created by earlier steps.
         current = inspect(conn)
         for model, column in lookups:

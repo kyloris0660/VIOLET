@@ -354,6 +354,10 @@ def verify_release_sources(aggregates,vocabulary,facts,judgments,manifest,privat
     from .production_pixiv_service import production_consumer,build_production_clustering
     from .source_concept_budget import AdjudicationBudget
     private_root=Path(private_root).resolve(strict=True)
+    history=manifest.get('correction_history')
+    if facts.get('semantic_corrections') and not history:
+        raise ValueError('correction_admission_required')
+    from .production_pixiv_pair_correction import verify_correction_admission
     def read(name):
         path=(private_root/name).resolve(strict=True)
         if not path.is_relative_to(private_root):raise ValueError('semantic_source_receipt_outside_task')
@@ -374,11 +378,16 @@ def verify_release_sources(aggregates,vocabulary,facts,judgments,manifest,privat
     work_edges=resolver.select_llm_adjudication_edges([e for e in initial.resolution.edge_candidates if work_pair(e)],
         signals=initial.resolution.signals,config=config)
     work=verify_selected_judgment_sources(work_edges,initial.resolution.signals,work_judgments,config,ledger)
+    corrections=[]
+    if history:corrections.append(verify_correction_admission('work',work_edges,initial.resolution.signals,
+        config,ledger,history,private_root))
     del initial
     contextual=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=work_judgments)
     others=resolver.select_llm_adjudication_edges([e for e in contextual.resolution.edge_candidates if not work_pair(e)],
         signals=contextual.resolution.signals,config=config)
     remaining=verify_selected_judgment_sources(others,contextual.resolution.signals,other_judgments,config,ledger)
+    if history:corrections.append(verify_correction_admission('remaining',others,contextual.resolution.signals,
+        config,ledger,history,private_root))
     # Published selection files are evidence too; they must describe this
     # replay, not merely repeat the manifest's self-reported counters.
     for stage,edges,signals,result in [('work',work_edges,None,work),('remaining',others,contextual.resolution.signals,remaining)]:
@@ -394,4 +403,5 @@ def verify_release_sources(aggregates,vocabulary,facts,judgments,manifest,privat
         observed=receipt['work_stage' if stage=='work' else 'remaining_stage']
         if any(observed.get(k)!=result[k] for k in ('selected_pair_count','judgment_count')) or observed.get('error_count')!=0:
             raise ValueError('semantic_processing_receipt_changed')
-    return {'role_sources':roles,'work_sources':work,'remaining_sources':remaining,'new_provider_calls':0}
+    return {'role_sources':roles,'work_sources':work,'remaining_sources':remaining,
+            'correction_admissions':corrections,'new_provider_calls':0}

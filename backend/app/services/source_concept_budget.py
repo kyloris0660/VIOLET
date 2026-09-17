@@ -165,6 +165,21 @@ class AdjudicationBudget:
         if not key or any(not isinstance(item,str) or not item for item in logical_keys):
             raise ValueError('adjudication_logical_key_invalid')
         with self._locked() as state:
+            if key.startswith('decision-input:'):
+                family={key.split(':prompt:',1)[0],*logical_keys}
+                linked={}
+                changed=True
+                while changed:
+                    changed=False
+                    for row in state['calls']:
+                        keys={item.split(':prompt:',1)[0] for item in (row['key'],*row.get('logical_keys',[]))}
+                        if family & keys:
+                            linked[row['id']]=row
+                            if not keys<=family:family.update(keys);changed=True
+                if any(row['status']=='reserved' for row in linked.values()):
+                    raise AdjudicationBudgetBlocked('adjudication_logical_call_outcome_unknown')
+                if len(linked)>=3:
+                    raise AdjudicationBudgetBlocked('adjudication_logical_attempts_exhausted')
             previous=[row for row in state['calls'] if row['key']==key]
             if any(row['status']=='reserved' for row in previous):
                 raise AdjudicationBudgetBlocked('adjudication_previous_call_outcome_unknown')

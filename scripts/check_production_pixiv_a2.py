@@ -121,7 +121,8 @@ def derive_result(private,repo=ROOT):
     observed={row['media_id']:(row['work_id'],row['page_index']) for row in coverage['items']}
     require(expected==observed and len(observed)==len(coverage['items'])==scope['media_count'],'fixed_media_mapping')
     require(dict(Counter(row['disposition'] for row in coverage['items']))==coverage['counts'],'disposition_counts')
-    events=[json.loads(line) for line in (private/'metadata-dispatch-private.jsonl').read_text(encoding='utf-8').splitlines()]
+    journal=evidence_path(private,'metadata-dispatch-private.jsonl').read_bytes()
+    events=[json.loads(line) for line in journal.decode('utf-8').splitlines()]
     attempts=Counter(row['work_id'] for row in events if row['event']=='dispatch')
     require(all(count<=3 for count in attempts.values()),'metadata_attempt_limit')
     require(set(attempts)<={row['work_id'] for row in scope['mappings'] if row['work_id']},'metadata_request_scope')
@@ -130,7 +131,7 @@ def derive_result(private,repo=ROOT):
         and timing['ordinary_gaps_below_two_seconds']==1594 and timing['ordinary_gaps_below_1_99_seconds']==4
         and timing['minimum_wall_clock_dispatch_gap_seconds']==1.740068,'accepted_historical_timing_gap_retained')
     from scripts.production_pixiv_a2_evidence import verify_forward_metadata_spacing
-    forward_spacing=verify_forward_metadata_spacing((private/'metadata-dispatch-private.jsonl').read_bytes(),timing)
+    forward_spacing=verify_forward_metadata_spacing(journal,timing)
     from app.services.source_concept_budget import AdjudicationBudget
     ledger=read(private,'llm-budget-private.json')
     cap=ledger['cap_microusd']/1000000
@@ -162,7 +163,9 @@ def derive_result(private,repo=ROOT):
     require(recovery['independent_support_preserved'] and recovery['batch_business_equivalent']
         and recovery['source_update_delete_verified'],'recovery_seams')
     protected=[read(private,name) for name in recovery['preservation_evidence']]
-    require(len(protected)>=3 and all(row['tables']==protected[0]['tables'] for row in protected[1:]),'raw_independent_preservation')
+    from scripts.production_pixiv_a2_evidence import verify_preservation_snapshots
+    verify_preservation_snapshots(protected,candidate=head,database=restore['target'],
+        system_identifier=backup['system_identifier'],operation=recovery.get('operation_id'))
     batches=read(private,recovery['batch_evidence'])
     require(batches.get('direct_projection') and batches['direct_projection']==batches.get('resumed_projection')
         and sum(batches['batch_sizes'])==batches['aggregate_count'],'raw_batch_projection')
@@ -185,19 +188,20 @@ def derive_result(private,repo=ROOT):
     thumbnails=[i for i in images if '/thumbnail' in i.get('src','') and i.get('width',0)>0 and i.get('height',0)>0]
     require(originals and thumbnails and not browser.get('page_errors'),'browser_actual_image_loads')
     for name in browser['screenshots']:
-        require((private/name).is_file() and (private/name).stat().st_size>1000,'browser_screenshot')
+        require(evidence_path(private,name).stat().st_size>1000,'browser_screenshot')
     quality=read(private,manifest['quality']);workload=read(private,manifest['workload'])
     require(quality['candidate_head']==workload['candidate_head']==head,'quality_candidate')
     from scripts.production_pixiv_a2_evidence import recompute_quality,recompute_workload
     quality_actual=recompute_quality(quality,read(private,quality['oracle_input']),
         suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'),
         creator_oracle=read(private,'independent-creator-homonym-oracle-private.json'),
-        baseline=read(private,'full-production-final-1-combined-quality-private.json'))
+        baseline=read(private,'full-production-final-1-combined-quality-private.json'),
+        recall_baseline=read(private,'closeout43-copy-surfaces-1-combined-quality-private.json'))
     require(quality['independent_answer_sources'] and quality_actual['case_count']>=80
         and quality_actual['failed_cases']==0,'independent_quality')
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
     baseline=read(private,manifest['workload_baseline'])
-    frozen_workload=[json.loads(line) for line in (private/'accepted-240-query-workload-private.jsonl').read_text(encoding='utf-8').splitlines()]
+    frozen_workload=[json.loads(line) for line in evidence_path(private,'accepted-240-query-workload-private.jsonl').read_text(encoding='utf-8').splitlines()]
     source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload)
     require(source_latency==workload['accepted_source_layer_latency_ms'] and http_latency==workload['latency_ms'],'query_statistics')
     p95_gate=750
