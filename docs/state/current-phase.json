@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "002df6563b70ef34bf2eabd289c90d227e1f0ea1",
+  "candidate_head": "6bd5546a8cef007fd3343bb79add4dbd04ff563b",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -58,6 +58,9 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
+    "20260917纠偏进行中：147组角色纠正完成，143独立答案/4同题复用/144新调用；累计USD13.576733，54未知usage保留。完整新图谱及副本质量待验，不代表target_met。",
+    "6bd5546当前完整来源重放通过：15821角色记录、1921原始响应、零新调用；历史v1请求和旧raw账本匹配已恢复，48项相关测试通过，前候选225focused/21PostgreSQL通过。",
+    "20260918恢复原固定44db0da服务：38114 Media、8623绑定Media、66572有效支持，read ON/apply OFF；普通无参数EXE界面健康，3张既有媒体及来源chip/旧搜索/suggestion/只读恢复页通过真实Edge验证。新版未上线。以下为保留的上一轮检查点。",
     "固定T038114 Media；9502可信映射、8623完整metadata、850远端不可用、29缺页；8694获取记录复用，本轮无新metadata。",
     "43号修复统一USD30账本、付费缓存/结算恢复、语义输入完整性与版本门禁、前向2秒节流、原子缓存、失败/ERROR及原始证据契约核算。",
     "31607 selected/31607有效业务结果，0未补；原8769缺项=8664有效+105有据排除，新候选680，原分母和旧费用保留。",
@@ -349,6 +352,7 @@
     "validated_candidate_002df65": {"focused_passed": 225, "postgresql_passed": 21},
     "stable_availability_restored": {"candidate": "44db0da", "pid": 43196, "media": 38114, "bound_media": 8623, "valid_supports": 66572, "read": true, "apply": false},
     "full_copy_quality": "not_yet_rerun_on_corrected_inputs",
+    "first_graph_failure": "unsupported_low_trust_on_uncertain_corrections_fixed_to_existing_weak_tier_before_any_new_pair_call",
     "original_production_mutated_this_continuation": false,
     "new_production_deployed": false
   },

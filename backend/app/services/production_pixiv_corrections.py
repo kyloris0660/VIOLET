@@ -94,9 +94,9 @@ def apply_semantic_corrections(consumer,facts):
             context=next(iter(contexts)) if len(contexts)==1 and role!='work' else None
         elif outcome['disposition']=='non_name':role='unknown';trust=status='rejected';context=None
         elif outcome['disposition']=='unknown' or roles=={'unknown'}:
-            role='unknown';status='needs_review';trust='low';context=None
+            role='unknown';status='needs_review';trust='weak';context=None
         elif len(roles)==1 and next(iter(roles))=='source_title':
-            role='source_title';status='needs_review';trust='low';context=None
+            role='source_title';status='needs_review';trust='weak';context=None
         else:raise ValueError('semantic_correction_conflicting_roles:'+signal.raw_value+':'+','.join(sorted(roles)))
         evidence={**signal.evidence_payload,'production_semantic_correction':{
             'request_fingerprint':canonical_fingerprint(request),'extraction_key':links[aggregate],

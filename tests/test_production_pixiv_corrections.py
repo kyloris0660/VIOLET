@@ -8,6 +8,27 @@ from test_production_pixiv_role_coverage import context,Responses,candidate
 from test_production_pixiv_role_extraction import task_budget
 
 
+@pytest.mark.parametrize('candidate_role,expected_role',[('unknown_name_like','unknown'),('source_title','source_title')])
+def test_corrected_uncertain_answer_survives_real_resolver_without_promotion(tmp_path,candidate_role,expected_role):
+    from app.services.source_concept_resolver_service import resolve_source_concepts,LLMAdjudicationConfig
+    value=context(['AmbiguousLiteral']);vocab=build_semantic_vocabulary([])
+    base=adapt_production_semantics(value,vocab,{'schema_version':ROLE_SCHEMA,'records':{}})
+    request={'aggregate_fingerprint':'aggregate-12345678','raw_targets':['AmbiguousLiteral'],
+        'supersedes':{s.raw_value:signal_semantics(s) for s in base.signals},
+        'conflict_evidence':['bounded source conflict'],'authorization':'test owner'}
+    units,_=correction_units(base,{},[request])
+    provider=Responses(lambda group:([{**candidate('AmbiguousLiteral',candidate_role),'status':'needs_review'}],[]))
+    extracted=extract_production_roles(units,provider=provider,budget=task_budget(tmp_path,provider),cache_dir=tmp_path/'roles')
+    facts={'schema_version':ROLE_SCHEMA,'records':{},'semantic_corrections':[request],'correction_records':extracted['records']}
+    adapted=adapt_production_semantics(value,vocab,facts)
+    signal=adapted.signals[0]
+    assert (signal.role_hint,signal.trust_tier,signal.status)==(expected_role,'weak','needs_review')
+    result=resolve_source_concepts(adapted.signals,run_id='correction-uncertainty',
+        llm_config=LLMAdjudicationConfig(enabled=False,max_calls=0))
+    assert result.links and all(c.status!='active' for c in result.concepts)
+    assert len(provider.calls)==1
+
+
 def test_identical_full_correction_question_reuses_original_answer_without_relabeling(tmp_path):
     from app.services.production_pixiv_release_provenance import verify_role_response_sources
     first=context(['Hero','Franchise']);second=context(['Hero','Franchise'],'22222222')
