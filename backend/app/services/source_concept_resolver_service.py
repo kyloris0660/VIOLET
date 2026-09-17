@@ -4120,7 +4120,11 @@ def run_bounded_llm_adjudication(
                 config=config,provider_summary=provider_summary,provider_model=compatible['provider_model'])
             migrated['reused_from_cache_key']=compatible['cache_key']
             _write_durable_cache_record(durable_cache_root,migrated)
-            cached.update(cache_key=metadata['cache_key'],judgment_id=metadata['cache_key'])
+            # Bind every occurrence field to the record just published. Keeping
+            # the source hash/identity here makes the first cache reuse differ
+            # from a subsequent exact hit and breaks offline provenance replay.
+            cached = _judgment_from_cache_record(migrated,block_payload=block_payload,
+                selected_pair_id=selected_pair_id,cache_status='hit',reuse_level='same_decision_input_new_occurrence')
             judgments.append(cached)
             cache_hits += 1
             semantic_cache_hits += 1

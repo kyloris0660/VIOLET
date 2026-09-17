@@ -64,6 +64,28 @@ def test_release_replays_selected_question_and_actual_cache_answer(tmp_path,monk
     assert provider.calls==1
 
 
+def test_first_semantic_reuse_binds_current_occurrence_and_replays_offline(tmp_path,monkeypatch):
+    from app.services.production_pixiv_release_provenance import verify_selected_judgment_sources
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path)
+    original,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    signals=[replace(s,signal_key='new:'+s.signal_key) for s in signals]
+    edges=[replace(e,edge_key='new:'+e.edge_key,left_signal_key='new:'+e.left_signal_key,
+        right_signal_key='new:'+e.right_signal_key) for e in edges]
+    first,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    ledger=json.loads((tmp_path/'budget.json').read_text())
+    assert receipt['new_provider_call_count']==0 and provider.calls==1
+    assert first[0]['pair_payload_hash']!=original[0]['pair_payload_hash']
+    assert first[0]['pair_identity']!=original[0]['pair_identity']
+    assert verify_selected_judgment_sources(edges,signals,first,cfg,ledger)['judgment_count']==1
+    second,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    for key in ('cache_key','judgment_id','pair_payload_hash','pair_identity','input_signal_summary',
+                'decision','confidence','reason_code'):
+        assert first[0][key]==second[0][key]
+    assert provider.calls==1
+
+
 @pytest.mark.parametrize('failure_point',['record','pair_index','settlement'])
 @pytest.mark.parametrize('reuse',['exact','same_input'])
 def test_valid_provider_response_survives_local_cache_or_settlement_failure(tmp_path,monkeypatch,failure_point,reuse):
