@@ -20,6 +20,30 @@ def config(tmp_path):
         output_price_per_million=1.6,semantic_cache_reuse=True)
 
 
+@pytest.mark.parametrize('change',['none','decision','confidence','duplicate','missing','context'])
+def test_release_replays_selected_question_and_actual_cache_answer(tmp_path,monkeypatch,change):
+    import copy
+    from app.services.production_pixiv_release_provenance import verify_selected_judgment_sources
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path)
+    rows,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    ledger=json.loads((tmp_path/'budget.json').read_text())
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:pytest.fail('release must be offline'))
+    rows=copy.deepcopy(rows)
+    if change=='decision':rows[0]['decision']='cannot_link'
+    elif change=='confidence':rows[0]['confidence']=0.1
+    elif change=='duplicate':rows.append(rows[0])
+    elif change=='missing':rows=[]
+    elif change=='context':signals=[replace(s,work_context_key='changed-input') for s in signals]
+    if change=='none':
+        assert verify_selected_judgment_sources(edges,signals,rows,cfg,ledger)['judgment_count']==1
+    else:
+        with pytest.raises(ValueError,match='semantic_'):
+            verify_selected_judgment_sources(edges,signals,rows,cfg,ledger)
+    assert provider.calls==1
+
+
 @pytest.mark.parametrize('failure_point',['record','pair_index','settlement'])
 @pytest.mark.parametrize('reuse',['exact','same_input'])
 def test_valid_provider_response_survives_local_cache_or_settlement_failure(tmp_path,monkeypatch,failure_point,reuse):

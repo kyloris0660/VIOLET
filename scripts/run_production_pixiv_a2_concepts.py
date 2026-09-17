@@ -211,7 +211,9 @@ def main():
                 'input_identity':semantic_input_identity(aggregates,vocabulary,facts,judgments),
                 'candidate_head':subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
                 'processing':{key:receipt[key] for key in ('selected_pair_count','judgment_count','error_count','remaining_missing_pair_count')},
-                'adjudication_receipt':f'{args.label}-adjudication-private.json'})
+                'adjudication_receipt':f'{args.label}-adjudication-private.json',
+                'work_selection':f'{args.label}-work-selected-pairs-private.json',
+                'remaining_selection':f'{args.label}-remaining-selected-pairs-private.json'})
         result={'input_identity':identity,'run_id':run.resolution.run_id,'seconds':time.monotonic()-started,
                 'peak_memory_bytes':peak_memory_bytes(),
                 'signal_count':len(run.resolution.signals),'edge_count':len(run.resolution.edge_candidates),

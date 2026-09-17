@@ -28,6 +28,7 @@ from .source_name_candidate_extraction_service import (
 ROLE_SCHEMA='violet.production-pixiv-role-result.v1'
 COMPLETION_ORIGIN='production_pixiv_residual_roles_v1'
 COVERAGE_REPAIR_ORIGIN='production_pixiv_role_coverage_repair_v2'
+CORRECTION_ORIGIN='production_pixiv_evidenced_role_correction_v1'
 COMPLETION_PROMPT=(
     'Production residual role completion v1. The requested raw tags are listed in each record data_type_label. '
     'Classify every requested spelling using ALL of its actual tags as context. '
@@ -98,16 +99,20 @@ def _identity(unit,model):
 
 def _production_messages(messages):
     payload=json.loads(messages[1]['content'])
-    selected=[row for row in payload.get('records',[]) if row.get('data_origin') in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN}]
+    selected=[row for row in payload.get('records',[]) if row.get('data_origin') in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}]
     if not selected:return messages
     origins={row['data_origin'] for row in selected}
     if len(origins)!=1:raise ValueError('mixed_production_role_prompt_versions')
     origin=next(iter(origins))
-    prompt=COVERAGE_REPAIR_PROMPT if origin==COVERAGE_REPAIR_ORIGIN else COMPLETION_PROMPT
+    prompt=COVERAGE_REPAIR_PROMPT if origin in {COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN} else COMPLETION_PROMPT
+    if origin==CORRECTION_ORIGIN:
+        prompt=prompt.replace('This is one coverage repair for previously omitted targets, not a re-judgment of answered names.',
+            'This is a bounded re-evaluation of targets with a documented semantic conflict. Earlier answers remain historical; classify the actual requested names anew from this complete source context.')
+        prompt+=' Co-occurring work titles do not prove character membership. Supply work_context only when the specific character association is known and that work is observed in this group. Descriptive slogans are not necessarily work titles. Preserve ambiguity instead of inferring membership from the only remaining work tag.'
     for row in selected:row.pop('deterministic_hints',None)
     payload['production_prompt_adapter']=origin
     system=messages[0]['content']
-    if origin==COVERAGE_REPAIR_ORIGIN:
+    if origin in {COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}:
         # F7a's base output restriction conflicts with this task's additional
         # per-target ledger. Change only the repair adapter, never old prompts.
         system=system.replace('Only include ambiguous_items or error_code when needed. ',
@@ -247,7 +252,7 @@ def _record(unit,model,verdict,candidates,*,origin):
 
 
 def _unit_answer_complete(unit,record):
-    return (unit.unit_group.data_origin not in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN}
+    return (unit.unit_group.data_origin not in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}
         or not role_target_coverage(unit,record)['missing_raw_tags'])
 
 
@@ -343,7 +348,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 row=_adapt_response_record(by_key[group.group_key],SimpleNamespace(unit_group=group))
                 verdict,candidates,*_=validate_extraction_record(row,group)
                 if verdict.extraction_verdict.startswith('extraction_error'):raise ValueError('role_response_error_verdict')
-                if group.data_origin in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN}:
+                if group.data_origin in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}:
                     targets=json.loads(group.data_type_label.split(': ',1)[1])
                     coverage=role_target_coverage(SimpleNamespace(raw_values=targets),{
                         'verdict':verdict.extraction_verdict,'candidates':[asdict(c) for c in candidates],
@@ -415,7 +420,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
 
     def replay_saved_raw(self):
         recovered_before=sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())
-        paths=[*(self.cache_dir/'raw').glob('*.json'),*(self.cache_dir/'raw'/'attempts').glob('*.json')]
+        paths=[*(self.cache_dir/'raw').glob('*.json'),*(self.cache_dir/'raw'/'attempts').glob('*.json'),
+               *(self.cache_dir/'response-recovery').glob('*.json')]
         for path in sorted(paths):
             saved=json.loads(path.read_text(encoding='utf-8'))
             if saved.get('model')!=self.model:continue
@@ -465,7 +471,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         signature=canonical_fingerprint({'model':self.model,'messages':messages,'temperature':temperature,'max_tokens':max_tokens})
         path=self.cache_dir/'raw'/f'{signature}.json'
         previous=[json.loads(p.read_text(encoding='utf-8')) for p in
-            ([path] if path.exists() else [])+list((self.cache_dir/'raw'/'attempts').glob(signature+'.*.json'))]
+            ([path] if path.exists() else [])+list((self.cache_dir/'raw'/'attempts').glob(signature+'.*.json'))
+            +list((self.cache_dir/'response-recovery').glob(signature+'.*.json'))]
         feedback=None
         if previous:
             cached=max(previous,key=lambda row:row.get('budget_response',{}).get('attempt',0))
@@ -486,25 +493,38 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         reservation=self.budget.reserve('role-extraction:'+signature,wire,max_output_tokens=max_tokens,
             logical_keys=self.logical_keys(groups))
         self.provider.last_usage={}
-        response_saved=False
+        response_returned=False
+        saved=None
+        response_identity=self.budget.response_identity(reservation)
         try:
             self.calls+=1
             content=await self.provider.complete_chat(wire,temperature=temperature,max_tokens=max_tokens)
+            response_returned=True
             self.last_usage=dict(getattr(self.provider,'last_usage',{}))
             saved={'input_fingerprint':signature,'model':self.model,'content':content,'usage':self.last_usage,
                 'request_messages':messages,'request_groups':[asdict(g) for g in groups],
                 'temperature':temperature,'max_tokens':max_tokens,'wire_messages':wire,
-                'wire_fingerprint':canonical_fingerprint(wire),'budget_response':self.budget.response_identity(reservation)}
+                'wire_fingerprint':canonical_fingerprint(wire),'budget_response':response_identity}
             destination=path if not path.exists() else self.cache_dir/'raw'/'attempts'/f'{signature}.{reservation}.json'
             _atomic_write_json(destination,saved)
-            response_saved=True
             self.save_units(content)
             _,validation_error=self.validate_saved(saved)
+            self.budget.settle(reservation,self.last_usage,success=validation_error is None)
         except BaseException as exc:
-            if not response_saved:self.budget.settle(reservation,getattr(self.provider,'last_usage',{}),success=False)
+            if not response_returned:
+                self.budget.settle(reservation,getattr(self.provider,'last_usage',{}),success=False)
+            else:
+                # A local publishing/settlement failure is not a model retry.
+                # Keep the original reservation even if both locations fail.
+                if saved is not None:
+                    try:
+                        _atomic_write_json(self.cache_dir/'response-recovery'/f'{signature}.{reservation}.json',saved)
+                    except OSError:
+                        pass
+                self.gate.reason='role_response_persistence_recovery_required'
+                raise
             self.gate.returned(exc)
             raise
-        self.budget.settle(reservation,self.last_usage,success=validation_error is None)
         self.gate.returned()
         return self.adapted_content(content)
 
@@ -730,7 +750,7 @@ def _original_completion_questions(consumer,vocabulary,role_facts,*,require_comp
     # Reconstruct the exact original question, not a new interpretation of its
     # targets. Legacy caches remain immutable and their answered names survive.
     baseline={**role_facts,'completion_records':{},'completion_by_aggregate':{},
-        'coverage_repair_records':{},'coverage_repair_by_aggregate':{}}
+        'coverage_repair_records':{},'coverage_repair_by_aggregate':{},'semantic_corrections':[]}
     units,mapping,_=plan_contextual_role_completion(consumer,vocabulary,baseline)
     if require_complete and set(mapping)-set(role_facts.get('completion_by_aggregate',{})):
         raise ValueError('expected_role_completion_mapping_missing')

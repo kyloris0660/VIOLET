@@ -56,6 +56,38 @@ def task_budget(tmp_path,provider):
     return AdjudicationBudget(tmp_path/'budget.json',model=provider.model,cap_usd=10,input_per_million=0.4,output_per_million=1.6)
 
 
+@pytest.mark.parametrize('stage',['raw','unit','settle','all_storage'])
+def test_local_response_failure_keeps_one_paid_attempt_across_two_resumes(tmp_path,monkeypatch,stage):
+    import asyncio
+    import app.services.production_pixiv_role_extraction as roles
+    from app.services.source_concept_budget import AdjudicationBudgetBlocked
+    from app.services.source_name_candidate_extraction_service import extraction_messages
+    provider=Provider();budget=task_budget(tmp_path,provider);units=multiple_units()[:2]
+    cache=tmp_path/'roles';wrapped=roles.BudgetedExtractionProvider(provider,budget,cache,units)
+    atomic=roles._atomic_write_json
+    def publish(path,value):
+        if stage=='all_storage' or (stage=='raw' and 'raw' in path.parts):raise OSError('local raw disk failure')
+        if stage=='unit' and path==roles._unit_path(cache,units[1]):raise OSError('local second unit failure')
+        return atomic(path,value)
+    with monkeypatch.context() as patch:
+        patch.setattr(roles,'_atomic_write_json',publish)
+        if stage=='settle':patch.setattr(budget,'settle',lambda *a,**k: (_ for _ in ()).throw(OSError('settle failure')))
+        with pytest.raises(OSError):asyncio.run(wrapped.complete_chat(extraction_messages([u.unit_group for u in units])))
+    assert len(provider.calls)==1
+    assert json.loads(budget.path.read_text())['calls'][0]['status']=='reserved'
+    if stage=='unit':assert roles._unit_path(cache,units[0]).exists()
+    for _ in range(2):
+        resumed=roles.BudgetedExtractionProvider(provider,budget,cache,units)
+        if stage=='all_storage':
+            with pytest.raises(AdjudicationBudgetBlocked,match='outcome_unknown'):
+                asyncio.run(resumed.complete_chat(extraction_messages([u.unit_group for u in units])))
+        else:
+            resumed.replay_saved_raw()
+            asyncio.run(resumed.complete_chat(extraction_messages([u.unit_group for u in units])))
+            assert budget.summary()['charged_or_reserved_usd']==0.0002
+    assert len(provider.calls)==1 and budget.summary()['call_count']==1
+
+
 def test_role_raw_saved_before_settlement_resumes_without_repay(tmp_path,monkeypatch):
     import asyncio
     from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider

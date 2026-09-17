@@ -144,7 +144,8 @@ def main():
                 receipt['role_target_coverage']=verify_role_completion(aggregates,read(args.vocabulary),
                     read(args.role_facts),read(out/'llm-budget-private.json'))
                 receipt['semantic_input_identity']=verify_semantic_manifest(read(args.semantic_manifest),
-                    aggregates,read(args.vocabulary),read(args.role_facts),read(args.judgments),source_head)
+                    aggregates,read(args.vocabulary),read(args.role_facts),read(args.judgments),source_head,
+                    private_root=out,semantic_cache_dirs=(str(Path(profile['storage_root'])/'.local_manifests/source_concept_llm_adjudication_cache'),))
             run=build_production_clustering(production_consumer(aggregates),
                 vocabulary=read(args.vocabulary),role_facts=read(args.role_facts) if args.role_facts else None,
                 judgments=read(args.judgments) if args.judgments else ())

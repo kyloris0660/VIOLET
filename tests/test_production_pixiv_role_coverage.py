@@ -43,6 +43,31 @@ class Responses(Provider):
         return json.dumps({'records':records})
 
 
+def test_completion_target_dispositions_change_only_grounded_target_projection(tmp_path):
+    value=context(['MysteryKnown','MysteryDescription','MysteryUnknown'])
+    vocab=build_semantic_vocabulary([])
+    provider=Responses(lambda group:([candidate('MysteryKnown')],[
+        {'raw_value':'MysteryDescription','disposition':'non_name','reason_code':'descriptive'},
+        {'raw_value':'MysteryUnknown','disposition':'unknown','reason_code':'ambiguous'}]))
+    facts=complete_contextual_production_roles(value,vocab,{'schema_version':ROLE_SCHEMA,'records':{}},
+        provider=provider,budget=task_budget(tmp_path,provider),cache_dir=tmp_path/'roles')
+    adapted=adapt_production_semantics(value,vocab,facts)
+    by_name={s.raw_value:s for s in adapted.signals}
+    assert by_name['MysteryDescription'].status=='rejected'
+    assert by_name['MysteryKnown'].role_hint=='character'
+    assert by_name['MysteryUnknown'].status!='rejected'
+    foreign=context(['MysteryDescription'],'22222222')
+    assert adapt_production_semantics(foreign,vocab,{
+        **facts,'completion_by_aggregate':{}}).signals[0].status!='rejected'
+    # A summary field alone is not a semantic answer.
+    import copy
+    changed=copy.deepcopy(facts)
+    next(iter(changed['completion_records'].values()))['target_coverage']={
+        'outcomes':{'MysteryUnknown':{'disposition':'non_name'}}}
+    assert next(s for s in adapt_production_semantics(value,vocab,changed).signals
+                if s.raw_value=='MysteryUnknown').status!='rejected'
+
+
 def partial_facts(tmp_path,names=None):
     value=context(names or ['MysteryKnown','MysteryMissing','MysteryUnknown'])
     vocabulary=build_semantic_vocabulary([])
@@ -367,6 +392,32 @@ def test_exhausted_target_does_not_stop_other_missing_targets_or_reset_attempts(
     assert result['role_response_coverage']['counts']['unaccounted']==0
     assert result['role_response_coverage']['requested_tag_occurrences']==4
     assert result['role_terminal_targets']['aggregate-12345678']['MysteryMissing']['identity_confirmed'] is False
+
+
+@pytest.mark.parametrize('corruption',['other_raw','other_context','duplicate','unsettled'])
+def test_terminal_release_binds_outer_target_and_original_context(tmp_path,monkeypatch,corruption):
+    from copy import deepcopy
+    from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider,summarize_role_response_coverage
+    from app.services.production_pixiv_release_inputs import verify_role_completion
+    value,vocab,facts,_,budget=partial_facts(tmp_path)
+    unit=plan_role_coverage_repair(value,vocab,facts)[0][0]
+    logical=BudgetedExtractionProvider.logical_keys([replace(unit.unit_group,
+        data_type_label='Requested unresolved raw tags: '+json.dumps(['MysteryMissing']))])[0]
+    for i in range(2):
+        ticket=budget.reserve('extra-'+str(i),[],logical_keys=[logical]);budget.settle(ticket,{},success=False)
+    facts=repair_missing_role_coverage(value,vocab,facts,provider=Responses(lambda g:([],[])),budget=budget,cache_dir=tmp_path/'roles')
+    ledger=json.loads(budget.path.read_text())
+    monkeypatch.setattr('app.services.production_pixiv_service.production_consumer',lambda _:value)
+    verify_role_completion([],vocab,facts,ledger)
+    facts=deepcopy(facts);terminal=facts['role_terminal_targets']['aggregate-12345678']
+    answer=terminal['MysteryMissing']
+    if corruption=='other_raw':terminal['MysteryUnknown']=deepcopy(terminal['MysteryMissing'])
+    elif corruption=='other_context':answer['logical_key']='role-target:borrowed'
+    elif corruption=='duplicate':answer['attempt_ids'][1]=answer['attempt_ids'][0]
+    else:next(r for r in ledger['calls'] if r['id']==answer['attempt_ids'][0])['status']='reserved'
+    facts['role_response_coverage']=summarize_role_response_coverage(value,vocab,facts)
+    with pytest.raises(ValueError,match='semantic_terminal'):
+        verify_role_completion([],vocab,facts,ledger)
 
 
 def test_target_accounting_rejects_aggregate_counts_duplicates_and_unsupported_claims(tmp_path):

@@ -6,6 +6,27 @@ from app.services.production_pixiv_release_inputs import (
 from app.services.production_pixiv_service import build_fixed_scope
 
 
+@pytest.mark.parametrize('changed',['none','candidate','context','raw'])
+def test_role_release_replays_original_response_and_full_context(tmp_path,changed):
+    import json
+    from test_production_pixiv_role_coverage import partial_facts
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    value,vocabulary,facts,provider,budget=partial_facts(tmp_path)
+    if changed=='candidate':next(iter(facts['completion_records'].values()))['candidates'][0]['confidence']=0.01
+    elif changed=='context':
+        from dataclasses import replace
+        value=replace(value,signals=value.signals[:-1])
+    elif changed=='raw':
+        path=next((tmp_path/'roles'/'raw').glob('*.json'))
+        raw=json.loads(path.read_text());raw['content']=json.dumps({'records':[]});path.write_text(json.dumps(raw))
+    if changed=='none':
+        result=verify_role_response_sources(value,vocabulary,facts,tmp_path/'roles',json.loads(budget.path.read_text()))
+        assert result['record_count']==1 and result['new_provider_calls']==0
+    else:
+        with pytest.raises(ValueError):verify_role_response_sources(value,vocabulary,facts,tmp_path/'roles',json.loads(budget.path.read_text()))
+    assert len(provider.calls)==1
+
+
 def test_scope_recomputed_from_independent_t0_rejects_self_consistent_truncation():
     media=[{'id':1,'filename':'12345678_p0.jpg'},{'id':2,'filename':'22222222_p0.jpg'}]
     inventory={'media':media,'metadata':[], 'summary':{'identity':{'database':'prod','system_identifier':'system'},
@@ -41,7 +62,8 @@ def test_semantic_release_binds_current_sources_roles_context_versions_and_judgm
         'processing':{'remaining_missing_pair_count':0,'error_count':0,'selected_pair_count':1,'judgment_count':1}}
     # Compatible inherited results require a current completed processing
     # receipt, not invented local provider calls for accepted old caches.
-    verify_semantic_manifest(manifest,aggregates,vocabulary,facts,judgments,'a'*40)
+    with pytest.raises(ValueError,match='original_source_replay_required'):
+        verify_semantic_manifest(manifest,aggregates,vocabulary,facts,judgments,'a'*40)
     stale_pair_prompt=copy.deepcopy(manifest)
     stale_pair_prompt['input_identity']['versions']['pair_prompt']='source_concept_llm_pair_adjudication_v1'
     with pytest.raises(ValueError,match='input_version_or_candidate'):

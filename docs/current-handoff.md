@@ -4,7 +4,7 @@
 
 当前状态以 docs/state/current-phase.json 为准。
 
-- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_TASK43_QUALITY_BLOCKED_PENDING_PROJECT_LEAD_REVIEW`。
+- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_CORRECTION17_IN_PROGRESS`。
 - 分支：`codex/production-pixiv-a2`；PR：`153`。
 - 已接受并合并基线：PR #152 / `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。
 - 工程目标完成：`False`；负责人接受：`pending_project_lead_review`。
@@ -53,7 +53,7 @@
 - 不合并、不推main、不触发额外reviewer、不进入A3。
 - 自动验证、负责人接受及产品用户体验分别记账。
 
-下一检查点：Lead复审75/80质量阻塞：四项异名上下文/cannot约束和Media718旧预期矛盾；先保留旧生产可用，再有界修正并复验后继续已授权发布。
+下一检查点：按20260917已授权纠偏任务完成F1-F6、语义纠正、完整副本与原生产交付；通过后等待Lead复审和Owner验收。
 
 ## 持久入口
 

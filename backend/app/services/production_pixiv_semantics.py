@@ -80,6 +80,23 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
         hints=vocabulary['hints']
     adapted=[]
     role_records={}
+    completion_outcomes={}
+    if (role_facts and role_facts.get('completion_by_aggregate') and any(
+        row.get('validated_response') for row in role_facts.get('completion_records',{}).values())):
+        # Reconstruct targets from source context; stored target_coverage is
+        # only a report. The baseline reconstruction contains no completions.
+        from .production_pixiv_role_extraction import _original_completion_questions,role_target_coverage
+        from .source_name_candidate_extraction_service import validate_extraction_record
+        from dataclasses import asdict
+        originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts)
+        for aggregate,key in role_facts['completion_by_aggregate'].items():
+            if aggregate in grounded:continue
+            record=role_facts['completion_records'][key]
+            if not record.get('validated_response'):continue
+            verdict,rows,*_=validate_extraction_record(record['validated_response'],originals[key].unit_group)
+            completion_outcomes[aggregate]=role_target_coverage(originals[key],{
+                'verdict':verdict.extraction_verdict,'candidates':[asdict(row) for row in rows],
+                'validated_response':record['validated_response']})['outcomes']
     if role_facts:
         if role_facts.get('schema_version')!='violet.production-pixiv-role-result.v1':
             raise ValueError('production_role_facts_schema_invalid')
@@ -142,6 +159,13 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
                 completed=role_facts.get('completion_records',{}).get(completion_key)
                 if completed and role in {'unknown','person'} and any(_context_candidate_matches(row,signal.raw_value)
                     for row in completed['candidates']):contextual=completed
+                outcome=completion_outcomes.get(signal.evidence_payload.get('aggregate_fingerprint'),{}).get(signal.raw_value,{})
+                if (outcome.get('disposition')=='non_name' and role=='unknown' and not candidates
+                    and not (contextual and any(_context_candidate_matches(row,signal.raw_value)
+                        for row in contextual['candidates']))):
+                    trust=status='rejected';contextual=None
+                    evidence['production_non_identity_reason']='explicit_completion_target_non_name'
+                    evidence['production_completion_target_outcome']={'extraction_key':completion_key,'outcome':outcome}
                 repair_key=role_facts.get('coverage_repair_by_aggregate',{}).get(signal.evidence_payload.get('aggregate_fingerprint'))
                 repair=role_facts.get('coverage_repair_records',{}).get(repair_key)
                 if (completed and repair and role in {'unknown','person'}
@@ -177,6 +201,9 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
     # Require a typed work observation in the same artwork before retaining
     # that proposed context. Source parentheses and accepted vocabulary
     # contexts are independent evidence and are not model proposals.
+    if role_facts and role_facts.get('semantic_corrections'):
+        from .production_pixiv_corrections import apply_semantic_corrections
+        adapted=list(apply_semantic_corrections(replace(consumer,signals=tuple(adapted)),role_facts).signals)
     works_by_scope=defaultdict(set)
     for signal in adapted:
         if signal.role_hint=='work' and signal.status!='rejected' and signal.trust_tier!='rejected':

@@ -6,6 +6,37 @@ def ledger(tmp_path,cap=0.002):
     return AdjudicationBudget(tmp_path/'budget.json',model='gpt-4.1-mini',cap_usd=cap,input_per_million=0.4,output_per_million=1.6)
 
 
+@pytest.mark.parametrize('change',[
+    {'charged_microusd':0}, {'charged_microusd':-1}, {'charged_microusd':True},
+    {'usage':None}, {'usage':{'prompt_tokens':-1,'completion_tokens':50}},
+    {'usage':{'prompt_tokens':'100','completion_tokens':50}},
+    {'usage_known':False,'usage':None,'charged_microusd':0},
+    {'status':'reserved','charged_microusd':0},
+])
+def test_saved_debit_is_rederived_before_all_admission_and_recovery(tmp_path,change):
+    import json
+    book=ledger(tmp_path,30)
+    ticket=book.reserve('paid',[])
+    book.settle(ticket,{'prompt_tokens':100,'completion_tokens':50},success=True)
+    state=json.loads(book.path.read_text());state['calls'][0].update(change)
+    book.path.write_text(json.dumps(state));before=book.path.read_bytes()
+    for operation in (book.summary,lambda:book.reserve('new',[]),
+                      lambda:book.recover_response(key='paid',reservation=ticket,usage={},business_valid=True)):
+        with pytest.raises(AdjudicationBudgetBlocked):operation()
+    assert book.path.read_bytes()==before
+
+
+@pytest.mark.parametrize('usage',[
+    {'prompt_tokens':-1,'completion_tokens':2}, {'prompt_tokens':True,'completion_tokens':2},
+    {'prompt_tokens':1}, {'prompt_tokens':1.0,'completion_tokens':2},
+])
+def test_invalid_usage_cannot_release_reservation(tmp_path,usage):
+    book=ledger(tmp_path);ticket=book.reserve('new',[]);before=book.path.read_bytes()
+    with pytest.raises(AdjudicationBudgetBlocked,match='usage_invalid'):
+        book.settle(ticket,usage,success=True)
+    assert book.path.read_bytes()==before and book.summary()['charged_or_reserved_usd']>0
+
+
 def test_restart_retains_unknown_call_and_prevents_duplicate(tmp_path):
     book=ledger(tmp_path)
     reservation=book.reserve('pair-a',[{'role':'user','content':'hello'}])

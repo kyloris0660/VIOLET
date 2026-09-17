@@ -244,7 +244,9 @@ def test_separation_checks_query_behavior_and_allows_legitimate_cooccurrence():
     value=quality_fixture()[0]
     value['projection_rows'][1][3]=2
     value['cases'][0].update(expected='cannot_link',category='required_separation')
-    oracle={'identity_pairs':[{'names':['a','b'],'expected':'cannot_link'}]}
+    oracle={'identity_pairs':[{'names':['a','b'],'expected':'cannot_link'}],
+        'separation_controls':[{'names':['a','b'],'exclusive_media':{'a':[10],'b':[11]},
+                               'source_evidence':'independent fixture: 10 only A; 11 only B; 12 both'}]}
     for query,ids in {'"a"':[10,12],'"b"':[11,12],'"a" -"b"':[10],
         '"b" -"a"':[11],'"a" "b"':[12]}.items():
         value['queries'][query]={'status_code':200,'ids':ids}
@@ -255,6 +257,15 @@ def test_separation_checks_query_behavior_and_allows_legitimate_cooccurrence():
     value['queries']['"b"']['ids']=[10,11,12]
     with pytest.raises(ValueError,match='summary_disagrees_with_raw'):
         recompute_quality(value,oracle)
+    # The old gate also accepted this internally consistent but wrong union.
+    for query,ids in {'"a" -"b"':[],'"b" -"a"':[],'"a" "b"':[10,11,12]}.items():
+        value['queries'][query]['ids']=ids
+    with pytest.raises(ValueError,match='summary_disagrees_with_raw'):
+        recompute_quality(value,oracle)
+    value['cases'][0]['passed']=False
+    assert recompute_quality(value,oracle)['failed_cases']==1
+    with pytest.raises(ValueError,match='independent_separation_controls_required'):
+        recompute_quality(value,{'identity_pairs':oracle['identity_pairs']})
 
 
 def test_browser_requires_loaded_fullscreen_and_actual_dom_sets():

@@ -30,7 +30,7 @@
     "legacy_main_documentation_check": "a1_live_branch",
     "legacy_permission_fields": "原执行代理阶段字段保留；不否定39号已接受、已合并及发布对齐授权，也不授予再次merge或推main权限。"
   },
-  "current_status": "PRODUCTION_PIXIV_A2_TASK43_QUALITY_BLOCKED_PENDING_PROJECT_LEAD_REVIEW",
+  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION17_IN_PROGRESS",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -70,7 +70,7 @@
     "普通启动预检发现原候选目录漂移，已备份并固定44db0da运行目录，普通EXE停止/启动与自动preflight/健康通过；原生产8623/66572、保护不变，新版未部署。",
     "完整注册契约实际失败且后续可独立门禁逐项执行；质量与新生产门禁未通过，target/safe_to_merge/route_approved均false。十例中文人工对照指南、操作恢复文档和私有审阅包已生成；上传包361164482 bytes、150505文件，完整档案726782423 bytes、150541文件，ZIP校验与10张指南图片引用通过。仅省去41个有索引的中间文件，完整档案及原失败保留。同一PR153已更新，测试/调试入口关闭，普通旧生产继续可用。"
   ],
-  "next_required_checkpoint": "Lead复审75/80质量阻塞：四项异名上下文/cannot约束和Media718旧预期矛盾；先保留旧生产可用，再有界修正并复验后继续已授权发布。",
+  "next_required_checkpoint": "按20260917已授权纠偏任务完成F1-F6、语义纠正、完整副本与原生产交付；通过后等待Lead复审和Owner验收。",
   "durable_links": [
     {
       "label": "A2实施方案",
@@ -324,7 +324,7 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-09-13T05:47:02.438262+00:00",
+  "updated_at": "2026-09-17T14:44:29.527091+00:00",
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "evidence_delivery": {
     "manual_guide_generated": true,
@@ -335,5 +335,13 @@
     "full_archive_sha256": "eff6b8d12af2dbc2535b8b51025e890722347716536558e0434e4e6bff71c717",
     "integrity_verified": true,
     "new_production_deployed": false
+  },
+  "correction17_authorization": {
+    "source": "VIOLET-A2-Codex纠偏执行任务-20260917.md",
+    "bounded_semantic_supersession": true,
+    "media_718_oracle_revision": true,
+    "conditional_original_production_apply": true,
+    "review_baseline": "df6a849ae898e7693cbaba5258053ad1cfaad2b5",
+    "merge": false
   }
 }

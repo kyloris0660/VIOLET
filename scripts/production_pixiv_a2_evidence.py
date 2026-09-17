@@ -111,6 +111,16 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
         entry=names.setdefault(key(raw),{'concepts':set(),'media':set()})
         entry['concepts'].add(concept);entry['media'].add(media)
     expected_pairs={tuple(sorted(key(n) for n in row['names'])):row['expected'] for row in oracle['identity_pairs']}
+    independent={tuple(sorted(key(n) for n in row['names'])):row
+        for row in oracle.get('separation_controls',[])}
+    if any(v=='cannot_link' for v in expected_pairs.values()) and not independent:
+        raise ValueError('a2_independent_separation_controls_required')
+    for pair,control in independent.items():
+        if (expected_pairs.get(pair)!='cannot_link' or not control.get('source_evidence')
+            or set(control.get('exclusive_media',{}))!=set(pair)
+            or not all(control['exclusive_media'].values())
+            or set(control['exclusive_media'][pair[0]]) & set(control['exclusive_media'][pair[1]])):
+            raise ValueError('a2_independent_separation_control_invalid')
     def case_identity(case):
         if 'expected' in case and 'names' in case:
             return ('identity',*sorted(key(n) for n in case['names']))
@@ -159,6 +169,12 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
                 compositions=((left+' -'+right,actual[0]-actual[1]),
                     (right+' -'+left,actual[1]-actual[0]),(left+' '+right,actual[0]&actual[1]))
                 passed=passed and not shared and all(ids(q)==want for q,want in compositions)
+                if pair in independent:
+                    exclusive=independent[pair]['exclusive_media']
+                    # The negative expectation is frozen from source evidence,
+                    # never derived from the very A/B queries being tested.
+                    passed=passed and all(set(exclusive[pair[i]])<=actual[i]
+                        and not set(exclusive[pair[i]])&actual[1-i] for i in (0,1))
         elif category in {'media_set_AND','media_set_negative'}:
             left,right=map(quote,case['names']);a,b=ids(left),ids(right)
             desired=a&b if category=='media_set_AND' else a-b
@@ -172,7 +188,13 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
                 and set(sample_ids)!={r['media_id'] for r in previous['samples']}):
                 raise ValueError('a2_frozen_search_samples_changed')
             checks=[[ids(f'id:{s["media_id"]} '+quote(n)) for n in family['names']] for s in case['samples']]
-            passed=bool(checks) and all(all(x=={sample['media_id']} for x in row)
+            revisions=family.get('sample_expectation_revisions',[])
+            revised={r['media_id']:r for r in revisions}
+            if len(revised)!=len(revisions) or any(
+                not r.get('approval') or not r.get('source_evidence') or r.get('previous_expected_ids')!=[r['media_id']]
+                or r.get('expected_ids')!=[] or r['media_id'] not in sample_ids for r in revisions):
+                raise ValueError('a2_search_sample_revision_invalid')
+            passed=bool(checks) and all(all(x==set(revised.get(sample['media_id'],{}).get('expected_ids',[sample['media_id']])) for x in row)
                 for sample,row in zip(case['samples'],checks))
         elif 'expected_ids' in case and 'actual_ids' in case:
             samples=(suggestion_oracle or {}).get('samples',[])
@@ -209,7 +231,9 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
     if baseline:
         required|={tuple(sorted(key(n) for n in c['names'])) for c in baseline['cases'] if 'expected' in c and 'names' in c}
     if not required<=seen:raise ValueError('a2_quality_case_missing')
+    if not set(independent)<=seen:raise ValueError('a2_independent_separation_case_missing')
     return {'case_count':len(results),'failed_cases':sum(not r for r in results),
+            'independent_separation_control_count':len(independent),
             'categories':dict(Counter(c['category'] for c in quality['cases']))}
 
 

@@ -76,7 +76,7 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
         if aggregate not in aggregate_keys:raise ValueError('semantic_terminal_role_source_changed')
         for answer in answers.values():
             attempts=answer.get('attempt_ids',[])
-            if (len(set(attempts))<3 or answer.get('identity_confirmed') is not False
+            if (len(attempts)<3 or len(set(attempts))!=len(attempts) or answer.get('identity_confirmed') is not False
                 or answer.get('reason_code')!='three_prior_logical_attempts_exhausted'):
                 raise ValueError('semantic_terminal_role_attempt_evidence_missing')
     for mapping,records in (('context_by_aggregate','context_records'),('completion_by_aggregate','completion_records'),
@@ -90,7 +90,7 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
             'versions': semantic_versions()}
 
 
-def verify_semantic_manifest(manifest, aggregates, vocabulary, facts, judgments, candidate_head):
+def verify_semantic_manifest(manifest, aggregates, vocabulary, facts, judgments, candidate_head,*,private_root=None,semantic_cache_dirs=()):
     expected = semantic_input_identity(aggregates, vocabulary, facts, judgments)
     if manifest.get('input_identity') != expected or manifest.get('candidate_head') != candidate_head:
         raise ValueError('semantic_artifact_input_version_or_candidate_changed')
@@ -102,21 +102,39 @@ def verify_semantic_manifest(manifest, aggregates, vocabulary, facts, judgments,
         raise ValueError('semantic_judgment_business_error')
     if processing['judgment_count'] != len(judgments):
         raise ValueError('semantic_judgment_count_changed')
+    if private_root is None:raise ValueError('semantic_original_source_replay_required')
+    from .production_pixiv_release_provenance import verify_release_sources
+    verify_release_sources(aggregates,vocabulary,facts,judgments,manifest,private_root,semantic_cache_dirs=semantic_cache_dirs)
     return expected
 
 
 def verify_role_completion(aggregates,vocabulary,facts,ledger):
     """Recompute the retained role denominator and bind exhausted calls."""
     from .production_pixiv_service import production_consumer
-    from .production_pixiv_role_extraction import summarize_role_response_coverage
-    coverage=summarize_role_response_coverage(production_consumer(aggregates),vocabulary,facts,require_complete=True)
+    from .production_pixiv_role_extraction import summarize_role_response_coverage,_original_completion_questions,BudgetedExtractionProvider
+    from dataclasses import replace
+    import json
+    consumer=production_consumer(aggregates)
+    coverage=summarize_role_response_coverage(consumer,vocabulary,facts,require_complete=True)
     if coverage['counts'].get('unaccounted',0) or coverage!=facts.get('role_response_coverage'):
         raise ValueError('semantic_original_role_target_processing_incomplete')
     calls={row['id']:row for row in ledger['calls']}
-    for answers in facts.get('role_terminal_targets',{}).values():
-        for answer in answers.values():
+    originals,grounded=_original_completion_questions(consumer,vocabulary,facts,require_complete=True)
+    for aggregate,answers in facts.get('role_terminal_targets',{}).items():
+        parent=facts.get('completion_by_aggregate',{}).get(aggregate)
+        if aggregate in grounded or parent not in originals:
+            raise ValueError('semantic_terminal_original_question_missing')
+        unit=originals[parent]
+        for raw,answer in answers.items():
+            if raw not in unit.raw_values:
+                raise ValueError('semantic_terminal_raw_target_changed')
+            group=replace(unit.unit_group,data_type_label='Requested unresolved raw tags: '+json.dumps([raw],ensure_ascii=False))
+            logical=BudgetedExtractionProvider.logical_keys([group])[0]
+            if (answer.get('logical_key')!=logical or len(answer['attempt_ids'])<3
+                or len(set(answer['attempt_ids']))!=len(answer['attempt_ids'])):
+                raise ValueError('semantic_terminal_original_target_identity_changed')
             for ticket in answer['attempt_ids']:
                 row=calls.get(ticket)
-                if not row or row['status']=='reserved' or answer['logical_key'] not in row.get('logical_keys',[]):
+                if not row or row['status'] not in {'success','failed'} or logical not in row.get('logical_keys',[]):
                     raise ValueError('semantic_terminal_role_attempt_not_settled')
     return coverage
