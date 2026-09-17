@@ -1433,6 +1433,7 @@ def migrate_add_source_concept_withdrawal_indexes(engine, inspector):
     )
     with engine.begin() as conn:
         if conn.dialect.name == 'postgresql':
+            from sqlalchemy import text
             conn.execute(text("SET LOCAL lock_timeout = '5000ms'"))
             conn.execute(text("SET LOCAL statement_timeout = '120000ms'"))
         # The startup inspector can predate tables created by earlier steps.
