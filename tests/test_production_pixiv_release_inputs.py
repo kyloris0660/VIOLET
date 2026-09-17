@@ -38,6 +38,21 @@ def test_scope_recomputed_from_independent_t0_rejects_self_consistent_truncation
         verify_t0_scope(shortened,inventory,'prod','system')
 
 
+def test_legacy_raw_requires_matching_paid_attempt_even_without_reservation_field(tmp_path):
+    import json
+    from test_production_pixiv_role_coverage import partial_facts
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    value,vocab,facts,provider,budget=partial_facts(tmp_path)
+    for path in (tmp_path/'roles'/'raw').glob('*.json'):
+        saved=json.loads(path.read_text());saved.pop('budget_response',None)
+        path.write_text(json.dumps(saved),encoding='utf-8')
+    ledger=json.loads(budget.path.read_text())
+    assert verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)['new_provider_calls']==0
+    with pytest.raises(ValueError,match='legacy_role_source_attempt_missing'):
+        verify_role_response_sources(value,vocab,facts,tmp_path/'roles',{'calls':[]})
+    assert len(provider.calls)==1
+
+
 def test_release_replays_inherited_partial_answers_without_borrowing_other_questions(tmp_path):
     import json
     from test_production_pixiv_role_coverage import partial_facts,Responses,candidate
@@ -68,6 +83,33 @@ def test_full_live_input_rejects_subset_revision_change_and_page_mismatch():
             verify_full_input(changed,live,coverage)
     with pytest.raises(ValueError,match='work_page_media'):
         verify_full_input(live,live,{'items':coverage['items'][:1]})
+
+
+def test_release_replays_legacy_v1_repair_without_changing_current_prompt(tmp_path,monkeypatch):
+    import json
+    from test_production_pixiv_role_coverage import partial_facts,Responses,candidate
+    from app.services import production_pixiv_role_extraction as roles
+    from app.services.production_pixiv_release_provenance import replay_role_request_messages,verify_role_response_sources
+    from app.services.source_name_candidate_extraction_service import SourceCandidateInputGroup
+    value,vocab,facts,_,budget=partial_facts(tmp_path,['MysteryKnown','MysteryMissing'])
+    provider=Responses(lambda group:([candidate('MysteryMissing')],[]))
+    current_adapter=roles._production_messages
+    def legacy_adapter(messages):
+        payload=json.loads(messages[1]['content'])
+        if not any(r['data_origin']=='production_pixiv_role_coverage_repair_v1' for r in payload['records']):
+            return current_adapter(messages)
+        # The extraction request carries prompt records, not constructor data.
+        groups=[SourceCandidateInputGroup(group_key=r['group_key'],provider=r['provider'],
+            tags=tuple(r['tags']),data_origin=r['data_origin'],data_type_label=r['data_type_label'],
+            source_work_id_present=r['source_work_id_present']) for r in payload['records']]
+        return replay_role_request_messages(groups)
+    with monkeypatch.context() as patch:
+        patch.setattr(roles,'COVERAGE_REPAIR_ORIGIN','production_pixiv_role_coverage_repair_v1')
+        patch.setattr(roles,'_production_messages',legacy_adapter)
+        facts=roles.repair_missing_role_coverage(value,vocab,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
+    assert roles.COVERAGE_REPAIR_ORIGIN=='production_pixiv_role_coverage_repair_v2'
+    result=verify_role_response_sources(value,vocab,facts,tmp_path/'roles',json.loads(budget.path.read_text()))
+    assert result['new_provider_calls']==0 and len(provider.calls)==1
 
 
 def test_semantic_release_binds_current_sources_roles_context_versions_and_judgments():

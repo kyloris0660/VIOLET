@@ -11,6 +11,24 @@ from .pixiv_metadata_projection_service import canonical_fingerprint
 from . import source_concept_resolver_service as resolver
 
 
+def replay_role_request_messages(groups):
+    """Rebuild the literal pre-schema-fix v1 request, never dispatch it."""
+    from . import production_pixiv_role_extraction as roles
+    from .source_name_candidate_extraction_service import extraction_messages
+    messages=extraction_messages(groups)
+    legacy='production_pixiv_role_coverage_repair_v1'
+    if not any(g.data_origin==legacy for g in groups):return roles._production_messages(messages)
+    if any(g.data_origin!=legacy for g in groups):raise ValueError('mixed_historical_role_prompt_versions')
+    # 4eb1833 precedes the 45f5943 schema fix. Its original request did not
+    # override F7a output fields. Retain that discrepancy as history only.
+    prompt=roles.COVERAGE_REPAIR_PROMPT.split(' The record schema is extended for this task:',1)[0]
+    payload=json.loads(messages[1]['content'])
+    for row in payload['records']:row.pop('deterministic_hints',None)
+    payload['production_prompt_adapter']=legacy
+    return [{**messages[0],'content':messages[0]['content']+'\n'+prompt},
+        {**messages[1],'content':json.dumps(payload,ensure_ascii=False,sort_keys=True)}]
+
+
 def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
     """Reparse saved original questions and answers, including partial batches."""
     from collections import defaultdict
@@ -22,6 +40,8 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         deterministic_bundle_for_unit,SourceNameCandidateExtractionError,build_extraction_units)
     from .source_metadata_registry_service import canonical_source_key
     cache_dir=Path(cache_dir);calls={r['id']:r for r in ledger['calls']}
+    calls_by_key=defaultdict(list)
+    for call in calls.values():calls_by_key[call['key']].append(call)
     required_questions={r.get('input_fingerprint') for kind in
         ('records','context_records','completion_records','coverage_repair_records','correction_records')
         for r in facts.get(kind,{}).values()}
@@ -65,7 +85,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         saved=json.loads(path.read_text(encoding='utf-8'))
         if not saved.get('request_groups') or not saved.get('request_messages'):continue
         groups=[SourceCandidateInputGroup(**g) for g in saved['request_groups']]
-        messages=roles._production_messages(extraction_messages(groups))
+        messages=replay_role_request_messages(groups)
         fingerprint=canonical_fingerprint({'model':saved['model'],'messages':messages,
             'temperature':saved.get('temperature',0.0),'max_tokens':saved.get('max_tokens',6000)})
         if fingerprint!=saved.get('input_fingerprint') or messages!=saved['request_messages']:continue
@@ -91,7 +111,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             else:groups=[by_group[r['group_key']] for r in rows]
         except (KeyError,ValueError,TypeError):continue  # Invalid raw is history, not answer evidence.
         if not any(canonical_fingerprint(group_prompt_payload(g)) in required_questions for g in groups):continue
-        messages=roles._production_messages(extraction_messages(groups))
+        messages=replay_role_request_messages(groups)
         fingerprint=canonical_fingerprint({'model':saved['model'],'messages':messages,
             'temperature':saved.get('temperature',0.0),'max_tokens':saved.get('max_tokens',6000)})
         if fingerprint!=saved.get('input_fingerprint') and not saved.get('request_messages') and len(groups)<=6:
@@ -99,7 +119,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             # to the retained original request hash establishes that order.
             from itertools import permutations
             for ordering in permutations(groups):
-                proposed=roles._production_messages(extraction_messages(ordering))
+                proposed=replay_role_request_messages(ordering)
                 candidate=canonical_fingerprint({'model':saved['model'],'messages':proposed,
                     'temperature':saved.get('temperature',0.0),'max_tokens':saved.get('max_tokens',6000)})
                 if candidate==saved.get('input_fingerprint'):
@@ -113,6 +133,15 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
                 raise ValueError('semantic_role_source_attempt_not_settled')
             if call.get('usage_known') and call['usage']!={k:saved['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
                 raise ValueError('semantic_role_source_usage_changed')
+            source_attempts=[call['id']]
+        else:
+            # Older raw envelopes predate the explicit reservation field.
+            # Bind them to the original full request key and actual usage;
+            # a self-consistent question/answer file alone is insufficient.
+            source_attempts=[call['id'] for call in calls_by_key['role-extraction:'+fingerprint]
+                if call['status']!='reserved' and (not call.get('usage_known') or
+                    call['usage']=={k:saved.get('usage',{}).get(k) for k in ('prompt_tokens','completion_tokens')})]
+            if not source_attempts:raise ValueError('semantic_legacy_role_source_attempt_missing')
         rows_by_key={r['group_key']:r for r in rows if isinstance(r,dict) and 'group_key' in r}
         for group in groups:
             raw=rows_by_key.get(group.group_key)
@@ -152,6 +181,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
                 'verdict':verdict.extraction_verdict if verdict else None,
                 'original_verdict':original_verdict.extraction_verdict if original_verdict else None,
                 'dispositions':adapted.get('target_dispositions',[]),'path':str(path.relative_to(cache_dir)),
+                'attempts':source_attempts,
                 'fingerprint':canonical_fingerprint(saved)})
         source_count+=1
     aggregate_tags=defaultdict(set)
@@ -239,7 +269,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             if record.get('target_coverage') and replay_coverage(record)!=record['target_coverage']:
                 raise ValueError('semantic_role_target_coverage_changed:'+key)
             proofs.append({'key':key,'question':record['input_fingerprint'],
-                'sources':[{'path':s['path'],'fingerprint':s['fingerprint']} for s in sources]})
+                'sources':[{'path':s['path'],'fingerprint':s['fingerprint'],'attempts':s['attempts']} for s in sources]})
     if missing_sources:raise ValueError('semantic_role_original_response_missing:'+','.join(missing_sources))
     for mapping,kind in [('context_by_aggregate','context_records'),('completion_by_aggregate','completion_records'),
                          ('coverage_repair_by_aggregate','coverage_repair_records')]:
