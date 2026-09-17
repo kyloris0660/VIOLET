@@ -10,6 +10,11 @@ def signal_semantics(signal):
     return {key:getattr(signal,key) for key in ('signal_key','raw_value','role_hint','work_context_key','status','trust_tier')}
 
 
+def correction_question_identity(unit):
+    from .source_name_candidate_extraction_service import group_prompt_payload
+    return canonical_fingerprint({k:v for k,v in group_prompt_payload(unit.unit_group).items() if k!='group_key'})
+
+
 def correction_units(consumer,facts,requests):
     from .production_pixiv_role_extraction import CORRECTION_ORIGIN,SourceCandidateInputGroup,SourceExtractionUnit
     by_aggregate=defaultdict(list)
@@ -49,9 +54,12 @@ def apply_semantic_corrections(consumer,facts):
     units,links=correction_units(consumer,facts,requests);by_key={u.extraction_key:u for u in units}
     requests={r['aggregate_fingerprint']:r for r in requests};replayed={}
     for aggregate,key in links.items():
-        record=facts.get('correction_records',{}).get(key)
+        source_key=facts.get('correction_equivalent_sources',{}).get(key,key)
+        if source_key not in by_key or correction_question_identity(by_key[source_key])!=correction_question_identity(by_key[key]):
+            raise ValueError('semantic_correction_reuse_question_changed')
+        record=facts.get('correction_records',{}).get(source_key)
         if record is None:raise ValueError('semantic_correction_answer_missing')
-        unit=by_key[key]
+        unit=by_key[source_key]
         if any(record.get(k)!=v for k,v in _identity(unit,'gpt-4.1-mini').items()):
             raise ValueError('semantic_correction_answer_identity_changed')
         verdict,candidates,*_=validate_extraction_record(record['validated_response'],unit.unit_group)
@@ -70,6 +78,13 @@ def apply_semantic_corrections(consumer,facts):
             raise ValueError('semantic_correction_cannot_override_independent_strong_fact')
         replay,coverage=replayed[aggregate];outcome=coverage['outcomes'][signal.raw_value]
         matches=[c for c in replay['candidates'] if canonical_source_key(c['raw_value'])==canonical_source_key(signal.raw_value)]
+        # F7a adds deterministic fragments from *other* tags in the context.
+        # The explicitly requested literal's model answer is the correction;
+        # a sibling's reversed parenthesis or popularity prefix is not a
+        # second answer to that literal. The original signal's own structured
+        # parenthesis/accepted evidence was already protected above.
+        explicit=[c for c in matches if c.get('evidence_payload',{}).get('llm_structured_extraction')]
+        if explicit:matches=explicit
         roles={role_from_source_role(c['candidate_role']) for c in matches}
         role=signal.role_hint;context=signal.work_context_key;status=signal.status;trust=signal.trust_tier
         if len(roles)==1 and next(iter(roles)) in {'character','person','work'}:
@@ -80,7 +95,9 @@ def apply_semantic_corrections(consumer,facts):
         elif outcome['disposition']=='non_name':role='unknown';trust=status='rejected';context=None
         elif outcome['disposition']=='unknown' or roles=={'unknown'}:
             role='unknown';status='needs_review';trust='low';context=None
-        else:raise ValueError('semantic_correction_conflicting_roles')
+        elif len(roles)==1 and next(iter(roles))=='source_title':
+            role='source_title';status='needs_review';trust='low';context=None
+        else:raise ValueError('semantic_correction_conflicting_roles:'+signal.raw_value+':'+','.join(sorted(roles)))
         evidence={**signal.evidence_payload,'production_semantic_correction':{
             'request_fingerprint':canonical_fingerprint(request),'extraction_key':links[aggregate],
             'supersedes':request['supersedes'][signal.raw_value],'outcome':outcome,

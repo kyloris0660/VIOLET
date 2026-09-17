@@ -300,6 +300,9 @@ class LLMAdjudicationConfig:
     # A production orchestration shares this across its work and other-name
     # passes. Cache reads remain available after paid dispatch is paused.
     provider_pause_state: dict[str, Any] | None = None
+    # Explicit bounded correction lineage; changed semantics cannot buy a
+    # fresh three-attempt lifetime for the same original logical target.
+    logical_predecessors: Mapping[str, tuple[str, ...]] | None = None
 
 
 @dataclass(frozen=True)
@@ -2943,7 +2946,8 @@ def _pair_budget_identity(config, metadata, decision_input_key):
         # three-attempt lifetime of the same source question. Legacy A2 calls
         # used this logical identity directly as their reservation key.
         logical='decision-input:'+decision_input_key
-        return key+':prompt:'+config.prompt_version,(logical,)
+        prior=(config.logical_predecessors or {}).get(logical,())
+        return key+':prompt:'+config.prompt_version,tuple(sorted({logical,*prior}))
     return key,()
 
 
@@ -2966,6 +2970,14 @@ def _pair_system_instructions(config):
             "as context rather than promoting them into character identity. Give a brief reason_code "
             "for the identity basis, without private reasoning or additional names.")
     return text
+
+
+def pair_request_messages(block_payload,config):
+    return [{'role':'system','content':_pair_system_instructions(config)},
+        {'role':'user','content':json.dumps({
+            'task':'Decide whether the two source-layer signals refer to the same character/person/work concept.',
+            'allowed_decisions':['must_link','cannot_link','needs_review'],
+            'signals':[block_payload['left'],block_payload['right']]},ensure_ascii=False,sort_keys=True)}]
 
 
 def _compatible_decision_cache(config: LLMAdjudicationConfig) -> dict[str, Any]:
@@ -4118,24 +4130,7 @@ def run_bounded_llm_adjudication(
         if budget and provider_pause.get('reason'):
             budget_blocked_pairs.append({'cache_key':metadata['cache_key'],'reason':provider_pause['reason']})
             continue
-        messages = [
-            {
-                "role": "system",
-                "content": _pair_system_instructions(config),
-            },
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {
-                        "task": "Decide whether the two source-layer signals refer to the same character/person/work concept.",
-                        "allowed_decisions": ["must_link", "cannot_link", "needs_review"],
-                        "signals": [block_payload["left"], block_payload["right"]],
-                    },
-                    ensure_ascii=False,
-                    sort_keys=True,
-                ),
-            },
-        ]
+        messages = pair_request_messages(block_payload,config)
         reservation = None
         response = None
         durable_record = None

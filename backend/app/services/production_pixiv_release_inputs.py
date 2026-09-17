@@ -34,11 +34,11 @@ def verify_full_input(aggregates, live, coverage):
 
 def semantic_versions():
     from .production_pixiv_service import PRODUCTION_POLICY
-    from .production_pixiv_role_extraction import ROLE_SCHEMA, PROMPT_VERSION, EXTRACTOR_VERSION, SCHEMA_VERSION, COMPLETION_ORIGIN, COVERAGE_REPAIR_ORIGIN
+    from .production_pixiv_role_extraction import ROLE_SCHEMA, PROMPT_VERSION, EXTRACTOR_VERSION, SCHEMA_VERSION, COMPLETION_ORIGIN, COVERAGE_REPAIR_ORIGIN, CORRECTION_ORIGIN
     from .source_concept_resolver_service import RESOLVER_VERSION, LLM_CACHE_POLICY_VERSION, LLM_DECISION_SCHEMA_VERSION, LLM_ADJUDICATION_POLICY_VERSION, PRODUCTION_PAIR_PROMPT_VERSION
     return dict(production_policy=PRODUCTION_POLICY, role_schema=ROLE_SCHEMA, prompt=PROMPT_VERSION,
                 extractor=EXTRACTOR_VERSION, extraction_schema=SCHEMA_VERSION, completion=COMPLETION_ORIGIN,
-                coverage_repair=COVERAGE_REPAIR_ORIGIN, resolver=RESOLVER_VERSION,
+                coverage_repair=COVERAGE_REPAIR_ORIGIN, semantic_correction=CORRECTION_ORIGIN, resolver=RESOLVER_VERSION,
                 cache_policy=LLM_CACHE_POLICY_VERSION, decision_schema=LLM_DECISION_SCHEMA_VERSION,
                 adjudication_policy=LLM_ADJUDICATION_POLICY_VERSION, pair_prompt=PRODUCTION_PAIR_PROMPT_VERSION,
                 model='gpt-4.1-mini', fallback=False)
@@ -55,7 +55,7 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
     expected_record={'schema_version':versions['role_schema'],'extractor_version':versions['extractor'],
                      'prompt_version':versions['prompt'],'decision_schema':versions['extraction_schema'],
                      'model':versions['model']}
-    for name in ('records','context_records','completion_records','coverage_repair_records'):
+    for name in ('records','context_records','completion_records','coverage_repair_records','correction_records'):
         for record in role_facts.get(name,{}).values():
             if any(record.get(k)!=v for k,v in expected_record.items()):
                 raise ValueError('semantic_role_record_version_or_model_changed')

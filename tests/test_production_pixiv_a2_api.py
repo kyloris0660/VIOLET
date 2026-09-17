@@ -5,6 +5,40 @@ from test_production_pixiv_a1 import real_api,ids
 from test_production_pixiv_a2 import scope_for,build,apply
 
 
+def test_completion_non_name_withdraws_source_search_support(real_api,tmp_path):
+    from app.services.production_pixiv_service import production_consumer,build_production_clustering
+    from app.services.pixiv_metadata_projection_service import build_canonical_pixiv_aggregates_from_session
+    from app.services.production_pixiv_role_extraction import ROLE_SCHEMA,complete_contextual_production_roles
+    from app.services.production_pixiv_semantics import build_semantic_vocabulary,adapt_production_semantics
+    from test_production_pixiv_role_coverage import Responses,candidate
+    from test_production_pixiv_role_extraction import task_budget
+    client,factory,independent,_=real_api
+    with factory() as db:
+        # Explicitly isolate this fixture's production source path; no real
+        # media, accepted ordinary tag or independent run is altered.
+        product.rollback_pixiv_product_run(db,independent['run_key'])
+        consumer=production_consumer(build_canonical_pixiv_aggregates_from_session(db))
+        apply(db,build_production_clustering(consumer),scope_for(db))
+    before=client.get('/api/search',params={'q':'SunPetal','limit':100}).json()
+    assert {r['id'] for r in before['items']}=={3,4}
+    assert before['source_concept_expansions']
+    vocabulary=build_semantic_vocabulary([])
+    provider=Responses(lambda group:([],[{'raw_value':tag['raw_tag'],'disposition':'non_name','reason_code':'fixture_description'}
+        for tag in group['tags']]))
+    facts=complete_contextual_production_roles(consumer,vocabulary,{'schema_version':ROLE_SCHEMA,'records':{}},
+        provider=provider,budget=task_budget(tmp_path,provider),cache_dir=tmp_path/'roles')
+    checked=adapt_production_semantics(consumer,vocabulary,facts)
+    assert all(s.status=='rejected' for s in checked.signals if s.raw_value=='SunPetal'),[(s.raw_value,s.role_hint,s.status,s.evidence_payload) for s in checked.signals if s.raw_value=='SunPetal']
+    with factory() as db:
+        apply(db,build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts),scope_for(db))
+    after=client.get('/api/search',params={'q':'SunPetal','limit':100}).json()
+    assert after['source_concept_expansions']==[]
+    # Literal source-tag retrieval is an independent valid support. A non-name
+    # decision removes concept expansion, never the underlying provider tag.
+    assert {r['id'] for r in after['items']}=={3,4}
+    assert ids(client,'AsterHistorical')=={1,2,3}
+
+
 @pytest.mark.parametrize('other_status',['active','needs_review'])
 def test_alias_literal_recall_respects_another_typed_cannot_link_concept(real_api,other_status):
     from dataclasses import replace

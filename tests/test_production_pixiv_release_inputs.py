@@ -38,6 +38,26 @@ def test_scope_recomputed_from_independent_t0_rejects_self_consistent_truncation
         verify_t0_scope(shortened,inventory,'prod','system')
 
 
+def test_release_replays_inherited_partial_answers_without_borrowing_other_questions(tmp_path):
+    import json
+    from test_production_pixiv_role_coverage import partial_facts,Responses,candidate
+    from app.services.production_pixiv_role_extraction import repair_missing_role_coverage
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    value,vocab,facts,_,budget=partial_facts(tmp_path,['MysteryKnown','MysteryMissing','MysteryUnknown','MysteryDescription'])
+    first=Responses(lambda group:([candidate('MysteryKnown')],[
+        {'raw_value':'MysteryDescription','disposition':'non_name','reason_code':'description'}]))
+    facts=repair_missing_role_coverage(value,vocab,facts,provider=first,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
+    second=Responses(lambda group:([candidate('MysteryMissing')],[]))
+    facts=repair_missing_role_coverage(value,vocab,facts,provider=second,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
+    inherited=[r for r in facts['coverage_repair_records'].values() if r.get('inherited_valid_response_keys')]
+    assert inherited and len(first.calls)==len(second.calls)==1
+    ledger=json.loads(budget.path.read_text())
+    assert verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)['new_provider_calls']==0
+    inherited[0]['target_coverage']['outcomes']['MysteryDescription']={'disposition':'unknown','reason_code':'tampered'}
+    with pytest.raises(ValueError,match='target_coverage_changed'):
+        verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)
+
+
 def test_full_live_input_rejects_subset_revision_change_and_page_mismatch():
     live=[{'work_id':'12345678','page_index':0,'disposition':'complete','revision':2},
           {'work_id':'22222222','page_index':1,'disposition':'complete','revision':3}]

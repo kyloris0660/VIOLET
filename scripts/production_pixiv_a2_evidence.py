@@ -119,6 +119,7 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
         if (expected_pairs.get(pair)!='cannot_link' or not control.get('source_evidence')
             or set(control.get('exclusive_media',{}))!=set(pair)
             or not all(control['exclusive_media'].values())
+            or any(type(mid) is not int or mid<=0 for values in control['exclusive_media'].values() for mid in values)
             or set(control['exclusive_media'][pair[0]]) & set(control['exclusive_media'][pair[1]])):
             raise ValueError('a2_independent_separation_control_invalid')
     def case_identity(case):

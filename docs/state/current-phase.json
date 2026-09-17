@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "8f1041826afcaed59a5324675de05313c0ae9a9d",
+  "candidate_head": "58b0462234bd4de2fbcd1aa6c6756705c45cb297",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -334,6 +334,20 @@
     "full_archive_bytes": 726782423,
     "full_archive_sha256": "eff6b8d12af2dbc2535b8b51025e890722347716536558e0434e4e6bff71c717",
     "integrity_verified": true,
+    "new_production_deployed": false
+  },
+  "correction17_progress": {
+    "role_target_groups_completed": 147,
+    "distinct_role_answers": 143,
+    "same_question_reuse": 4,
+    "new_role_provider_calls": 144,
+    "role_schema_error_retries": 1,
+    "cumulative_cost_usd": 13.576733,
+    "unknown_usage_calls_preserved": 54,
+    "changed_semantic_signals": 146,
+    "source_response_replay": "in_progress",
+    "full_copy_quality": "not_yet_rerun_on_corrected_inputs",
+    "original_production_mutated_this_continuation": false,
     "new_production_deployed": false
   },
   "correction17_authorization": {

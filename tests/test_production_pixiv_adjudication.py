@@ -20,6 +20,26 @@ def config(tmp_path):
         output_price_per_million=1.6,semantic_cache_reuse=True)
 
 
+def test_correction_plan_preserves_old_logical_attempt_and_reuses_unchanged_input(tmp_path,monkeypatch):
+    from app.services.production_pixiv_pair_correction import plan_corrected_pairs
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=replace(config(tmp_path),prompt_version=service.PRODUCTION_PAIR_PROMPT_VERSION)
+    rows,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    ledger=json.loads((tmp_path/'budget.json').read_text())
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:pytest.fail('planning is offline'))
+    _,same=plan_corrected_pairs(edges,signals,rows,cfg,ledger)
+    assert same['missing_distinct_inputs']==0 and same['compatible_or_same_input_reuse_count']==1
+    changed=[replace(s,work_context_key='corrected-franchise') for s in signals]
+    configured,plan=plan_corrected_pairs(edges,changed,rows,cfg,ledger)
+    assert plan['missing_distinct_inputs']==1 and plan['dispatchable_call_ceiling']==1
+    old='decision-input:'+service._decision_input_key(rows[0]['input_signal_summary'])
+    assert old in plan['missing'][0]['logical_keys']
+    assert plan['missing'][0]['prior_attempt_ids']==[ledger['calls'][0]['id']]
+    assert configured.logical_predecessors and plan['changed_previous_inputs'][0]['old_decision']==rows[0]['decision']
+    assert provider.calls==1
+
+
 @pytest.mark.parametrize('change',['none','decision','confidence','duplicate','missing','context'])
 def test_release_replays_selected_question_and_actual_cache_answer(tmp_path,monkeypatch,change):
     import copy

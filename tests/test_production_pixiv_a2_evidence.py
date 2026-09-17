@@ -53,6 +53,23 @@ def test_latency_recomputed_from_each_measurement_and_rejects_nonfinite():
     with pytest.raises(ValueError):latency_statistics([{'ms':float('nan')}])
 
 
+def test_approved_single_property_negative_revision_retains_positive_controls():
+    value=quality_fixture()[0]
+    family={'family_id':'property','names':['blue_eyes','蓝眼睛'],'sample_expectation_revisions':[{
+        'media_id':718,'previous_expected_ids':[718],'expected_ids':[],
+        'approval':'specific owner ruling','source_evidence':'only unaccepted suggestion'}]}
+    case={'category':'accepted_search_equivalence_only','accepted_family_id':'property',
+        'samples':[{'media_id':i} for i in (714,715,718)],'passed':True}
+    value['cases'].append(case)
+    for i in (714,715,718):
+        for name in family['names']:
+            value['queries'][f'id:{i} '+json.dumps(name,ensure_ascii=False)]={'status_code':200,'ids':[] if i==718 else [i]}
+    oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}],'search_only_families':[family]}
+    assert recompute_quality(value,oracle,baseline=copy.deepcopy(value))['failed_cases']==0
+    value['queries']['id:714 "blue_eyes"']['ids']=[]
+    with pytest.raises(ValueError,match='summary_disagrees_with_raw'):recompute_quality(value,oracle)
+
+
 def quality_fixture():
     return {'projection_rows':[['A','character',None,1,10,'work'],['B','character',None,1,11,'work']],
         'queries':{'"a"':{'ids':[10,11],'status_code':200},'"b"':{'ids':[10,11],'status_code':200}},

@@ -8,6 +8,33 @@ from test_production_pixiv_role_coverage import context,Responses,candidate
 from test_production_pixiv_role_extraction import task_budget
 
 
+def test_identical_full_correction_question_reuses_original_answer_without_relabeling(tmp_path):
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    first=context(['Hero','Franchise']);second=context(['Hero','Franchise'],'22222222')
+    value=replace(first,signals=(*first.signals,*second.signals))
+    vocab=build_semantic_vocabulary([])
+    base=adapt_production_semantics(value,vocab,{'schema_version':ROLE_SCHEMA,'records':{}})
+    requests=[]
+    for aggregate in ('aggregate-12345678','aggregate-22222222'):
+        rows=[s for s in base.signals if s.evidence_payload['aggregate_fingerprint']==aggregate]
+        requests.append({'aggregate_fingerprint':aggregate,'raw_targets':['Hero','Franchise'],
+            'supersedes':{s.raw_value:signal_semantics(s) for s in rows},
+            'conflict_evidence':['bounded fixture conflict'],'authorization':'test owner'})
+    units,_=correction_units(base,{},requests)
+    provider=Responses(lambda group:([candidate('Hero'),candidate('Franchise','work_title')],[]))
+    budget=task_budget(tmp_path,provider)
+    result=extract_production_roles(units[:1],provider=provider,budget=budget,cache_dir=tmp_path/'roles')
+    facts={'schema_version':ROLE_SCHEMA,'records':{},'semantic_corrections':requests,'correction_records':result['records'],
+        'correction_equivalent_sources':{units[1].extraction_key:units[0].extraction_key}}
+    adapted=adapt_production_semantics(value,vocab,facts)
+    assert [s.role_hint for s in adapted.signals if s.raw_value=='Hero']==['character','character']
+    assert len(facts['correction_records'])==len(provider.calls)==1
+    assert verify_role_response_sources(value,vocab,facts,tmp_path/'roles',json.loads(budget.path.read_text()))['record_count']==1
+    altered=replace(value,signals=(*value.signals,*context(['Other'],'22222222').signals))
+    with pytest.raises(ValueError,match='reuse_question_changed|answer_missing|scope_or_evidence'):
+        adapt_production_semantics(altered,vocab,facts)
+
+
 def test_evidenced_correction_is_scoped_retains_old_answers_and_attempt_identity(tmp_path):
     value=context(['Hero','Franchise']);vocab=build_semantic_vocabulary([])
     baseline=adapt_production_semantics(value,vocab,{'schema_version':ROLE_SCHEMA,'records':{}})

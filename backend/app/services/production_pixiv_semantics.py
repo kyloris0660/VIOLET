@@ -201,23 +201,27 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
     # Require a typed work observation in the same artwork before retaining
     # that proposed context. Source parentheses and accepted vocabulary
     # contexts are independent evidence and are not model proposals.
+    def validate_contexts(rows):
+        works_by_scope=defaultdict(set)
+        for signal in rows:
+            if signal.role_hint=='work' and signal.status!='rejected' and signal.trust_tier!='rejected':
+                works_by_scope[signal.evidence_payload['work_id']].add(canonical_source_key(signal.raw_value))
+        verified=[]
+        for signal in rows:
+            evidence=signal.evidence_payload
+            proposed=evidence.get('production_model_proposed_context')
+            if proposed and signal.work_context_key==proposed and proposed not in works_by_scope[evidence['work_id']]:
+                evidence={**evidence,'production_rejected_model_context':{
+                    'value':proposed,'reason':'no_typed_work_observation_in_same_artwork'}}
+                signal=replace(signal,work_context_key=None,evidence_payload=evidence)
+            verified.append(signal)
+        return verified
+    # Supersession is checked against the actual previous public semantics,
+    # including rejection of unsupported model-proposed work contexts.
+    adapted=validate_contexts(adapted)
     if role_facts and role_facts.get('semantic_corrections'):
         from .production_pixiv_corrections import apply_semantic_corrections
-        adapted=list(apply_semantic_corrections(replace(consumer,signals=tuple(adapted)),role_facts).signals)
-    works_by_scope=defaultdict(set)
-    for signal in adapted:
-        if signal.role_hint=='work' and signal.status!='rejected' and signal.trust_tier!='rejected':
-            works_by_scope[signal.evidence_payload['work_id']].add(canonical_source_key(signal.raw_value))
-    verified=[]
-    for signal in adapted:
-        evidence=signal.evidence_payload
-        proposed=evidence.get('production_model_proposed_context')
-        if proposed and signal.work_context_key==proposed and proposed not in works_by_scope[evidence['work_id']]:
-            evidence={**evidence,'production_rejected_model_context':{
-                'value':proposed,'reason':'no_typed_work_observation_in_same_artwork'}}
-            signal=replace(signal,work_context_key=None,evidence_payload=evidence)
-        verified.append(signal)
-    adapted=verified
+        adapted=validate_contexts(apply_semantic_corrections(replace(consumer,signals=tuple(adapted)),role_facts).signals)
     identity=[{'key':s.signal_key,'role':s.role_hint,'context':s.work_context_key,'trust':s.trust_tier,
                'status':s.status,'evidence':s.evidence_payload} for s in adapted]
     return replace(consumer,signals=tuple(adapted),input_fingerprint=canonical_fingerprint({

@@ -46,6 +46,7 @@ def main():
     parser.add_argument('--aggregates',required=True,type=Path)
     parser.add_argument('--vocabulary',required=True,type=Path)
     parser.add_argument('--role-facts',type=Path)
+    parser.add_argument('--prior-judgments',type=Path,help='retained answers for evidenced semantic correction lineage')
     parser.add_argument('--diagnostic-names',type=Path,help='private names to trace after graph construction; never model input')
     parser.add_argument('--label',required=True)
     parser.add_argument('--expected-python',required=True)
@@ -64,7 +65,7 @@ def main():
     out=args.artifacts.resolve(strict=True)
     if not out.is_relative_to((ROOT/'.local_manifests').resolve()) or not re.fullmatch('[a-z0-9-]+',args.label):
         raise RuntimeError('private_concept_artifact_location_invalid')
-    for path in (args.aggregates,args.vocabulary,args.role_facts,args.diagnostic_names):
+    for path in (args.aggregates,args.vocabulary,args.role_facts,args.diagnostic_names,args.prior_judgments):
         if path and not path.resolve(strict=True).is_relative_to(out):raise RuntimeError('concept_input_outside_task')
     llm=read(args.profile)['tag_translation_llm']
     if llm['model']!='gpt-4.1-mini' or llm['provider']!='openai_compatible' or llm['base_url'].rstrip('/')!='https://api.openai.com/v1':
@@ -164,6 +165,11 @@ def main():
                 'aliases':[asdict(r) for r in run.resolution.aliases if r.concept_key in concepts],
                 'judgments':[r for r in run.resolution.llm_judgments if r.get('left_signal_key') in component or r.get('right_signal_key') in component],
                 'diagnostic_selection_did_not_affect_graph_or_model_inputs':True})
+        from app.services.production_pixiv_release_provenance import verify_role_response_sources,verify_selected_judgment_sources
+        if args.action=='adjudicate':
+            proof=verify_role_response_sources(consumer,vocabulary,facts,out/'role-cache',read(out/'llm-budget-private.json'))
+            write(out/f'{args.label}-role-source-replay-private.json',proof)
+            print(json.dumps({'stage':'original_role_sources_verified','records':proof['record_count']}),flush=True)
         run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts)
         trace('initial',run)
         judgments=[];receipt=None
@@ -186,17 +192,32 @@ def main():
             def work_pair(edge):
                 return by_key[edge.left_signal_key].role_hint==by_key[edge.right_signal_key].role_hint=='work'
             work_edges=[edge for edge in run.resolution.edge_candidates if work_pair(edge)]
+            def correction_admission(stage,edges,signals,current):
+                if not args.prior_judgments:return current
+                from app.services.production_pixiv_pair_correction import plan_corrected_pairs
+                configured,admission=plan_corrected_pairs(edges,signals,read(args.prior_judgments),current,read(out/'llm-budget-private.json'))
+                write(out/f'{args.label}-{stage}-correction-admission-private.json',admission)
+                print(json.dumps({'stage':stage+'_correction_admission',**{k:v for k,v in admission.items()
+                    if k not in {'changed_previous_inputs','missing'}}}),flush=True)
+                if not admission['budget_headroom_sufficient']:raise RuntimeError('correction_plan_exceeds_remaining_budget')
+                return configured
+            config=correction_admission('work',work_edges,run.resolution.signals,config)
             write(out/f'{args.label}-work-selected-pairs-private.json',[asdict(edge) for edge in
                 select_llm_adjudication_edges(work_edges,signals=run.resolution.signals,config=config)])
             work_judgments,work_receipt=run_bounded_llm_adjudication(work_edges,signals=run.resolution.signals,config=config)
             write(out/f'{args.label}-work-judgments-private.json',work_judgments)
             write(out/f'{args.label}-work-adjudication-private.json',work_receipt)
+            write(out/f'{args.label}-work-source-replay-private.json',verify_selected_judgment_sources(
+                work_edges,run.resolution.signals,work_judgments,config,read(out/'llm-budget-private.json')))
             run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=work_judgments)
             trace('work-context',run)
             remaining=[edge for edge in run.resolution.edge_candidates if not work_pair(edge)]
+            config=correction_admission('remaining',remaining,run.resolution.signals,config)
             write(out/f'{args.label}-remaining-selected-pairs-private.json',[asdict(edge) for edge in
                 select_llm_adjudication_edges(remaining,signals=run.resolution.signals,config=config)])
             other_judgments,other_receipt=run_bounded_llm_adjudication(remaining,signals=run.resolution.signals,config=config)
+            write(out/f'{args.label}-remaining-source-replay-private.json',verify_selected_judgment_sources(
+                remaining,run.resolution.signals,other_judgments,config,read(out/'llm-budget-private.json')))
             judgments=[*work_judgments,*other_judgments]
             receipt={'work_stage':work_receipt,'remaining_stage':other_receipt,'task_budget':budget.summary(),
                 **{key:work_receipt[key]+other_receipt[key] for key in ('selected_pair_count','judgment_count',
