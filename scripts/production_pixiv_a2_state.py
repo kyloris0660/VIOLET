@@ -35,7 +35,7 @@ def validate(state, root):
         path = Path(link['path'])
         require(not path.is_absolute() and '..' not in path.parts and (root / path).is_file(), 'link')
     if state.get('target_met'):
-        from scripts.check_production_pixiv_a2 import check_public_result
+        from scripts.check_production_pixiv_a2 import check_public_result,derive_result
         from scripts.trusted_git import candidate_behavior_carry_forward
         require(state.get('result_path')=='docs/reports/production-pixiv-a2-summary.json','result_location')
         path=(root/state['result_path']).resolve(strict=True)
@@ -44,6 +44,13 @@ def validate(state, root):
         check_public_result(result,root=root)
         require(result['candidate_head']==state.get('candidate_head'),'result_candidate')
         require(candidate_behavior_carry_forward(root,result['candidate_head']),'result_current_behavior')
+        try:
+            private=(root/'.local_manifests/pixiv-a2').resolve(strict=True)
+            require(private.is_relative_to(root.resolve()) and private.is_dir(),'result_evidence_location')
+            derived=derive_result(private,root)
+        except Exception as error:
+            raise DocumentationStateError('pixiv_a2_result_private_contract') from error
+        require(derived==result,'result_private_contract_mismatch')
 
 
 def render(state):

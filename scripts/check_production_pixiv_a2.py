@@ -103,6 +103,10 @@ def validation_evidence(private,record,candidate):
 
 
 def derive_result(private,repo=ROOT):
+    # This callable is also used by the documentation-state entry point.
+    import sys
+    backend=str(ROOT/'backend')
+    if backend not in sys.path:sys.path.insert(0,backend)
     private=Path(private).resolve(strict=True);repo=Path(repo).resolve(strict=True)
     manifest=read(private,'a2-final-evidence-private.json')
     head=manifest['candidate_head']
@@ -175,7 +179,10 @@ def derive_result(private,repo=ROOT):
             and r.get('original_revision')==r.get('restored_revision') for r in source['cases']),'raw_source_recovery')
     browser=read(private,manifest['browser']);launch=read(private,manifest['launcher'])
     from scripts.production_pixiv_a2_evidence import verify_browser_actions,verify_launcher_action,recorded_code_root_matches
-    browser_actions=verify_browser_actions(browser)
+    require(browser.get('launch_evidence')==manifest['launcher']
+        and browser.get('launch_evidence_sha256')==hashlib.sha256(evidence_path(private,manifest['launcher']).read_bytes()).hexdigest(),
+        'browser_launch_evidence')
+    browser_actions=verify_browser_actions(browser,launch=launch)
     verify_launcher_action(launch,repo,head)
     require(browser['candidate_head']==launch['candidate_head']==head and browser['api_result_sets_verified'],'fresh_browser_candidate')
     require(launch['before_pid']!=launch['after_pid'] and launch['after_pid']>0
@@ -196,7 +203,7 @@ def derive_result(private,repo=ROOT):
         suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'),
         creator_oracle=read(private,'independent-creator-homonym-oracle-private.json'),
         baseline=read(private,'full-production-final-1-combined-quality-private.json'),
-        recall_baseline=read(private,'closeout43-copy-surfaces-1-combined-quality-private.json'))
+        recall_baseline=read(private,'closeout43-copy-surfaces-1-combined-quality-private.json'),launch=launch)
     require(quality['independent_answer_sources'] and quality_actual['case_count']>=80
         and quality_actual['failed_cases']==0,'independent_quality')
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')

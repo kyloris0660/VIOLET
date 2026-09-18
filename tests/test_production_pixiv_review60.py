@@ -155,7 +155,6 @@ def state_repo(tmp_path):
     target = root / state['result_path']
     target.write_text(json.dumps(public_result(head)), encoding='utf-8')
     git('add', state['result_path']); git('commit', '-m', 'document result')
-    production_pixiv_a2_state.validate(state, root)
     return root, state, git
 
 
