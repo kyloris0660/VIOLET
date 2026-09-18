@@ -351,6 +351,45 @@ def _overlay_fallback_media_ids(db: Session, keys: set[str]) -> set[int]:
     return {int(row[0]) for row in _query_overlay_fallback_rows(db, keys)}
 
 
+def _production_alias_direct_evidence_media_ids(db: Session, concept_ids: Sequence[int]) -> set[int]:
+    """Recall literal source tags for the directly matched accepted aliases.
+
+    A typed alias can have other, still untyped source occurrences. Those
+    occurrences are keyword evidence, not additional identity memberships.
+    Expand only the directly matched production concepts' active names; never
+    follow the other concepts or aliases attached to the returned occurrences.
+    Only untyped occurrences may supplement the matched concepts. A typed
+    occurrence in another component retains that identity boundary, including
+    a component held for review by a cannot-link. Original titles and stale
+    source bindings are excluded.
+    """
+    if not concept_ids:return set()
+    names=[row[0] for row in db.query(SourceConceptAlias.alias_key).join(
+        SourceConceptProductRun,SourceConceptProductRun.resolver_run_id==SourceConceptAlias.created_by_run_id).filter(
+        SourceConceptAlias.concept_id.in_(concept_ids),SourceConceptAlias.status=='active',
+        SourceConceptProductRun.source_mode=='production_scope',SourceConceptProductRun.status=='active',
+        current_product_alias_condition(SourceConceptAlias)).distinct().all()]
+    if not names:return set()
+    binding=SourceConceptProductMediaBinding
+    other_link=aliased(SourceConceptSignalLink);other_concept=aliased(SourceConcept)
+    accepted_elsewhere=exists().where(and_(
+        other_link.signal_id==SourceConceptSignal.id,
+        other_link.run_id==SourceConceptEvidence.run_id,
+        other_link.concept_id==other_concept.id,other_link.concept_id.notin_(concept_ids),
+        other_link.link_status=='active',other_concept.status=='active',
+    )).correlate(SourceConceptSignal,SourceConceptEvidence)
+    return {int(row[0]) for row in db.query(binding.media_id).join(
+        SourceConceptEvidence,SourceConceptEvidence.id==binding.evidence_id).join(
+        SourceConceptSignal,SourceConceptSignal.id==SourceConceptEvidence.signal_id).filter(
+        SourceConceptSignal.origin_type=='pixiv_tag_observation',
+        SourceConceptSignal.status.in_(FALLBACK_ELIGIBLE_SIGNAL_STATUSES),
+        or_(SourceConceptSignal.canonical_key.in_(names),SourceConceptSignal.normalized_key.in_(names)),
+        or_(SourceConceptEvidence.concept_id.in_(concept_ids),
+            and_(SourceConceptSignal.role_hint=='unknown',~accepted_elsewhere)),
+        current_binding_columns_condition(binding,SourceConceptProductRun,SourceMetadataRecord),
+        SourceConceptProductRun.source_mode=='production_scope').distinct().all()}
+
+
 def _blocked_cannot_alias_keys(db: Session, keys: set[str]) -> set[str]:
     if not keys:
         return set()
@@ -657,6 +696,7 @@ def source_concept_media_condition_for_term(
     *,
     include_needs_review: bool = False,
     include_evidence_fallback: bool = False,
+    include_production_alias_evidence: bool = False,
 ):
     """Return a read-only Media condition for SourceConcept expansion."""
 
@@ -670,9 +710,10 @@ def source_concept_media_condition_for_term(
         concept_ids,
         include_needs_review=include_needs_review,
     )
-    if not include_evidence_fallback or not keys:
+    if not (include_evidence_fallback or include_production_alias_evidence) or not keys:
         return identity_condition
-    overlay_media_ids = _overlay_fallback_media_ids(db, keys)
+    overlay_media_ids = _overlay_fallback_media_ids(db, keys) if include_evidence_fallback else set()
+    overlay_media_ids.update(_production_alias_direct_evidence_media_ids(db,concept_ids))
     evidence_fallback_condition = Media.id.in_(sorted(overlay_media_ids)) if overlay_media_ids else None
     if identity_condition is None:
         return evidence_fallback_condition
@@ -740,6 +781,7 @@ def source_layer_search_path_media_ids(
         fallback_ids.update(
             _overlay_fallback_media_ids(db, keys)
         )
+        fallback_ids.update(_production_alias_direct_evidence_media_ids(db,concept_ids))
     return {
         "identity": identity_ids,
         "evidence_fallback": fallback_ids,

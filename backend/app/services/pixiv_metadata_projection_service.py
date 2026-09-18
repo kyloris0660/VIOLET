@@ -1181,12 +1181,20 @@ def build_canonical_pixiv_aggregates_from_session(
     session: Session,
     *,
     work_ids: Iterable[str] | None = None,
+    source_record_ids: Iterable[int] | None = None,
 ) -> tuple[dict[str, Any], ...]:
     """Read Pixiv source rows and build aggregates without writing the session."""
 
     query = session.query(SourceMetadataRecord).filter(
         SourceMetadataRecord.provider == "pixiv"
     )
+    if source_record_ids is not None:
+        selected_ids = tuple(source_record_ids)
+        if any(type(value) is not int or value <= 0 for value in selected_ids):
+            raise PixivMetadataProjectionError("pixiv_source_record_filter_invalid")
+        if not selected_ids:
+            return ()
+        query = query.filter(SourceMetadataRecord.id.in_(selected_ids))
     if work_ids is not None:
         raw_work_ids = tuple(work_ids)
         normalized_work_ids = [

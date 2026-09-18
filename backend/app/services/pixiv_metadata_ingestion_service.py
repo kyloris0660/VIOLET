@@ -14,11 +14,13 @@ from datetime import datetime, timezone
 from enum import Enum
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
 import subprocess
 import time
+import uuid
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from sqlalchemy.orm import Session
@@ -292,6 +294,7 @@ class PersistentRequestSpacing:
         provider: str = "pixiv",
         min_spacing_seconds: float = MIN_REQUEST_SPACING_SECONDS,
         clock: Callable[[], float] = time.time,
+        monotonic_clock: Callable[[], float] = time.monotonic,
         sleeper: Callable[[float], None] = time.sleep,
         lock_timeout_seconds: float = 30.0,
     ) -> None:
@@ -309,6 +312,9 @@ class PersistentRequestSpacing:
         self.provider = provider_value
         self.min_spacing_seconds = float(min_spacing_seconds)
         self.clock = clock
+        self.monotonic_clock = monotonic_clock
+        self._last_monotonic = None
+        self._admission_token = None
         self.sleeper = sleeper
         self.lock_timeout_seconds = float(lock_timeout_seconds)
         self.wait_count = 0
@@ -331,7 +337,8 @@ class PersistentRequestSpacing:
         last_epoch = value.get("last_request_epoch")
         if last_epoch is not None:
             try:
-                float(last_epoch)
+                if not math.isfinite(float(last_epoch)):
+                    raise ValueError("nonfinite_epoch")
             except (TypeError, ValueError) as exc:
                 raise PixivMetadataGateError("persistent_spacing_last_request_invalid") from exc
         return dict(value)
@@ -345,6 +352,7 @@ class PersistentRequestSpacing:
             "version": PERSISTENT_SPACING_STATE_VERSION,
             "provider": self.provider,
             "last_request_epoch": float(request_epoch),
+            "admission_token": self._admission_token,
             "minimum_spacing_seconds": self.min_spacing_seconds,
             "manifest_fingerprints_seen": sorted(seen),
         }
@@ -377,14 +385,34 @@ class PersistentRequestSpacing:
                 time.sleep(0.05)
         try:
             state = self._read_state()
-            now = float(self.clock())
-            last_epoch = float(state.get("last_request_epoch") or 0.0)
-            elapsed = max(0.0, now - last_epoch) if last_epoch else self.min_spacing_seconds
-            delay = max(0.0, self.min_spacing_seconds - elapsed)
-            if delay:
-                self.sleeper(delay)
-            request_epoch = max(float(self.clock()), last_epoch + self.min_spacing_seconds)
+            started = float(self.monotonic_clock())
+            if not math.isfinite(started):
+                raise PixivMetadataGateError("persistent_spacing_clock_invalid")
+            # Monotonic timestamps are never persisted or compared across
+            # processes. A different writer/restart waits a full interval while
+            # holding the durable lock, even if the wall clock jumped forward.
+            own_previous = (self._last_monotonic is not None
+                            and state.get("admission_token") == self._admission_token)
+            deadline = (self._last_monotonic + self.min_spacing_seconds if own_previous
+                        else started + (self.min_spacing_seconds if state else 0.0))
+            observed = started
+            for _ in range(100):
+                if observed >= deadline:
+                    break
+                self.sleeper(deadline - observed)
+                current = float(self.monotonic_clock())
+                if not math.isfinite(current) or current < observed:
+                    raise PixivMetadataGateError("persistent_spacing_clock_invalid")
+                observed = current
+            else:
+                raise PixivMetadataGateError("persistent_spacing_wait_did_not_complete")
+            request_epoch = float(self.clock())
+            if not math.isfinite(request_epoch):
+                raise PixivMetadataGateError("persistent_spacing_clock_invalid")
+            delay = observed - started
+            self._admission_token = uuid.uuid4().hex
             self._write_state(request_epoch=request_epoch)
+            self._last_monotonic = observed
             self.wait_count += 1
             self.total_sleep_seconds += delay
             self.last_observed_delay_seconds = delay
@@ -408,6 +436,8 @@ class PersistentRequestSpacing:
             "total_sleep_seconds": round(self.total_sleep_seconds, 6),
             "last_observed_delay_seconds": round(self.last_observed_delay_seconds, 6),
             "state_path_redacted": True,
+            "boundary": "external_command_admission_not_internal_http",
+            "restart_policy": "full_interval_under_durable_lock",
         }
 
 
@@ -1056,8 +1086,11 @@ def build_gallery_dl_metadata_command(entrypoint: Sequence[str], work_id: str) -
 def _extract_payload_records(value: Any) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     if isinstance(value, Mapping):
-        if any(key in value for key in ("id", "illust_id", "work_id", "num", "page", "page_index")):
+        if _looks_like_gallery_dl_work_record(value):
             records.append(dict(value))
+            # A series, user or campaign nested inside an artwork is part of
+            # that observation. Its own id/title is not another artwork.
+            return records
         for nested in value.values():
             if isinstance(nested, (Mapping, list, tuple)):
                 records.extend(_extract_payload_records(nested))
@@ -1667,12 +1700,15 @@ def open_work_records(
     *,
     allow_conflict_resolution: bool = False,
     allow_normalization_replay: bool = False,
+    allow_identity_replay: bool = False,
 ) -> tuple[SourceMetadataRecord, ...]:
     eligible_states = set(OPEN_ACQUISITION_STATES)
     if allow_conflict_resolution:
         eligible_states.add(PixivMetadataState.CONFLICT.value)
     if allow_normalization_replay:
         eligible_states.add(PixivMetadataState.NORMALIZATION_FAILED.value)
+    if allow_identity_replay:
+        eligible_states.add(PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value)
     return tuple(
         session.query(SourceMetadataRecord)
         .filter(
@@ -1763,6 +1799,7 @@ def persist_page_local_work_disposition(
     allow_conflict_resolution: bool = False,
     allow_normalization_replay: bool = False,
     allow_deferred_reopen: bool = False,
+    allow_identity_replay: bool = False,
 ) -> PageLocalDispositionResult:
     """Persist returned pages and identify missing rows independently."""
 
@@ -1779,6 +1816,8 @@ def persist_page_local_work_disposition(
         eligible_states.add(PixivMetadataState.NORMALIZATION_FAILED.value)
     if allow_deferred_reopen:
         eligible_states.add(PixivMetadataState.DEFERRED_PAGE_MISMATCH.value)
+    if allow_identity_replay:
+        eligible_states.add(PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value)
     for record in queued:
         if str(record.status) not in eligible_states:
             raise PixivMetadataGateError(f"attempted_closed_queue_transition_rejected:{record.status}")
@@ -1945,6 +1984,7 @@ def mark_work_state(
     structural_diagnostics: Mapping[str, Any] | None = None,
     allow_conflict_resolution: bool = False,
     allow_normalization_replay: bool = False,
+    allow_identity_replay: bool = False,
 ) -> dict[str, int]:
     records, not_found = _selected_work_records(
         session,
@@ -1986,6 +2026,8 @@ def mark_work_state(
             allow_conflict_resolution and current == PixivMetadataState.CONFLICT.value
         ) and not (
             allow_normalization_replay and current == PixivMetadataState.NORMALIZATION_FAILED.value
+        ) and not (
+            allow_identity_replay and current == PixivMetadataState.PROVIDER_IDENTITY_MISMATCH.value
         ):
             counts["not_found"] += 1
             continue
@@ -2326,6 +2368,8 @@ def run_bounded_acquisition(
     allow_normalization_replay: bool = False,
     persistent_spacing: PersistentRequestSpacing | None = None,
     prior_attempt_counts: Mapping[str, int] | None = None,
+    attempted_record_ids_by_work: Mapping[str, Sequence[int]] | None = None,
+    metadata_replay_outputs: Mapping[str, str] | None = None,
 ) -> list[AcquisitionResult]:
     """Execute a finite distinct-work manifest with per-work DB checkpoints."""
 
@@ -2343,27 +2387,37 @@ def run_bounded_acquisition(
         raise PixivMetadataGateError("blocked_pixiv_prior_attempt_count_invalid")
     results: list[AcquisitionResult] = []
     command_count = 0
+    consecutive_transport_failures = 0
     stop_remaining_manifest = False
     for work_id in manifest:
         prior_attempt_count = prior_counts.get(work_id, 0)
+        replay_output = (metadata_replay_outputs or {}).get(work_id)
+        is_replay = replay_output is not None
         remaining_attempts = max_attempts_per_work - prior_attempt_count
-        if remaining_attempts <= 0:
-            results.append(AcquisitionResult(
+        if remaining_attempts <= 0 and not is_replay:
+            result = AcquisitionResult(
                 work_id,
                 PixivMetadataState.RETRYABLE.value,
                 False,
                 0,
                 "retry_budget_exhausted",
                 prior_attempt_count,
-                True,
-            ))
-            break
+                False,
+            )
+            results.append(result)
+            if result_callback:
+                result_callback(result)
+            continue
         attempted_records = open_work_records(
             session,
             work_id,
             allow_conflict_resolution=allow_conflict_resolution,
             allow_normalization_replay=allow_normalization_replay,
+            allow_identity_replay=is_replay and allow_normalization_replay,
         )
+        if attempted_record_ids_by_work is not None:
+            allowed_ids = set(attempted_record_ids_by_work.get(work_id, ()))
+            attempted_records = [record for record in attempted_records if record.id in allowed_ids]
         if not attempted_records:
             result = AcquisitionResult(work_id, "skipped_complete_or_closed", False, 0, attempt_count=0)
             results.append(result)
@@ -2372,15 +2426,15 @@ def run_bounded_acquisition(
             continue
         attempted_record_ids = tuple(int(record.id) for record in attempted_records)
         command = build_gallery_dl_metadata_command(entrypoint, work_id)
-        for attempt_in_run in range(1, remaining_attempts + 1):
-            cumulative_attempt = prior_attempt_count + attempt_in_run
-            if persistent_spacing is not None:
+        for attempt_in_run in range(1, (1 if is_replay else remaining_attempts) + 1):
+            cumulative_attempt = prior_attempt_count + (0 if is_replay else attempt_in_run)
+            if not is_replay and persistent_spacing is not None:
                 persistent_spacing.wait_before_request(work_id)
-            elif command_count:
+            elif not is_replay and command_count:
                 sleeper(max(min_spacing_seconds, min_spacing_seconds * cumulative_attempt))
-            command_count += 1
+            command_count += int(not is_replay)
             try:
-                completed = command_runner(
+                completed = subprocess.CompletedProcess(command, 0, stdout=replay_output, stderr="") if is_replay else command_runner(
                     command,
                     capture_output=True,
                     text=True,
@@ -2395,37 +2449,41 @@ def run_bounded_acquisition(
                 session.commit()
                 if attempt_in_run < remaining_attempts:
                     continue
-                result = AcquisitionResult(work_id, state, True, 0, exc.__class__.__name__, cumulative_attempt, True)
+                consecutive_transport_failures += 1
+                systemic_stop = consecutive_transport_failures >= 3
+                result = AcquisitionResult(work_id, state, True, 0, reason, cumulative_attempt, systemic_stop)
                 results.append(result)
                 if result_callback:
                     result_callback(result)
-                stop_remaining_manifest = True
+                stop_remaining_manifest = systemic_stop
                 break
             if completed.returncode != 0:
                 state, reason = classify_gallery_dl_failure(completed.stderr or "", authentication_passed=authentication_passed)
                 mark_work_state(session, work_id, state, reason=reason, attempted_record_ids=attempted_record_ids, allow_conflict_resolution=allow_conflict_resolution, allow_normalization_replay=allow_normalization_replay)
                 session.commit()
                 retryable = state == PixivMetadataState.RETRYABLE.value and reason in {
-                    "retryable_rate_limit",
                     "retryable_network_transport",
                     "retryable_provider_failure",
                 }
                 if retryable and attempt_in_run < remaining_attempts:
                     continue
-                systemic_stop = state == PixivMetadataState.RETRYABLE.value
+                consecutive_transport_failures = consecutive_transport_failures + 1 if retryable else 0
+                systemic_stop = reason in {"retryable_authentication", "retryable_rate_limit"} or consecutive_transport_failures >= 3
                 result = AcquisitionResult(work_id, state, True, 0, reason, cumulative_attempt, systemic_stop)
                 results.append(result)
                 if result_callback:
                     result_callback(result)
-                if state == PixivMetadataState.RETRYABLE.value:
+                if systemic_stop:
                     stop_remaining_manifest = True
                 break
             try:
                 pages = parse_gallery_dl_stdout(completed.stdout or "", work_id)
+                consecutive_transport_failures = 0
                 page_disposition = persist_page_local_work_disposition(
                     session, work_id, pages, attempted_record_ids=attempted_record_ids,
                     allow_conflict_resolution=allow_conflict_resolution,
                     allow_normalization_replay=allow_normalization_replay,
+                    allow_identity_replay=is_replay and allow_normalization_replay,
                 )
                 if page_disposition.linked_count == 0 and not page_disposition.missing_record_ids:
                     raise PixivMetadataGateError("metadata_normalization_failed_no_local_page_link")
@@ -2453,6 +2511,7 @@ def run_bounded_acquisition(
                         },
                         allow_conflict_resolution=allow_conflict_resolution,
                         allow_normalization_replay=allow_normalization_replay,
+                        allow_identity_replay=is_replay and allow_normalization_replay,
                     )
             except GalleryDlReportedFailure as exc:
                 session.rollback()
@@ -2464,11 +2523,17 @@ def run_bounded_acquisition(
                     attempted_record_ids=attempted_record_ids,
                     allow_conflict_resolution=allow_conflict_resolution,
                     allow_normalization_replay=allow_normalization_replay,
+                    allow_identity_replay=is_replay and allow_normalization_replay,
                 )
                 session.commit()
-                systemic_stop = exc.state == PixivMetadataState.RETRYABLE.value
+                systemic_stop = exc.reason in {"retryable_authentication", "retryable_rate_limit"}
+                if exc.state == PixivMetadataState.RETRYABLE.value and not systemic_stop and not is_replay and attempt_in_run < remaining_attempts:
+                    continue
+                retryable_transport = exc.reason in {"retryable_network_transport", "retryable_provider_failure"}
+                consecutive_transport_failures = consecutive_transport_failures + 1 if retryable_transport else 0
+                systemic_stop = systemic_stop or consecutive_transport_failures >= 3
                 result = AcquisitionResult(
-                    work_id, exc.state, True, 0, exc.reason, cumulative_attempt, systemic_stop
+                    work_id, exc.state, not is_replay, 0, exc.reason, cumulative_attempt, systemic_stop
                 )
                 results.append(result)
                 if result_callback:
@@ -2477,6 +2542,7 @@ def run_bounded_acquisition(
                     stop_remaining_manifest = True
                 break
             except (PixivMetadataGateError, ValueError, TypeError, json.JSONDecodeError) as exc:
+                consecutive_transport_failures = 0
                 session.rollback()
                 failure_code = str(exc).split(":", 1)[0] or exc.__class__.__name__
                 identity_mismatch = "identity_mismatch" in failure_code
@@ -2489,7 +2555,7 @@ def run_bounded_acquisition(
                     result = AcquisitionResult(
                         work_id,
                         failure_state,
-                        True,
+                        not is_replay,
                         0,
                         exc.__class__.__name__,
                         cumulative_attempt,
@@ -2516,9 +2582,10 @@ def run_bounded_acquisition(
                     },
                     allow_conflict_resolution=allow_conflict_resolution,
                     allow_normalization_replay=allow_normalization_replay,
+                    allow_identity_replay=is_replay and allow_normalization_replay,
                 )
                 session.commit()
-                result = AcquisitionResult(work_id, failure_state, True, 0, failure_code, cumulative_attempt)
+                result = AcquisitionResult(work_id, failure_state, not is_replay, 0, failure_code, cumulative_attempt)
                 results.append(result)
                 if result_callback:
                     result_callback(result)
@@ -2535,7 +2602,7 @@ def run_bounded_acquisition(
             result = AcquisitionResult(
                 work_id,
                 final_state,
-                True,
+                not is_replay,
                 page_disposition.linked_count,
                 DEFERRED_PAGE_MISMATCH_REASON if page_disposition.missing_record_ids else None,
                 attempt_count=cumulative_attempt,
