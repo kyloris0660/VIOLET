@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "81997460ad07f2d5cc5814da48ccf320a626a7fe",
+  "candidate_head": "a3c46ca22470a8c517295a007db3b19d802a980e",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -30,7 +30,7 @@
     "legacy_main_documentation_check": "a1_live_branch",
     "legacy_permission_fields": "原执行代理阶段字段保留；不否定39号已接受、已合并及发布对齐授权，也不授予再次merge或推main权限。"
   },
-  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION17_IN_PROGRESS",
+  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION17_QUALITY_BLOCKED_PENDING_PROJECT_LEAD_REVIEW",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -58,6 +58,41 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
+    "本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。",
+    "a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。",
+    "a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。",
+    "final-3实际reapply通过exit0、3351.563秒，applied=true且idempotent_replay=false：撤回后重新写入8623 Media/66394支持/1 active/0重复，after-reapply的17表保护比较通过。六次完整产品入口全部完成；20260918 13:37:38已开始分批/逆序等价构图，source恢复、80例/浏览器/契约继续，未新版生产部署。",
+    "20260918 12:44:49原生产只读现场检查通过：正常入口仍指向固定44db0da，PID43196/8012，38114 Media、8623绑定Media、66572有效支持；活动任务、T0后新增和固定范围缺失均0，read ON/apply OFF，数据库写入0。当前final-3实际reapply继续，未新版生产部署。",
+    "final-3 reapply-plan通过exit0、2818.093秒，实际a3c46ca/隔离库正确，17538概念及完整输入/候选/投影不变量通过、cannot/deferred union违规0。六次完整产品入口已有5次通过，撤回后的实际reapply已于20260918 12:41:42启动；分批/source恢复、80例/浏览器/契约仍待执行，新版原生产未部署。",
+    "按dispatch逐条核对8694份历史metadata输出：8688份metadata-raw加6份认证预检目录，全部存在且逐文件SHA已记录；修正最终inventory并强制上传包包含全部8694份，0新增Pixiv请求。实际打包规则只读预检确认语义facts/前驱/计划脱敏后字节不变；最终ZIP尚未生成。当前final-3 reapply-plan继续，原生产未新版部署。",
+    "20260918 11:58状态摘要已消除旧批次进行中措辞：保留review52/final2历史，新增a3当前388/1、22、88验证及63线程快照，明确final-3四次入口通过、撤回保护通过、reapply-plan执行中，当前80例与新版原生产仍未完成。",
+    "20260918 11:54 final-3 replay、rollback、重复rollback及after-rollback的17表保护比较均exit0；replay实际applied=true/idempotent_replay=true，候选仍a3c46ca。第5次完整入口reapply-plan已启动，随后实际reapply、分批/source恢复及80例/浏览器/契约仍待执行；原生产44db0da未变更。",
+    "20260918 11:08:23 final-3 replay-plan通过exit0，2824.484秒，仍为a3c46ca、8623 Media/66394支持/0写入；已开始实际replay。完整六次产品入口已有初始plan/apply/replay-plan通过，撤回、重新应用及后续完整质量/界面/契约仍待执行；原生产未新版部署。",
+    "完整replay-plan继续，初始plan/apply已通过，首次apply为幂等0写。新增四图原记录/纠正/实际raw与旧新裁决索引离线通过，旧缓存引用缺失0，未当作当前质量；最终会从副本补metadata和查询。打包旧规则会改写148条非敏感授权语义标记，已修正为0条变化，8类凭据仍脱敏，并强制角色事实/前驱/计划字节保留。0新provider/DB写，新包尚未生成。",
+    "20260918 10:21:14 final-3副本apply成功，2661.687秒，实际idempotent_replay=true/写入0；沿用相同输入旧投影，8623 Media/66394支持/1 active/0重复，不能称首次全新写入。当前replay-plan已启动；撤回后实际reapply、分批/source恢复、80例与完整交付仍待执行，原生产44db0da保持。",
+    "20260918 final-3完整初始plan通过exit0，实际2471.532秒，来源候选a3c46ca、隔离库blombooru_pixiv_a2_test_20260911_2228；当前已进入副本apply，完整重放/撤回/重新应用、80例及交付仍待后续实际结果。原生产保持固定44db0da，尚未新版部署。",
+    "20260918 09:19原生产只读现场复核：固定44db0da、38114 Media、8623绑定、66572有效支持，活动任务/固定范围缺失/T0后新增均0，read ON/apply OFF。本次final-3初始plan仍在完整来源校验，尚无该阶段成功收据；后续完整恢复、80例与交付继续。",
+    "final-3完整初始plan继续，17表before保护已记录。交付源文件审计确认当前31612判断引用的31623缓存链文件、1921最终角色证明原始文件均位于既有打包目录，缺失0；12确定性记录与付费响应分开。角色校验器检查1922 envelope的计数不等同最终引用的1921文件，原数据未修改。",
+    "a3c46ca精确验证完成：388 focused/1 Windows权限跳过、22 PostgreSQL/API、88历史失败节点均通过；原4541/89/15与唯一原始AI执行证据缺口保留。开始当前候选final-3完整副本恢复，串行构图，后续80例/工作量/真实Edge及完整契约继续。当前代码尚未推送，新版原生产未部署。",
+    "a3c46ca精确候选通过388 focused/1 Windows权限跳过、22 PostgreSQL/API；88历史失败节点复验继续。origin/main已重新fetch并核对仍为2b742ca，debug.log哈希保持。已生成明确标记实际来源重放候选bd3ad8b的输入续接说明，原始e5/bd收据未改写，新产品loader全量来源检查保持。",
+    "a3c46ca已本地固定63线程三项修复，未推送；当前开始精确候选focused/PG及历史88节点验证。语义输入与产品来源校验不变，bd3ad8b成功来源复核按真实候选保留，新产品plan/apply仍须全量重验。完整final-3和新版原生产未执行。",
+    "bd3ad8b完整来源复核成功exit0，实际完成UTC00:42:43，31612判断/0缺项/0错误/0新API或DB写，账本SHA保持。63线程新增三项修复已落地当前开发并通过190相关回归/1权限跳过，尚待固定新候选。新的旧生产Edge服务绑定及可见截图通过；旧格式拒绝、黑帧和质量采集器拒绝旧候选的日志均保留。final-3尚未开始，新版原生产未部署。",
+    "当前PR只读刷新为63未关闭线程，新增三项为target_met的实际私有契约绑定、浏览器及质量查询的候选服务身份绑定。8个离线反例已复现；共享服务身份与分页校验草稿38项开发测试通过，采集端已保存前后身份及真实逐页URL。当前bd3ad8b全量来源重放继续完成，尚未改动其跟踪行为文件或启动final-3。",
+    "20260918 08:04旧生产44db0da正常EXE窗口经实际手动预检按钮刷新状态，未点击启动或重启；最新有界面Edge完成三张原图完整同次有序流程、chip及普通/旧标签DOM与API一致、只读恢复页，0页面错误，当前bd3ad8b校验器通过并已查看代表截图。新生产尚未部署，当前完整来源再准入继续。",
+    "20260918 bd3ad8b实际前驱31631判断的输入/原纠正计划/完整选择与缓存来源重放通过，已保存readmission-prior-binding收据；当前31612判断的完整来源再准入继续进行，累计账本SHA保持。当前336 focused/1跳过、22PG、88历史节点通过；尚未开始final-3或新生产发布。",
+    "20260918 bd3ad8b精确验证全部完成：336 focused/1 Windows权限跳过，22 PostgreSQL/API，88历史失败节点通过；原4541/89/15与唯一原始AI证据缺口保留。PR当前60条线程未关闭，无新增审查项。完整来源重放继续，未开始final-3或原生产发布。",
+    "20260918 bd3ad8b当前336 focused/1 Windows symlink权限跳过、22 PostgreSQL/API均通过，已推送原PR153。历史88节点当前补验中；完整零调用来源再准入实际PID95460/venv父80992于UTC23:34:17开始，label correction17-bd3ad8b-readmission。原生产保持旧44db0da，final-3尚未开始。",
+    "20260918 bd3ad8b已本地提交60线程新增四项修复，开发相关回归110通过。当前完整输入的新旧身份和角色账目一致；108历史terminal中15条四次记录已被真实non_name覆盖，实际26条terminal恰好三次，原记录保留。当前配对7682个独立源全部有budget_response。旧dcf只读重放停止且未写库；提前诊断旧b25完整物化在dcf查询下核心66/69，5651回退消失、784/5147仍残留，不计最终80。新候选精确验证及完整再准入/恢复待执行。",
+    "20260918 dcfbccd精确验证完成：305 focused/1 Windows symlink权限跳过、22 PostgreSQL/API、88历史失败节点全部通过；原4541/89/15及1项原始AI执行证据缺口保留。dcfbccd已推送原PR153，56线程未关闭、无GitHub checks报告。当前完整来源再准入进行中，未开始final-3，未更新原生产。",
+    "当前dcfbccd通过305 focused/1 Windows symlink权限跳过及22 PostgreSQL/API；历史88节点补验进行中。完整V2新旧100285信号（含证据）逐项相同。当前零调用来源再准入已实际启动，核对前驱31631判断、原纠正计划/语义事实及完整实际选择来源；final-3完整恢复尚未开始。远端复核56线程保持未关闭。旧生产44db0da保持可用，未新生产发布。",
+    "20260918新行为候选dcfbccd已本地提交56线程四项修复，当前执行精确focused/PG与历史88节点验证及完整来源再准入准备；尚未推送或开始final-3副本。b25已完成的partial apply与停止记录原样保留。",
+    "20260918 06:58新增4项已落地开发并通过175项相关回归/1权限跳过：实际前驱facts/计划/完整选择来源绑定、同次有序浏览器流程、workload候选loopback服务身份、候选匹配一致性。完整V2适配100285信号含证据新旧指纹相同/0变化，0新provider或DB写。尚待固定新候选、精确验证及全量再准入/恢复。",
+    "20260918 06:42 b25完整副本apply成功，2211.75秒、8623Media/66394支持、1active；随后只停止已核实的只读replay-plan，所有旧计算进程退出，未中断写事务。after-apply-stopped的17表保护保持；实际支持移除316/新增138/净减178。该序列被新修复替代，完整replay/rollback/reapply及80例未完成。",
+    "20260918 06:31远端只读刷新为56未关闭线程，4项新增意见经9个离线反例真实复现，0实际provider调用。当前b25副本apply继续执行，不中断写事务；已停止尚未启动任何采集的UI等待器。apply完成后将在只读后续计划处停止旧序列，集中修复前驱语义输入绑定、浏览器有序同次流程、workload候选origin及纠正候选匹配一致性，再固定并验证新候选。",
+    "20260918 06:05 correction17-copy-final-2完整副本初始plan成功，耗时1676.515秒，输入identity及production-pixiv:895a5125c51f89f2bedbc401c2fab172与已复验V2一致；新apply已开始，完整恢复和80例尚待实际结果。当前候选b25d6ed保持，原生产44db0da未更新。",
+    "20260918 05:37 b25d6ed全量离线再准入成功exit0：当前31612/原prior31631判断与实际角色/配对/纠正来源重放通过，6个语义核心blob相同，完整input identity一致，0新API/DB写且账本sha前后相同。correction17-copy-final-2已自动接续完整副本恢复，17表before保护采集完成，初始计划正在执行；原生产未更新。",
+    "20260918 05:28 b25d6ed历史88节点全部通过，唯一原始AI执行证据缺口保留。旧生产44db0da真实Edge新增chip证明：GenshinImpact点击后64 DOM/64 API一致，3张原图/旧搜索/suggestion/只读恢复页通过且0页面错误，已查看全屏与恢复页代表截图。当前离线再准入PID53156运行，final-2仅等待成功收据后串行进入，尚未写入。",
+    "20260918 05:20 b25d6ed精确候选通过277 focused/1 symlink权限跳过、22 PostgreSQL/API；事务5s锁/120s语句超时及事务结束恢复已实测。88个历史节点补验和当前候选全量语义来源/纠正历史离线重放进行中，0新模型调用，原生产保持44db0da。",
     "20260918 05:18候选8199746 focused为277 passed/1 skipped（Windows symlink权限不可用）；真实PostgreSQL为21 passed/1 failed，新增超时路径缺少SQLAlchemy text导入。已最小修复，保留失败收据并继续新候选精确验证，未启动副本/生产写入。",
     "20260918新增52线程准入修复已落地开发：冻结旧召回、完整纠正历史与传递尝试上限、迁移事务超时、证据路径、真实chip查询与17表保护快照；168项相关开发测试通过，另38项集成回归通过且与前者有重叠。当前待固定新候选、精确验证与final-v2离线再准入，未开始final-2或原生产写入。",
     "20260918 04:57 e5aaf7e final-v2成功退出0：31612有效配对/0缺答/0新调用，100285信号/626779边/17538概念，五项身份边界违规0，业务fingerprint为0ddaa3f67aaa78bda2bec9ba963e350fb365c3de79546fe5e2b2e45bbdf61e18。当前与原31607比较31369同位置同输入且答案不变、21输入变化、217旧代表移除/222新增。预算18427调用/USD13.582644复算通过。开始集中修复52线程新增门禁项，未启动新副本或原生产写入。",
@@ -84,7 +119,7 @@
     "普通启动预检发现原候选目录漂移，已备份并固定44db0da运行目录，普通EXE停止/启动与自动preflight/健康通过；原生产8623/66572、保护不变，新版未部署。",
     "完整注册契约实际失败且后续可独立门禁逐项执行；质量与新生产门禁未通过，target/safe_to_merge/route_approved均false。十例中文人工对照指南、操作恢复文档和私有审阅包已生成；上传包361164482 bytes、150505文件，完整档案726782423 bytes、150541文件，ZIP校验与10张指南图片引用通过。仅省去41个有索引的中间文件，完整档案及原失败保留。同一PR153已更新，测试/调试入口关闭，普通旧生产继续可用。"
   ],
-  "next_required_checkpoint": "按20260917已授权纠偏任务完成F1-F6、语义纠正、完整副本与原生产交付；通过后等待Lead复审和Owner验收。",
+  "next_required_checkpoint": "Lead复审本轮实际77/80与784、5147剩余证据；取得可靠所属作品/有效语义处置依据或具名裁决后继续有界复验。未达质量门槛前不部署新版，未授权merge或A3。",
   "durable_links": [
     {
       "label": "A2实施方案",
@@ -338,20 +373,69 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-09-17T20:57:00+00:00",
+  "updated_at": "2026-09-18T06:13:53.384267+00:00",
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
-  "evidence_delivery": {
-    "historical_delivery_before_correction17": true,
-    "manual_guide_generated": true,
-    "owner_acceptance": false,
-    "upload_archive_bytes": 361164482,
-    "upload_archive_sha256": "29cd5fa1b013180cf303f20c39560ded31781495eb68d32a6786a743f1c6d045",
-    "full_archive_bytes": 726782423,
-    "full_archive_sha256": "eff6b8d12af2dbc2535b8b51025e890722347716536558e0434e4e6bff71c717",
-    "integrity_verified": true,
-    "new_production_deployed": false
-  },
   "correction17_progress": {
+    "current_execution": {
+      "candidate_head": "a3c46ca22470a8c517295a007db3b19d802a980e",
+      "label": "correction17-copy-final-3",
+      "stage": "completed_quality_blocked",
+      "full_product_entries_passed": 6,
+      "full_product_entries_required": 6,
+      "rollback_passed": true,
+      "repeated_rollback_passed": true,
+      "after_rollback_preservation_passed": true,
+      "after_reapply_preservation_passed": true,
+      "reapply_idempotent_replay": false,
+      "reapply_bound_media": 8623,
+      "reapply_supports": 66394,
+      "reapply_duplicate_supports": 0,
+      "batch_business_equivalent": true,
+      "source_update_delete_verified": true,
+      "source_operations_committed": false,
+      "full_copy_recovery_passed": true,
+      "current_full_quality_pending": false,
+      "current_quality_passed": 77,
+      "current_quality_total": 80,
+      "current_quality_failed": 3,
+      "remaining_missing_media": [
+        784,
+        5147
+      ],
+      "holdouts_passed": 3,
+      "new_production_deployed": false,
+      "current_browser_passed": true,
+      "performance_passed": true,
+      "complete_contract_executed": true,
+      "independent_contract_gates_passed": 13,
+      "independent_contract_gates_failed": 4
+    },
+    "current_validation": {
+      "candidate_head": "a3c46ca22470a8c517295a007db3b19d802a980e",
+      "focused_passed": 388,
+      "focused_skipped": 1,
+      "postgresql_passed": 22,
+      "historical_failure_nodes_passed": 88,
+      "full_non_e2e_rerun": false
+    },
+    "review52_candidate": "b25d6ed01b8cbfe8a22976503ede355cb0b8236d",
+    "review52_validation": {
+      "focused_passed": 277,
+      "focused_skipped": 1,
+      "postgresql_passed": 22,
+      "previous_8199746_postgresql_failed": 1,
+      "reason": "text import fixed; historical failure retained"
+    },
+    "review52_readmission": {
+      "label": "correction17-b25d6ed-readmission",
+      "status": "passed",
+      "exit_code": 0,
+      "source_adjudication_head": "e5aaf7ef2bac6c2db51ec26d62a4980fe49fbe3e",
+      "new_provider_calls": 0,
+      "current_judgments": 31612,
+      "prior_judgments": 31631,
+      "budget_digest_unchanged": true
+    },
     "role_target_groups_completed": 148,
     "distinct_role_answers": 144,
     "same_question_reuse": 4,
@@ -364,33 +448,200 @@
     "initial_changed_semantic_signals": 146,
     "source_response_replay": "corrected_v2_15822_records_1922_raw_passed_zero_provider_calls",
     "active_adjudication_label": "correction17-e5aaf7e-final-v2",
-    "final_v2_graph": {"status": "completed", "selected": 31612, "judgments": 31612, "errors": 0, "missing": 0, "new_calls": 0, "signals": 100285, "edges": 626779, "concepts": 17538, "business_fingerprint": "0ddaa3f67aaa78bda2bec9ba963e350fb365c3de79546fe5e2b2e45bbdf61e18", "seconds": 4072.844, "peak_memory_bytes": 8096780288},
-    "new_review_thread_count": 52,
-    "new_review_findings": [4039306376,4039306381,4039306385,4039567331,4039567338,4039567344],
-    "copy_final2_queue": "stopped_before_start_for_new_review_findings",
-    "final_v2_work_stage": {"selected": 9070, "judgments": 9070, "source_replay_verified": 9070, "errors": 0, "missing": 0, "new_provider_calls": 0},
-    "final_v2_remaining_admission": {"selected": 22542, "compatible_or_same_input_reuse": 22542, "missing_distinct_inputs": 0, "dispatch_ceiling": 0, "reserve_ceiling_usd": 0, "execution_status": "sources_completed_final_graph_in_progress", "judgments": 22542, "source_replay_verified": 22542},
-    "review52_counterexamples": {"real_pre_fix_failures": 8, "temporary_import_failures_preserved_separately": true, "actual_pair_lifetime_components_over_three": 0, "current_pair_maximum_attempts": 3},
-    "validated_candidate_002df65": {"focused_passed": 225, "postgresql_passed": 21},
-    "validated_candidate_c732f9d": {"focused_passed": 229, "postgresql_passed": 21},
-    "work_stage_paid_results": {"selected": 9070, "valid": 9070, "new_calls": 7, "cumulative_usd": 13.578599, "remaining_usd": 16.421401, "release_proof": "failed_first_semantic_reuse_occurrence_metadata_then_fixed", "development_regression_passed": 37},
-    "work_pair_admission": {"selected": 9070, "compatible_or_same_input_reuse": 9063, "new_input_ceiling": 7, "reserve_ceiling_usd": 0.014817},
+    "final_v2_graph": {
+      "status": "completed",
+      "selected": 31612,
+      "judgments": 31612,
+      "errors": 0,
+      "missing": 0,
+      "new_calls": 0,
+      "signals": 100285,
+      "edges": 626779,
+      "concepts": 17538,
+      "business_fingerprint": "0ddaa3f67aaa78bda2bec9ba963e350fb365c3de79546fe5e2b2e45bbdf61e18",
+      "seconds": 4072.844,
+      "peak_memory_bytes": 8096780288
+    },
+    "review52_thread_count": 52,
+    "review52_findings": [
+      4039306376,
+      4039306381,
+      4039306385,
+      4039567331,
+      4039567338,
+      4039567344
+    ],
+    "copy_final2_queue": "initial_plan_and_apply_passed_replay_plan_stopped_for_later_evidence_guard_candidate_preserved",
+    "final_v2_work_stage": {
+      "selected": 9070,
+      "judgments": 9070,
+      "source_replay_verified": 9070,
+      "errors": 0,
+      "missing": 0,
+      "new_provider_calls": 0
+    },
+    "final_v2_remaining_admission": {
+      "selected": 22542,
+      "compatible_or_same_input_reuse": 22542,
+      "missing_distinct_inputs": 0,
+      "dispatch_ceiling": 0,
+      "reserve_ceiling_usd": 0,
+      "execution_status": "sources_and_final_v2_graph_completed",
+      "judgments": 22542,
+      "source_replay_verified": 22542
+    },
+    "review52_counterexamples": {
+      "real_pre_fix_failures": 8,
+      "temporary_import_failures_preserved_separately": true,
+      "actual_pair_lifetime_components_over_three": 0,
+      "current_pair_maximum_attempts": 3
+    },
+    "validated_candidate_002df65": {
+      "focused_passed": 225,
+      "postgresql_passed": 21
+    },
+    "validated_candidate_c732f9d": {
+      "focused_passed": 229,
+      "postgresql_passed": 21
+    },
+    "work_stage_paid_results": {
+      "selected": 9070,
+      "valid": 9070,
+      "new_calls": 7,
+      "cumulative_usd": 13.578599,
+      "remaining_usd": 16.421401,
+      "release_proof": "failed_first_semantic_reuse_occurrence_metadata_then_fixed",
+      "development_regression_passed": 37
+    },
+    "work_pair_admission": {
+      "selected": 9070,
+      "compatible_or_same_input_reuse": 9063,
+      "new_input_ceiling": 7,
+      "reserve_ceiling_usd": 0.014817
+    },
     "current_candidate_pushed_to_pr153": "e5aaf7ef2bac6c2db51ec26d62a4980fe49fbe3e",
-    "validated_candidate_e5aaf7e": {"focused_passed": 230, "postgresql_passed": 21, "semantic_reuse_source_regression_passed": 79},
-    "historical_failure_reconciliation_e5aaf7e": {"current_exact_nodes_passed": 88, "historical_non_e2e_invocations": 1, "retained_original_ai_evidence_gap": 1},
-    "preapply_copy_query_control": {"candidate_head": "e5aaf7ef2bac6c2db51ec26d62a4980fe49fbe3e", "projection": "previous_8f10418_copy", "core_cases": 69, "passed": 65, "remaining_identity_failures": 4, "new_projection_applied": false},
-    "work_stage_e5aaf7e": {"selected": 9070, "judgments": 9070, "source_replay_verified": 9070, "errors": 0, "missing": 0, "new_provider_calls": 0, "status": "completed"},
-    "remaining_admission_e5aaf7e": {"selected": 22561, "compatible_or_same_input_reuse": 22550, "missing_distinct_inputs": 11, "dispatch_ceiling": 11, "reserve_ceiling_usd": 0.023678, "existing_two_attempt_targets": 5, "all_stage_selected": 31631, "full_execution_pending": false, "new_calls": 11, "new_cost_usd": 0.003029, "source_replay_verified": 22561, "errors": 0, "missing": 0},
-    "final_graph_e5aaf7e": {"signals": 100285, "edges": 626796, "concepts": 17538, "selected": 31631, "judgments": 31631, "business_fingerprint": "929d15940892d2953b291849f84a99b983ed112e64f2b93a76aa174625858a1c"},
-    "copy_recovery_e5aaf7e": {"label": "correction17-copy-final-1", "status": "superseded_after_quality_regression", "initial_plan_passed": true, "initial_plan_seconds": 1550.7339999999385, "copy_apply_passed": true, "copy_apply_seconds": 2066.3910000000615, "bound_media": 8623, "supports": 66393, "duplicate_supports": 0, "run_key": "scv2-px3:751e1e3f18549516274a9fc0d22c9d50"},
-    "support_transition_e5aaf7e": {"old_original_supports": 66572, "current_copy_supports": 66393, "same_bound_media": true, "removed_unknown_supports": 317, "added_work_supports": 138, "retained_old_54_removals": 54, "retained_old_5_additions": 5, "additional_removals": 263, "additional_additions": 133},
-    "stable_availability_restored": {"candidate": "44db0da", "pid": 43196, "media": 38114, "bound_media": 8623, "valid_supports": 66572, "read": true, "apply": false},
-    "full_copy_quality": "first_apply_core_65_of_69_failed_new_regression_under_bounded_correction",
-    "first_apply_quality_e5aaf7e": {"core_cases": 69, "passed": 65, "failed": 4, "original_residual_media_closed": [3915,5256], "remaining_original_media": [784,5147], "new_regression_media": [5651], "full_80_not_yet_run": true},
-    "new_regression_5651": {"question_count": 1, "prior_logical_attempts": 1, "new_calls": 1, "reserve_ceiling_usd": 0.013438, "actual_cost_usd": 0.001016, "answer": "work_candidate_found", "facts": "correction17-corrected-roles-v2-private.json", "new_graph_and_quality_pending": true},
+    "validated_candidate_e5aaf7e": {
+      "focused_passed": 230,
+      "postgresql_passed": 21,
+      "semantic_reuse_source_regression_passed": 79
+    },
+    "historical_failure_reconciliation_e5aaf7e": {
+      "current_exact_nodes_passed": 88,
+      "historical_non_e2e_invocations": 1,
+      "retained_original_ai_evidence_gap": 1
+    },
+    "preapply_copy_query_control": {
+      "candidate_head": "e5aaf7ef2bac6c2db51ec26d62a4980fe49fbe3e",
+      "projection": "previous_8f10418_copy",
+      "core_cases": 69,
+      "passed": 65,
+      "remaining_identity_failures": 4,
+      "new_projection_applied": false
+    },
+    "work_stage_e5aaf7e": {
+      "selected": 9070,
+      "judgments": 9070,
+      "source_replay_verified": 9070,
+      "errors": 0,
+      "missing": 0,
+      "new_provider_calls": 0,
+      "status": "completed"
+    },
+    "remaining_admission_e5aaf7e": {
+      "selected": 22561,
+      "compatible_or_same_input_reuse": 22550,
+      "missing_distinct_inputs": 11,
+      "dispatch_ceiling": 11,
+      "reserve_ceiling_usd": 0.023678,
+      "existing_two_attempt_targets": 5,
+      "all_stage_selected": 31631,
+      "full_execution_pending": false,
+      "new_calls": 11,
+      "new_cost_usd": 0.003029,
+      "source_replay_verified": 22561,
+      "errors": 0,
+      "missing": 0
+    },
+    "final_graph_e5aaf7e": {
+      "signals": 100285,
+      "edges": 626796,
+      "concepts": 17538,
+      "selected": 31631,
+      "judgments": 31631,
+      "business_fingerprint": "929d15940892d2953b291849f84a99b983ed112e64f2b93a76aa174625858a1c"
+    },
+    "copy_recovery_e5aaf7e": {
+      "label": "correction17-copy-final-1",
+      "status": "superseded_after_quality_regression",
+      "initial_plan_passed": true,
+      "initial_plan_seconds": 1550.7339999999385,
+      "copy_apply_passed": true,
+      "copy_apply_seconds": 2066.3910000000615,
+      "bound_media": 8623,
+      "supports": 66393,
+      "duplicate_supports": 0,
+      "run_key": "scv2-px3:751e1e3f18549516274a9fc0d22c9d50"
+    },
+    "support_transition_e5aaf7e": {
+      "old_original_supports": 66572,
+      "current_copy_supports": 66393,
+      "same_bound_media": true,
+      "removed_unknown_supports": 317,
+      "added_work_supports": 138,
+      "retained_old_54_removals": 54,
+      "retained_old_5_additions": 5,
+      "additional_removals": 263,
+      "additional_additions": 133
+    },
+    "stable_availability_restored": {
+      "candidate": "44db0da",
+      "pid": 43196,
+      "media": 38114,
+      "bound_media": 8623,
+      "valid_supports": 66572,
+      "read": true,
+      "apply": false
+    },
+    "full_copy_quality": "current_a3_final3_full_77_of_80_with_3_failed_3_holdouts_passed",
+    "first_apply_quality_e5aaf7e": {
+      "core_cases": 69,
+      "passed": 65,
+      "failed": 4,
+      "original_residual_media_closed": [
+        3915,
+        5256
+      ],
+      "remaining_original_media": [
+        784,
+        5147
+      ],
+      "new_regression_media": [
+        5651
+      ],
+      "full_80_not_yet_run": true
+    },
+    "new_regression_5651": {
+      "question_count": 1,
+      "prior_logical_attempts": 1,
+      "new_calls": 1,
+      "reserve_ceiling_usd": 0.013438,
+      "actual_cost_usd": 0.001016,
+      "answer": "work_candidate_found",
+      "facts": "correction17-corrected-roles-v2-private.json",
+      "new_graph_completed": true,
+      "current_full_quality_pending": false,
+      "current_80_case_regression_absent": true
+    },
     "first_graph_failure": "unsupported_low_trust_on_uncertain_corrections_fixed_to_existing_weak_tier_before_any_new_pair_call",
     "original_production_mutated_this_continuation": false,
-    "new_production_deployed": false
+    "new_production_deployed": false,
+    "pre_delivery_review_snapshot": {
+      "thread_count": 63,
+      "remote_head": "bd3ad8b63b676a6f7700ed81d7471bf6d0b6bffd",
+      "local_a3_candidate_not_yet_pushed": true,
+      "threads_resolved_by_this_task": 0,
+      "snapshot": "correction17-final-pre-delivery-pr-private.json"
+    }
   },
   "correction17_authorization": {
     "source": "VIOLET-A2-Codex纠偏执行任务-20260917.md",
@@ -399,5 +650,28 @@
     "conditional_original_production_apply": true,
     "review_baseline": "df6a849ae898e7693cbaba5258053ad1cfaad2b5",
     "merge": false
+  },
+  "historical_evidence_delivery_before_correction17": {
+    "historical_delivery_before_correction17": true,
+    "manual_guide_generated": true,
+    "owner_acceptance": false,
+    "upload_archive_bytes": 361164482,
+    "upload_archive_sha256": "29cd5fa1b013180cf303f20c39560ded31781495eb68d32a6786a743f1c6d045",
+    "full_archive_bytes": 726782423,
+    "full_archive_sha256": "eff6b8d12af2dbc2535b8b51025e890722347716536558e0434e4e6bff71c717",
+    "integrity_verified": true,
+    "new_production_deployed": false
+  },
+  "evidence_delivery": {
+    "candidate_head": "a3c46ca22470a8c517295a007db3b19d802a980e",
+    "report": "correction17-final-public-report.zh-CN.md",
+    "manual": "A2-MANUAL-ACCEPTANCE.zh-CN.md",
+    "operations": "A2-OPERATIONS.zh-CN.md",
+    "final_documentation_identity_receipt": "correction17-final-documentation-head-private.json",
+    "full_archive_receipt": "correction17-final-package-private.json",
+    "upload_archive_receipt": "correction17-final-upload-package-private.json",
+    "archive_hashes_and_integrity_are_recorded_in_private_receipts": true,
+    "owner_acceptance": false,
+    "new_production_deployed": false
   }
 }

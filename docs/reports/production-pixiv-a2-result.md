@@ -1,150 +1,186 @@
-# 生产 Pixiv A2 / 43号质量收口结果
+# A2 / 20260917 纠偏执行结果
 
-## 2026-09-18 当前纠偏检查点（尚未完成发布）
+生成时间：2026-09-18T06:11:57.499266+00:00。工程目标未达成，`target_met=false`；新版未进入原生产。完整副本实际 **77/80**，其余失败保留。已完成本轮可独立继续的修复、完整恢复、实际界面验证和证据对账。
 
-候选8199746精确focused为277 passed/1 skipped，跳过项为Windows创建symlink权限不可用。真实PostgreSQL为21 passed/1 failed，发现新增事务超时路径未导入SQLAlchemy text；该导入已修正，原失败收据保留，后续候选必须重新验证。
+同一 [PR #153](https://github.com/kyloris0660/VIOLET/pull/153)，分支 `codex/production-pixiv-a2`。行为与本次副本执行候选 `a3c46ca22470a8c517295a007db3b19d802a980e`；原生产仍为固定 `44db0da0c1df2fe38434cacc57308f2c0e33ec0f`。最终纯文档提交另列，以现有 carry-forward 校验衔接。未合并、未推 main、未触发 reviewer 或自行关闭线程，未进入 A3；不宣称 Lead 接受或 Owner 验收。
 
-完整 final-v2 已成功退出：31612判断、0缺答/0错误/0新调用；100285信号、626779边、17538概念，五项身份边界违规均为0。当前累计18427调用/USD13.582644。随后只读复查发现远端52条未关闭线程，新增6项准入问题；尚未启动的final-2恢复等待队列已停止，原生产持续运行。
+## 实际质量与原十例
 
-新增修复冻结旧身份召回媒体集合，强制纠正前完整判断/选择/原缓存来源及尝试链核验，配对预算在锁内按传递集合计算三次上限，五索引迁移加事务级5秒锁/120秒语句超时，metadata/截图/固定工作量统一路径约束，来源chip绑定真实图库查询与DOM/API结果，保护快照要求17表、有效逐表摘要及候选/库/操作/检查点身份。开发验证168项通过，另38项纠正门禁集成回归通过，存在重叠，不相加；最终候选和真实PostgreSQL仍待验证。旧80例与全部旧错误、费用、invocation不改写。
+原80例身份和旧75/80结果原样保留。仅Media718按负责人具名裁决改为未接受suggestion负对照，714/715继续是已接受标签正对照；其余79例要求未降低。冻结以前实际身份召回集合，当前投影与API同时漏失也会失败。
 
-当前行为候选为 `e5aaf7ef2bac6c2db51ec26d62a4980fe49fbe3e`，同一 PR #153。230项 focused、21项隔离 PostgreSQL/API 及88个历史失败精确节点通过；未重复运行完整 non-E2E，唯一历史缺失原始 AI execution evidence 继续保留。修复首次同题缓存复用返回旧 occurrence 身份的问题后，完整真实输入来源复验通过。
-
-第一次新图谱完成31631个 selected/31631个有效判断，缺答与错误均为0；100285信号、626796边、17538概念，五项身份合并不变量均为0。完整副本首次 apply 成功，8623 Media/66393支持/0重复；随后核心质量65/69，尚非完整80例：原残留3915/5256闭合，784/5147仍有缺失，并暴露5651的 Blue Archive 回退。该结果与原75/80均原样保留。
-
-5651存在原单标签作品答案与全上下文非名称答案的具体冲突，已按同一逻辑目标的剩余尝试额度追加一次有界纠偏，实际USD0.001016。当前角色附件148组、144份独立答案、4组同题复用；15822条角色记录/1922份raw来源重放通过。累计18427次调用/USD13.582644，剩余USD16.417356，54次历史未知usage保守计费、没有清零。784/5147尚缺足够的归属证据；不重置达到上限的目标，不删除独立cannot-link或反复请求肯定答案。
-
-首次恢复序列在新的质量回退定位后被明确替代；已启动的只读 replay plan 自然完成，未中止写事务，尚未执行的回滚/重放不能算通过。当前完整输入重建为 `correction17-e5aaf7e-final-v2`，成功后串行执行 `correction17-copy-final-2` 全部恢复步骤及修订80例、附加独立控制。当前 `target_met=false`，新版尚未进入原生产；日常入口仍运行已恢复的固定44db0da，read ON/apply OFF，原生产8623 Media/66572支持，未执行本轮新生产索引或apply。
-
-## 保留的 2026-09-17 前期纠偏进度
-
-本轮依据 Owner 转交的纠偏任务继续同一 PR #153；下文 2026-09-13 的 75/80、旧生产 PID 和交付包均为保留的历史结果，不是当前验证。入口预检时 8012 未监听，2026-09-18 已通过现有 controller 恢复固定旧版本44db0da，健康检查及原库只读核验通过：PID43196，38114 Media、8623绑定Media、66572有效支持，read ON/apply OFF，无活动任务。新候选尚未发布；当前远端为46条未关闭审查线程。
-
-- F1/F2 已先经无真实 API 的费用/保存恢复回归验证；旧账本逐调用复算与原报告相符。原13.430808美元未清零，当前累计13.576733美元，未知usage的54次仍保守计费。
-- 有界角色纠偏覆盖147组、156个原始目标：143份独立答案、4组完全同题复用；144次新增调用包含1次真实响应group key结构错误重试。保留全部原始问题、响应、attempt、费用和supersedes。离线实际投影有146条信号变化；模型保留的不确定角色不作为质量闭合。
-- F3 的原完整输入影响为262条信号/146个作品；新增真实API回归证明非名称撤回派生概念展开，同时保留合法原始标签检索。F4 原26项有效terminal已离线逐票核验，历史已被答案覆盖的terminal也保留。
-- F5 已完整重放历史15678条角色记录及1777份原始响应，包括部分答案继承和逐目标coverage。最后4个历史coverage_repair_v1批次按4eb1833保存的旧提示规则恢复，全部原始请求哈希一致；不修改回答，不新增调用。补充旧raw没有reservation字段时仍须匹配原账本问题键及usage的检查后，当前含纠正的15821条记录、1921份原始响应全部通过；配对集合及完整发布准入待后续构图复验。
-- 718已按负责人裁决建立新oracle；714/715仍为正对照。新增两组独立作品排他控制共8个样本，依据原始metadata及所有普通标签，未从待测API集合推导。原80例及旧失败未修改。包含错误并集/合法共现对照的本地测试已通过；新全量副本质量尚未执行。
-- 002df65候选已完成225项focused及21项隔离PostgreSQL/API检查；其后历史v1与原账本来源补充检查48 passed。仍需绑定最终候选执行完整副本、条件生产更新、真实界面及注册契约。未重跑完整non-E2E，未合并、推main、关闭线程或进入A3。
-- 6bd5546首次完整构图在新pair调用前发现纠正unknown/source_title使用不支持的low信任值而失败。已改用resolver既有weak值；两种不确定角色均经真实resolver回归，维持needs_review、不提升为active。全服务范围检索仅这两处同类写入；未修改旧付费答案、调用次数或语义角色，失败日志保留。
-- 当前c732f9d已推送PR153，229项focused、21项隔离PostgreSQL/API通过。首轮100285信号/596207边；初始45576 selected是作品上下文重建前临时集合。作品阶段9070对中9063可复用，7个新输入的保守预留上界USD0.014817，正在执行；最终集合及费用另行对账。
-
-## 保留的 2026-09-13 交付结果
-
-更新：2026-09-13T13:24:50+08:00。**未达到A2工程目标，target_met=false。新版未更新到原生产。**
-副本实际75/80：原十例6例闭合、4例仍失败，另1例旧属性正向预期与未接受suggestion事实冲突。停止在真实质量门禁，已完成可独立继续的本地验证、因果对账、普通生产入口恢复和人工对照材料。不是等待新增预算或凭据许可。
-
-## 候选与运行身份
-
-- 分支codex/production-pixiv-a2，同一正常[PR #153](https://github.com/kyloris0660/VIOLET/pull/153)，OPEN、非Draft、42未关闭线程；未自行触发或关闭审查。
-- 开发及副本执行候选：`8f1041826afcaed59a5324675de05313c0ae9a9d`；其后仅本轮收口文档提交，最终文档HEAD以同一PR提交记录为准。
-- 实际原生产候选：`44db0da0c1df2fe38434cacc57308f2c0e33ec0f`，固定旧版本运行目录，普通EXE锚点已同步；不是新候选已部署。API PID76740/venv父45524，端口8012，read ON/apply OFF。
-- main最新核对仍2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d；原主工作区和无关debug.log保留，未reset/clean/stash/覆盖。私有payload未提交。
-
-## 范围、语义与原分母
-
-- T0=2026-09-11 22:28:42.238965+08，38114 Media；可信映射9502 Media/9209 works/9412 pages，1455冲突、27157不适用。8623完整metadata、850远端不可用、29缺页，尾部0。8694获取记录完整复用，本轮0新metadata请求。
-- 原31295 selected、22526有效、8769缺项（8768未派发+1transport）保留。当前31607 selected/31607有效、0缺答/transport，新增候选680。原集合30927当前有效、263历史有效未再选、105有据排除；原缺项8664有效+105有据排除。
-- 105排除=65直接确定性+38可物化传递+1无上下文歧义名称终止+1作品上下文冲突终止，0无解释排除；后两项未伪装成正向身份或cannot_link。
-- 49227角色目标出现=26350候选+22642非名称+209明确unknown+26尝试上限，0未记账。这只证明处理完整，不证明所有模型语义正确；本轮实际质量已揭示仍有错误角色/上下文。
-- 完整图100285信号/627391边/17819概念。6次裁决候选dfb2057；8f10418对未变语义输入单独再准入，实际副本全图与分批均核对业务指纹f3193582ce35af1cc50cfbc22bc03cb5e4c0474102ca940ffa878db733511d7a。未把旧模型调用改标为8f执行。
-
-## 十个原失败逐条结果
-
-各项均保留原始信号→角色/作品上下文→候选/守卫→有效判断→直接/传递路径与cannot约束→concept/alias→Media支持/revision→真实查询响应。所有十例存在可解释的共同身份路径，不代表全部同名支持已可召回。原诊断96个不同Media/147条支持仅定位十例。
-
-| 异名对 | 修前漏召回(左/右) | 新副本漏召回(左/右) | 当前结论与原因 |
+| 原异名对 | 原缺失（左 / 右） | 本次缺失（左 / 右） | 本次结果 |
 | --- | --- | --- | --- |
-| bluearchive / ブルーアーカイブ | 49/0 | 0/0 | 通过；完整有效判断/角色输入与有界字面召回后闭合 |
-| honkaistarrail / 崩壊:スターレイル | 7/0 | 0/0 | 通过；完整有效判断/角色输入与有界字面召回后闭合 |
-| nahida / 纳西妲 | 0/1 | 0/1 | 失败；仍有类型组件隔离；缺失/错误作品上下文与实际cannot约束尚未解决 |
-| nahida / 草神 | 0/14 | 0/1 | 失败；仍有类型组件隔离；缺失/错误作品上下文与实际cannot约束尚未解决 |
-| nicoledemara / ニコ_デマラ | 13/0 | 0/0 | 通过；完整有效判断/角色输入与有界字面召回后闭合 |
-| nicoledemara / ニコ_デマラ(ゼンレスゾーンゼロ) | 0/0 | 0/0 | 通过；完整有效判断/角色输入与有界字面召回后闭合 |
-| zenlesszonezero / ゼンレスゾーンゼロ | 1/1 | 0/0 | 通过；完整有效判断/角色输入与有界字面召回后闭合 |
-| ナヒーダ / 纳西妲 | 0/3 | 0/3 | 失败；仍有类型组件隔离；缺失/错误作品上下文与实际cannot约束尚未解决 |
-| レヴィア(クローザーズ) / 레비아 | 0/0 | 0/0 | 通过；完整有效判断/角色输入与有界字面召回后闭合 |
-| 纳西妲 / 草神 | 0/13 | 0/1 | 失败；仍有类型组件隔离；缺失/错误作品上下文与实际cannot约束尚未解决 |
+| bluearchive / ブルーアーカイブ | 1318,1321,1324,2139,2242,2984,2992,3323,3432,3573,3726,3997,4017,4245,4372,4402,4874,5651,5743,5914,6828,6947,7422,7974,8404,8423,8524,8792,8993,9066,9089,9121,9122,9123,9244,9349,9350,9351,9358,9395,9535,10393,10962,10970,11048,11050,11118,11257,11288 / 无 | 无 / 无 | 通过 |
+| honkaistarrail / 崩壊:スターレイル | 1340,4461,7773,8878,8909,9855,10102 / 无 | 无 / 无 | 通过 |
+| nahida / 纳西妲 | 无 / 784 | 无 / 784 | 失败 |
+| nahida / 草神 | 无 / 758,784,1824,2763,2771,4765,5076,5129,5229,5294,5302,5383,5390,5391 | 无 / 784 | 失败 |
+| nicoledemara / ニコ_デマラ | 742,833,1297,2770,7031,8058,8068,8073,8253,8274,8324,8331,10720 / 无 | 无 / 无 | 通过 |
+| nicoledemara / ニコ_デマラ(ゼンレスゾーンゼロ) | 无 / 无 | 无 / 无 | 通过 |
+| zenlesszonezero / ゼンレスゾーンゼロ | 36755 / 10266 | 无 / 无 | 通过 |
+| ナヒーダ / 纳西妲 | 无 / 784,5147,5256 | 无 / 784,5147 | 失败 |
+| レヴィア(クローザーズ) / 레비아 | 无 / 无 | 无 / 无 | 通过 |
+| 纳西妲 / 草神 | 无 / 1830,2763,3915,4803,4804,4902,4903,5029,5076,5129,5196,5383,6900 | 无 / 无 | 通过 |
 
-剩余异名涉及Media784、3915、5147、5256。实际缓存中原神被判no_explicit_name，而某交叉作品metadata中的另一个作品被识别为work，导致配对推导错误唯一作品上下文；两条有效schema判断输出cannot_link。另有must_link因ambiguous_short_without_work_context被守卫阻止。保留原答案、费用和约束；未删cannot-link、硬编码名称或将同作品角色全部合并。
-属性对照Media718的blue_eyes来自ai_wd且is_suggestion=true。旧验收要求blue_eyes/蓝眼睛均命中，新版按建议隔离正确排除。提出替代预期：714/715接受标签继续命中，718未接受建议两侧均不命中；原正向预期和失败保留，须Lead裁决，未自行替换预期求绿。
+其余未通过案例（直接来自本次80例，不改写passed）：
 
-对相同角色问题作只读范围审计：当前原神标签1767条active/work信号对应1718个作品，11条needs_review/work对应11个作品，134条unknown/rejected对应129个作品；另7条来源标题单列。这是相同名称的角色处置差异范围，不等于129个已经确认的搜索失败。全量处理完整性与语义正确性必须分开，后续应在该有界范围内核对上下文事实，不能批量改成正向角色或删除约束。
-36个明确分离、2作者并集、9suggestion、6 AND/负向及3个保留样本通过。独立80例整体75通过/5失败，6/10旧失败闭合；不能写80通过。
+- {"names": ["nahida", "纳西妲"], "expected": "must_link", "category": "supported_but_fragmented", "missing_recall_media_ids": [[], [784]], "passed": false}
+- {"names": ["nahida", "草神"], "expected": "must_link", "category": "supported_but_fragmented", "missing_recall_media_ids": [[], [784]], "passed": false}
+- {"names": ["ナヒーダ", "纳西妲"], "expected": "must_link", "category": "supported_but_fragmented", "missing_recall_media_ids": [[], [784, 5147]], "passed": false}
 
-## 实际恢复、迁移、性能与UI
+附加保留样本：3/3。80例类别计数：`{"supported_multilingual_identity": 15, "required_separation": 36, "no_independent_identity_answer": 1, "supported_but_fragmented": 3, "accepted_search_equivalence_only": 8, "media_set_AND": 3, "media_set_negative": 3, "bare_name_distinct_creator_accounts": 2, "suggestion_suggested_positive": 3, "suggestion_suggested_negative": 3, "suggestion_accepted_positive_control": 3}`。独立F6控制与合法同图共现由本次质量重算，反例覆盖“双方/AND均错误并集、排除均为空”的自洽错误。
 
-- 新副本完整生命周期：apply1156.969秒、幂等重放828.390秒、owned rollback46.625秒、重复撤回0.109秒、reapply1141.391秒；逆序3批与一次性业务等价，来源update/delete失效后事务恢复，独立保护摘要均保持。峰值17365876736 bytes，完整构图/apply串行。
-- 5个既有模型外键索引缺失造成旧投影撤回statement_timeout，事务回滚后原投影保持。副本第一次迁移创建5索引，但第二次因PostgreSQL索引名截短失败；8f10418按catalog实际列识别修复，新迁移两次调用0新增DDL、幂等且投影不变。原生产未执行该迁移。
-- 副本8623 Media/66523支持；原生产仍8623/66572。实际逐项差额为54条旧unknown非名称支持移除、5条作品支持新增，净减49，Media集合相同。
-- 240真实HTTP查询全部200，来源层720次测量：p50=251.343/p95=315.834/max=834.689ms，通过p95≤750/max≤3000门槛。完整HTTP p50=760.686/p95=1202.595/max=2039.207ms，未混用来源门槛。
-- 副本Edge初次因私有脚本未匹配详情href查询参数而超时，保留失败；修正选择器后3张缩略图/详情/全屏/Esc/返回、chip跳转、DOM/API集合、旧标签、suggestion和恢复GET均通过，代表截图已实际查看。
-- 原生产启动预检发现开发目录与固定旧候选不一致，先离线准备旧候选运行目录，再通过正常GUI停止旧服务、普通无参数EXE启动同一44db0da。自动preflight、健康、实际进程树通过；原库保护摘要不变。正常入口另行完成同样3张真实图片及既有页面检查；不是新候选生产质量证据。
+## 四张真实残留图与有界纠正
 
-## 费用、验证与完整契约
+Media3915和5256的旧错误角色/上下文已按保存的冲突证据纠正；原先依赖错误输入的判断退出当前有效集合，原付费响应仍保留。完整十例因果附件给出真实输入、缓存、守卫、路径、concept/alias、支持与分页响应。不同图不能用同一条cannot-link概括。
+Media784的ナヒーダ已纠正为角色，但来源缺少显式所属关系；另一个来源目标“守りたい、この笑顔”仍未形成可靠处置，已用尽同一逻辑目标三次尝试。不能删掉该不确定来源事实来制造唯一作品上下文。
+Media5147的ナヒーダ已纠正为角色，但实际来源中没有有效作品归属上下文；可靠的スカラマシュ与ナヒーダ分离判断继续保留。原始标题/说明只表明两个角色共现，没有新增显式作品归属。不能把它笼统当作中文别名失败的唯一原因。
+V1新增的Media5651回退具有原单标签work与全上下文non_name冲突，追加一次有界纠正，实际USD0.001016；旧65/69结果和该失败均保留，V2最终结果以上表与完整80例为准。
+本轮没有名称硬编码、手工must_link、确认Entity写入、删除分离约束或反复请求肯定答案。148组角色纠正对应144份独立答案与4组同题复用；145次角色调用含1次真实schema错误重试。另有18次新输入配对调用，旧兼容判断继续复用。
+历史角色账本有一个原神目标4次、一个守りたい、この笑顔目标3次；本轮已从新增派发排除，原记录保留，不能宣称全部历史角色均不超过3次，也不将它们改称本轮授权例外。配对现有9556个传递逻辑组件最多3次，超过3次为0。
 
-- 原累计USD9.998387完整保留；43号新增USD3.432421，累计USD13.430808，上限30，剩余USD16.569192。18264调用尝试、54未知usage、0在途；已知usage费用USD12.823257、未知保守计费USD0.607551。第6次完整裁决31607全部精确缓存复用、0新增调用。
-- 原API成功保存但settle失败的响应按原attempt恢复USD0.000272，重复恢复无新增费用；未知usage及原失败保留。模型gpt-4.1-mini/fallback关闭；未轮换Pixiv令牌按本轮Owner持续授权使用，无轮换true或历史例外冒用。
-- 精确8f10418：639 passed/1 skipped/0 failed/0 errors（驱动324.203秒），PostgreSQL20 passed/0 failed（34.735秒）。唯一历史完整套件4541 passed/89 failed/15 skipped保留，其中88非历史失败已精确闭合、missing_original_ai_execution_evidence一项保留；未重跑完整套件、不称全套或CI绿色。
-- 注册完整契约对现有旧生产manifest实际执行失败a2_behavior_carry_forward，没有伪造新版生产收据。另逐项执行后续可独立门禁：备份恢复/T0/前向节流/原账本/副本恢复/真实浏览器/性能/精确测试通过，独立质量失败；新候选原生产迁移/apply/EXE/生产80例明确未执行。target_met=false，不把后续未到达条款当作通过。
-- 旧8694 metadata请求缺实际HTTP间隔序列，按Lead43号裁决保留历史1594次<2秒、4次<1.99秒、最短1.740068秒；新metadata0请求，不重取补造历史。
+另对108条历史terminal注释逐项核验，15条曾有4次尝试，当前全部由实际有效non_name答案覆盖，不再作为terminal闭合分母。实际生效26条均与账本完整票据集合相等且恰好3次。历史超限如实保留，不删除票据或伪装为三次。
 
-## 审查意见对账
+## F1–F6与新增准入修复
 
-| 线程 | 代码与既有依据 | 当前运行裁决 |
+| 项目 | 根因与修复 | 验证边界 |
 | --- | --- | --- |
-| 3993231101 | `scripts/production_pixiv_a2_evidence.py::pytest_outcome` 同时核对最终汇总、FAILED/ERROR 节点、退出码、XML；参数化节点中的伪汇总文本不参与计数。db86550 524 passed/1 skipped 与 XML 对账通过，88 项精确闭合，1 项历史缺 AI 证据保留。；新嵌套适配候选的最终定向检查与完整契约 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3993231110 | `source_concept_budget.py::recover_response` 与 resolver/角色 raw 恢复使用原 request/attempt 身份及已存 usage 幂等结算；未知 usage 保守收费；旧已接受缓存不伪造本轮调用。中断/重复恢复定向回归通过。；最终累计账本、在途为 0 与复用统计 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3993231116 | 保留旧 1594 次小于 2 秒、4 次小于 1.99 秒、最短 1.740068 秒；43号接受无法补造实际 HTTP 历史时间序列。`PersistedRequestSpacing` 按真实等待返回后时刻循环检查，跨进程持久协调；模拟早醒/时钟变化通过。；完整契约明确列历史例外；本轮无新 metadata 请求 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3993231120 | `production_pixiv_release_inputs.py::verify_full_input` 与 product CLI 对比当前持久事实的完整 work/page/Media 集合，production 拒绝部分输入；partial 仅隔离库显式模式。真实 PostgreSQL 拒绝时投影保持。；新完整输入的副本及生产 plan/apply | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3993231125 | 契约从恢复操作、保护表原始前后值、批次直接/续跑业务投影、来源变更和恢复 revision 计算结果。；新投影 lifecycle / batch / source / protection 原始收据 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994134863 | metadata raw 仅成功、完整且身份验证后原子发布；失败/截断文件保留诊断；验证可恢复 orphan 后复用。相邻失败/重入回归通过。；复用旧获取事实及新前向回归，不能重抓 8694 works 补历史 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994134864 | `candidate_behavior_carry_forward` 与 product admission 拒绝未提交行为漂移，私有证据和文档不作为清理理由。；最终候选、工作树差异、真实已加载进程及 profile 关系 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994134868 | `verify_browser_actions` 要求真实图片尺寸、缩略图/详情/全屏/返回、DOM/API 集合、来源 chip 导航和 GET 恢复页；不以截图文件非空替代加载。；新版原生产 headed Edge 操作与已查看的截图 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994134871 | `latency_statistics` 从每次查询的有限耗时重算 p95/max，来源层 750/3000ms 与完整 HTTP 分列。；新版来源 720 次及 HTTP 240 固定查询、额外风险查询 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994134876 | 原候选 44db0da 至历史交付的文档差异已经闭合；不因此自行 resolve 线程。；最终 HEAD / 执行候选 / 文档差异继续精确记载 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994540956 | product CLI 强制 role-facts/judgments/semantic manifest；缺省、空文件、漏答、错 scope 和版本均拒绝，完整合法 unknown 与不存在的处理记录分开。；当前完整语义输入 admission 与实际 apply | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994540959 | 费用与 `business_valid` 分列；无效原响应和费用保留，有效单元/同批子项复用，仅遗漏目标有界补做；跨 run/batch 的实际逻辑问题最多三次。嵌套候选通过同一 F7a 校验，置信度缺失保持 0/needs_review。；原 3 组 11 目标、7 个嵌套遗漏目标、原 8769 配对及最终费用分别对账 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994540962 | identity replay 的异常分支保留与成功分支一致的来源与尝试上下文；失败接入回归通过。；复用原 replay 事实与最终验证记录 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994540965 | metadata/concepts 负 limit 在预留和网络之前拒绝；0 继续表示既有全量。CLI 早拒绝回归通过。；最终定向回归记录 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994802001 | `verify_t0_scope` 独立重算已接受 T0 盘点、DB/system identity、固定 Media 范围；不能仅信任自称完整的输入文件。；新生产 fresh plan 前后范围/尾部检查 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994802003 | `recompute_quality` 从冻结原 oracle、投影行和实际查询集合计算，并用原 80 案例校验未被删减；作者/建议另绑定独立预期。；新副本与原生产 80 例、十例完整路径、三个冻结同类样本 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994802007 | `verify_launcher_action` 绑定无参数正常 EXE、实际重启动作、操作时进程树/启动时间、profile 摘要与 SHA、服务身份；不要求历史 PID 永久存在。；新发布后正常中文启动器实际重启及截图 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3994802012 | 当前构图函数自身新 LLM 调用 0 与继承上游付费/缓存判断分列；不改变 PX2 确定性执行定义。；最终聚类、上游配对和累计 ledger 的分层统计 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3995363463 | `semantic_input_identity` / `verify_semantic_manifest` 检查聚合、vocab、角色/判断指纹、当前模型/提示词/策略版本与候选；9 个过期映射归档，原记录保留。；最终角色事实、完整判断、manifest 与 apply 输入相符 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996295786 | raw 重放和原子发布均要求完整且一致的远端页域，或包含固定 T0 所需全部页；完整远端页域仍可证明本地映射不存在。6种页边界/缺页/声明冲突回归通过。；复用既有 metadata，不重新获取补证 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996295790 | 当前 `production_pixiv_a2_v1.llm_policy` 及当前契约正文同步累计 USD30；其他历史 USD10 条款保留原意。；最终注册契约与 ledger 同额核验 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996295794 | 相同语义输入比较归一化 decision 与 confidence，跨阈值或权重变化均禁用语义复用；文件前后排序回归通过。；实际缓存分歧只读审计、最终复用统计 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996295796 | 每一个接受的搜索等价样本，各个拼写均必须返回其指定 Media；一个成功样本不能掩盖其他空集。；新版完整查询与契约重算 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996295797 | 上下文续跑合并原记录，仅为实际取得的结果发布新 aggregate 映射；已 grounded 答案和未取得新答案的旧映射保留。；最终事实输入、重入回归 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996325728 | 36个独立身份分离案例继续要求不同 concept 与双方字面支持召回，并逐对实际核验两个方向的排除和交集查询，能够发现只把两个普通查询都扩大成并集的回归。角色不同不证明同图不会共现，普通混合搜索亦可命中旧标签；43号明确不能无条件要求总集合相等/互斥。回归包含合法共现和错误宽泛并集。；新版36例实际组合结果；此处不声称身份判断能提供整个普通搜索的穷尽精确预期，线程由负责人评估 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da；混合搜索身份与字面证据边界仍交Lead裁决 |
-| 3996956551 | `_merge_valid_target_answers` 逐目标验证后合并，只填缺项；有效unknown/non-name/候选均受保护，缺raw、非法disposition、缺reason、无候选证明及对象类型均不覆盖旧答案。重放与费用保留回归通过。；最终精确HEAD测试；既有role-facts与原始付费缓存保留 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996956555 | contextual入口显式传递unit_limit，负值在规划/派发前拒绝，正值切分实际units，只发布取得答案的aggregate映射。；最终精确HEAD测试；本轮无新增metadata/角色付费队列 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996956557 | `_soft_search_condition_for_term`仅打开`include_production_alias_evidence`；实际API修前漏Media失败，修后普通/AND/排除与来源失效通过，unknown仍unknown、artwork title不提升，实验overlay被禁止调用。170项相关与17项PG通过。；最终完整副本/生产80例、来源及完整HTTP性能、真实界面 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3996956559 | `validation_evidence`所有focused/PG/non-E2E/remediation的日志及XML都经`evidence_path`限制在私有根内；绝对外部路径和相对父目录越界均拒绝。；最终精确HEAD测试和完整契约执行 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3997410325 | 发布覆盖检查从当前 aggregates/vocabulary 和已接受基础角色重建 completion 问题全集，拒绝附件省略任一必需映射；真正已 grounded 的聚合仍允许无新问题。删一部分/全部映射修前失败，修后通过；真实 PG 原投影保持回归包含在 18 passed 中。当前 roles-4 严格核验 49,227 分母和五类计数完全一致、零新增调用。；提交后的精确候选验证及完整发布契约 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3997410328 | `record_command_response` 将 provider 返回后的本地持久化 OSError 转为停止本轮的 RuntimeError，避免进入网络重试；保留已发布/诊断文件。stderr open/fsync/returned journal 三种失败修前不能停止，修后单次请求即停，并从原 payload 零请求重放；相关 26 passed。；提交后的精确候选验证；不重抓 metadata 补历史 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3997410332 | 预算化裁决先规范单元素列表，再做严格 decision/confidence 校验；空/多元素列表仍拒绝。单元素修前失败，修后缓存复用不重复费用；与角色/发布输入合并60 passed。30份私有失败记录只读审计无可恢复单元素答案，未另发调用；9a205c5队列记录为历史，当前完整裁决已经结束、0在途，精确8f10418验证通过。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998140949 | 别名扩展不跨另一个有类型的身份组件；未定角色仍保留有边界的字面召回。实际API的active/needs_review两个cannot组件修前均误召回Media4，修后普通/AND/排除及字面原词查询正确；原unknown、标题、revision和检索兼容回归通过。；最终候选验证、完整副本和原生产80例及性能 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da；没有撤销typed cannot-link隔离以放行四个质量失败 |
-| 3998140950 | suggestion从逐查询HTTP状态/ids/total重算；同模式作者并集也使用实际查询收据。缺失/HTTP失败/错误集合/错误total及作者同类回归通过；私有采集和合并脚本保留真实分页收据。；最终候选契约和真实查询收据 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998140951 | 有效模型答案的cache record/index或settlement本地失败保存response-recovery并停止，精确和同输入续跑都恢复原attempt与usage，零重复调用/费用。双位置不可写仍停止保留reserved，不把丢失响应改作失败后重试。历史持久化失败的原有效答案已保存，无新API恢复。；最终候选验证；9f20ec0队列记录为历史，当前31607项已闭合、0在途 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998265892 | 原失败节点默认原名，只有acc28ad的两处A1→A2文档测试重命名进入代码内固定映射；无关通过节点回归修前失败、修后通过，旧真实88节点对账仍闭合。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998265898 | 两组冻结作者账户对照要求实际IDs和total精确等于预期并集；旧基线14/14和2/2均无额外命中，后续实际新查询若有额外项保留为失败诊断，不改变独立预期。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998265903 | profile和server_identity共用显式非空绝对code_root校验；缺失、空串、相对路径三例修前失败、修后通过。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998265904 | 当前workload必须覆盖全部冻结case_id/terms/category/query及实际请求URL参数；来源层必须覆盖三次相同参数，重复/遗漏或替换均拒绝。新实际性能仍待执行。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998265908 | 所有冻结类别建立稳定案例身份，全部独立oracle和原基线保留；重复案例不能凑数，搜索等价的原样本集合保持。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998265911 | 保存角色请求与按当前groups重建的当前prompt逐项一致才恢复为当前单元；84份实际保存请求均兼容，原缓存费用不变，旧格式分开。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
-| 3998265912 | 已接受journal SHA256定位原字节前缀，后续dispatch按真实时间检查两秒；实际历史8694、后续0，明确不是内部HTTP历史证明。 | 代码回归通过；副本恢复/性能/UI证据已完成；整体验收因75/80阻塞，原生产仍44db0da |
+| F1 | 不信任自报收费，从实际usage或保守reservation逐调用复算，共享账本锁内准入。 | 非法/低报费用、未知usage、重复结算和并发预留；原账本离线复算。 |
+| F2 | provider返回后本地保存失败与模型失败分开；保存响应恢复凭证，按原attempt幂等结算。 | raw/unit/settle相邻故障及再次恢复，同题不重复付费。 |
+| F3 | coverage与实际投影共享已校验逐目标处置，completion单独non_name可撤回unknown。 | 强角色保护、无关aggregate、混合响应与实际API支持变化。 |
+| F4 | 重建原始group/context/raw目标并核对terminal逻辑身份与每张票。 | 原26项逐票核验，拒绝借票、重复及未结算票。 |
+| F5 | 从实际问题、原响应、缓存和ledger重放角色/配对来源；发布检查完整选中集合。 | 输入/答案篡改、重复凑数、缺项、纠正历史、旧问题来源及零调用再准入。 |
+| F6 | 加入独立来源排他样本，保留36分离与合法共现；718按具名裁决更新。 | 修前自洽并集反例必须失败，当前实际API结果重算。 |
+| 新增6项 | 冻结旧召回、完整prior与传递尝试上限、迁移事务超时、证据路径、chip真实搜索、17表保护快照。 | 当前候选focused/真实PG；Windows symlink权限项明确跳过。 |
+| 后续4项 | prior绑定实际前驱facts/纠正计划/完整来源选择；浏览器必须同次有序；workload绑定候选loopback服务；coverage与apply共享多语言候选匹配。 | 修前9个真实反例保留；当前回归、完整来源再准入及实际新浏览器/工作量收据。完整100285信号含证据新旧指纹一致。 |
+| 再新增4项 | 裁决源绑定实际同输入已结算票据，旧无reservation源只接受唯一成功票；当前terminal完整集合恰三次；远端页数有界核验；阶段结果固定路径并绑定候选/实际HEAD。 | 修前11个实质反例及已有绝对路径拒绝分别保留；当前回归、完整输入身份/账目等价、实际26条terminal及7682个原始配对源核验。 |
 
-## 交付和下一检查点
+当前审查快照63条：39条按Lead已处理结论核对承接、1条历史例外保留、23项本轮修复。工程处置不等于远端线程已关闭。
 
-本机交付A2-MANUAL-ACCEPTANCE.zh-CN.md、更新的A2-OPERATIONS.zh-CN.md、完整十例原始因果链、冻结预期冲突与实际查询、当前精确验证及私有证据ZIP/双摘要索引。公开PR不包含私有payload、路径、凭据或原图。指南明确当前是旧生产失败对照与可用性检查，不冒称修正版正式验收。
-最小下一步：Lead裁决属性718的矛盾预期，并复审已保存错误角色/作品上下文如何在保留历史答案和cannot约束的前提下作有界事实修正。预算尚余16.569192，无需重新申请本轮额度或令牌授权；不得通过盲目重复有效/unknown答案求正向。修正后重新核对受影响完整输入/选择及副本质量，再继续已准备的原生产迁移、完整apply、正常EXE和原生产验证。
-Owner可立即从正常EXE检查图库和三张媒体可用性；A2工程目标、Lead接受、Owner正式验收、merge均尚未发生。safe_to_merge/route_approved=false，未推main、强推、触发reviewer或自行关闭线程，未进入A3。
-# 20260918 同题缓存首次复用纠正补记
+新增三项完成声明/服务身份缺口也已修复：固定本机私有契约重新推导并精确对账公共结果；浏览器和质量与workload共用候选服务身份守卫；质量各组件及每页实际请求绑定同一服务。8个修前反例保留。另修正浏览器截图绘制等待，旧黑帧不当作视觉通过。
 
-当前行为候选推进到 e5aaf7ef2bac6c2db51ec26d62a4980fe49fbe3e，已推送同一 PR153。230 focused、21隔离PostgreSQL/API及88个历史失败精确节点通过，validation_evidence已核算；79项预算/来源回归与230重叠，不相加。唯一历史完整non-E2E及缺失原始AI执行证据保留。
+## 完整范围、来源与支持对账
 
-新代码运行旧8f10418副本投影、采用修订oracle的实际查询对照：65/69核心案例通过。4个残留仍为 nahida/纳西妲（784）、nahida/草神（784）、ナヒーダ/纳西妲（784、5147、5256）、纳西妲/草神（3915），均为右侧查询缺失。36个分离、修订属性及集合运算通过。这是新投影apply前基线，不能作为新图谱成绩或完整80例结果。
+固定T0为38114 Media，9502映射；8623完整metadata、850远端不可用、29缺页。8694历史获取记录复用，本轮零新增metadata请求。原31295 selected、8769缺项、680新增、105排除和49227角色出现的原账目保留。
+按历史dispatch日志逐条核对8694个不同原始输出，8688个位于metadata-raw、6个认证预检输出位于独立子目录，全部存在并记录文件哈希；最终清单包含两类，未因目录差异漏掉原始结果。
+旧31607选中与当前31612比较：31369同位置同输入且答案未变、21输入变化、217旧代表移除/222新增代表。作品9070与剩余22542均有有效判断和实际来源证明。e5aaf7e真实构图100285信号/626779边/17538概念；当前候选对不变核心、候选匹配完整信号与完整实际输入重新核验，保留不同实际执行身份，不伪造原调用SHA。
+独立来源重放实际完成候选为bd3ad8b。当前候选仅续接未变化的语义输入与来源校验代码，六次产品plan/apply仍在当前HEAD逐次执行完整来源校验；契约明确核对这条续接链。证据包入口审计覆盖31623个选中缓存链文件及1921个最终角色证明引用的原始文件，均存在；角色校验器检查过的原始envelope计数1922与最终引用文件数不是同一口径，12条确定性记录不冒充付费响应。
+实际支持：原生产66572 → 新副本66394；移除316、新增138、净变化-178；绑定Media集合相同，共8623。
+原54移除保留54，原5新增保留5；新差额逐项列在support-history。保留支持的投影变化21649条；历史副本revision差异14条，未经解释的身份/revision变化0。
 
-当前作品阶段 9070 个 selected 均已有有效结果，其中 9063 个复用、7 个新增调用。账本逐条重算累计 USD 13.578599，剩余 USD 16.421401，54 个历史未知 usage 保留、无在途 reservation。随后离线来源复验拒绝首次语义复用结果：发布到新 occurrence 的缓存已正确写入，但返回 judgment 只更新 key，遗留旧 pair payload hash 和 pair identity。修复从实际新缓存记录重建返回结果，不改模型回答、不删除旧失败、不弱化验真。新增首次复用/随后 exact hit 一致且零新增调用的回归；开发态相关 37 项通过，当前完整图和副本质量仍待完成。
+## 完整恢复、性能、浏览器与契约
+
+本候选实际执行完整plan/apply、幂等replay、owned rollback/重复rollback/reapply、逆序分批等价和source update/delete恢复；17表检查点绑定本候选、隔离库和同一次操作。未对原库执行撤回演练，未用T0备份覆盖用户后续数据。
+本次首次apply实际idempotent_replay=True；owned撤回后的reapply实际idempotent_replay=False。首次命中相同输入的旧投影属于幂等复用，不冒称首次全新写入；重新写入以撤回后实际reapply回执为准。
+真实有界面Edge：原图3、缩略图1，页面错误0；来源chip真实图库查询、DOM/API结果、旧标签、suggestion与只读恢复页有实际收据。代表截图的人工查看结果另行记录，自动采集不冒称Owner验收。
+
+| 完整契约及独立后续门禁 | 实际结果 |
+| --- | --- |
+| registered_full_contract | failed：a2_behavior_carry_forward |
+| current_candidate_behavior | passed |
+| backup_restore | passed |
+| independent_t0 | passed |
+| fixed_mapping_and_complete_accounting | passed |
+| metadata_attempts_scope_and_historical_exception | passed |
+| forward_metadata_spacing | passed |
+| rederived_original_budget_and_settlement | passed |
+| selected_judgment_source_receipts | passed |
+| current_semantic_input_readmission | passed |
+| current_original_production_apply | failed：current_behavior_not_deployed_original_production_manifest_retained |
+| full_copy_recovery | passed |
+| independent_quality | failed： |
+| current_real_browser | passed |
+| current_original_production_normal_entry | failed：current_behavior_not_deployed_original_launcher_manifest_retained |
+| query_level_performance | passed |
+| exact_candidate_validation | passed |
+
+性能原始重算：`{"source": {"p50_ms": 306.7, "p95_ms": 389.606, "max_ms": 897.985}, "http": {"p50_ms": 792.359, "p95_ms": 1414.753, "max_ms": 2608.266}}`。来源层p95≤750ms/max≤3000ms，完整HTTP时延单列。完整注册契约的失败保留，未通过最早门禁不妨碍独立检查后续可核验项；没有改标旧原生产manifest。
+
+## 精确候选测试与费用
+
+focused：388 passed/0 failed/1 skipped；PostgreSQL/API：22 passed。88个历史失败精确节点通过；唯一历史完整non-E2E 4541/89/15原样保留，missing_original_ai_execution_evidence未补造。未重复全套测试，GitHub CI状态以当前PR另存快照为准。
+
+| 调用类型 | 累计尝试 | 成功 / 失败 | 未知usage | 累计USD | 本轮新增尝试 / USD |
+| --- | --- | --- | --- | --- | --- |
+| role | 1956 | 1911 / 45 | 32 | 9.810893 | 145 / 0.146941 |
+| pair | 16471 | 16441 / 30 | 22 | 3.771751 | 18 / 0.004895 |
+
+累计18427调用，USD 13.582644，剩余USD 16.417356；本轮新增163调用/USD 0.151836。状态{"success": 18352, "failed": 75}；54次未知usage按保守额度保留。原6110次/USD9.998387与10→30追加事实未变。
+
+## 日常入口与最小剩余动作
+
+正常无参数EXE仍指向固定旧44db0da目录，原库read ON/apply OFF。新版索引迁移、原生产plan/apply与新候选入口切换因真实质量门禁未执行。纠偏开始时曾恢复旧固定服务可用性；这不是新版上线，也没有覆盖原数据库。
+条件发布私有入口已同步实际副本launch和完整副本门禁检查，并为原生产前后保护快照记录操作身份；旧入口备份保留。该准备仅通过语法、UTF-8与帮助入口检查，尚无新版原生产执行或通过声明。
+修复私有打包器对非敏感语义授权标记的过度脱敏：旧规则使148条纠正请求指纹变化，新规则为0；8类凭据字段仍脱敏。当前角色事实整体结构及两个纠正计划保持不变，实际打包还强制角色事实/前驱/计划逐字节保留，ZIP核验另存回执。旧档案不改写。
+Owner从A2-MANUAL-ACCEPTANCE.zh-CN.md查看实际普通查询和四张来源面板；A2-OPERATIONS.zh-CN.md记录入口、恢复及证据位置。未通过项应继续保留，不能签署A2全量验收。
+剩余动作是取得784/5147的可靠所属作品/有效语义处置依据，或由Lead对无法由现有证据支持的目标作具名裁决，再按既有范围复验。不是再次申请预算、Pixiv令牌或一般执行许可；不会靠重置尝试、删约束或降低其余79例要求收口。
+
+## 本轮跟踪变更文件
+
+与上一轮交付 `df6a849ae898e7693cbaba5258053ad1cfaad2b5` 比较，共32个跟踪文件；本机私有采集器和原始证据另外保存在证据包。
+
+- [backend/app/database.py](../../backend/app/database.py)
+- [backend/app/services/production_pixiv_corrections.py](../../backend/app/services/production_pixiv_corrections.py)
+- [backend/app/services/production_pixiv_pair_correction.py](../../backend/app/services/production_pixiv_pair_correction.py)
+- [backend/app/services/production_pixiv_release_inputs.py](../../backend/app/services/production_pixiv_release_inputs.py)
+- [backend/app/services/production_pixiv_release_provenance.py](../../backend/app/services/production_pixiv_release_provenance.py)
+- [backend/app/services/production_pixiv_role_extraction.py](../../backend/app/services/production_pixiv_role_extraction.py)
+- [backend/app/services/production_pixiv_semantics.py](../../backend/app/services/production_pixiv_semantics.py)
+- [backend/app/services/source_concept_budget.py](../../backend/app/services/source_concept_budget.py)
+- [backend/app/services/source_concept_resolver_service.py](../../backend/app/services/source_concept_resolver_service.py)
+- [docs/current-handoff.md](../../docs/current-handoff.md)
+- [docs/plans/production-pixiv-a2.md](../../docs/plans/production-pixiv-a2.md)
+- [docs/reports/production-pixiv-a2-result.md](../../docs/reports/production-pixiv-a2-result.md)
+- [docs/state/current-phase.json](../../docs/state/current-phase.json)
+- [scripts/check_production_pixiv_a2.py](../../scripts/check_production_pixiv_a2.py)
+- [scripts/production_pixiv_a2_evidence.py](../../scripts/production_pixiv_a2_evidence.py)
+- [scripts/production_pixiv_a2_service_evidence.py](../../scripts/production_pixiv_a2_service_evidence.py)
+- [scripts/production_pixiv_a2_state.py](../../scripts/production_pixiv_a2_state.py)
+- [scripts/run_production_pixiv_a2_concepts.py](../../scripts/run_production_pixiv_a2_concepts.py)
+- [scripts/run_production_pixiv_a2_metadata.py](../../scripts/run_production_pixiv_a2_metadata.py)
+- [scripts/run_production_pixiv_a2_product.py](../../scripts/run_production_pixiv_a2_product.py)
+- [tests/test_production_pixiv_a2.py](../../tests/test_production_pixiv_a2.py)
+- [tests/test_production_pixiv_a2_api.py](../../tests/test_production_pixiv_a2_api.py)
+- [tests/test_production_pixiv_a2_evidence.py](../../tests/test_production_pixiv_a2_evidence.py)
+- [tests/test_production_pixiv_adjudication.py](../../tests/test_production_pixiv_adjudication.py)
+- [tests/test_production_pixiv_correction_gates.py](../../tests/test_production_pixiv_correction_gates.py)
+- [tests/test_production_pixiv_corrections.py](../../tests/test_production_pixiv_corrections.py)
+- [tests/test_production_pixiv_release_inputs.py](../../tests/test_production_pixiv_release_inputs.py)
+- [tests/test_production_pixiv_review60.py](../../tests/test_production_pixiv_review60.py)
+- [tests/test_production_pixiv_review63.py](../../tests/test_production_pixiv_review63.py)
+- [tests/test_production_pixiv_role_coverage.py](../../tests/test_production_pixiv_role_coverage.py)
+- [tests/test_production_pixiv_role_extraction.py](../../tests/test_production_pixiv_role_extraction.py)
+- [tests/test_source_concept_task_budget.py](../../tests/test_source_concept_task_budget.py)
+
+## 验证命令参数与本机证据索引
+
+以下保留实际命令参数，个人路径以 `$PY`、`$WORKTREE`、`$EVIDENCE` 代称；完整原命令与回执留在本机。运行前已通过项目Python身份预检并加载隔离测试环境。完整88节点命令见原始回执，不重新运行历史完整non-E2E。
+
+focused：
+
+```powershell
+& '$PY' '-m' 'pytest' 'tests/test_source_concept_task_budget.py' 'tests/test_production_pixiv_role_extraction.py' 'tests/test_production_pixiv_role_coverage.py' 'tests/test_production_pixiv_semantics.py' 'tests/test_production_pixiv_corrections.py' 'tests/test_production_pixiv_adjudication.py' 'tests/test_production_pixiv_release_inputs.py' 'tests/test_production_pixiv_a2_evidence.py' 'tests/test_production_pixiv_correction_gates.py' 'tests/test_source_concept_withdrawal_indexes.py' 'tests/test_production_pixiv_review60.py' 'tests/test_production_pixiv_metadata_runner.py' 'tests/test_production_pixiv_review63.py' '-v' '--tb=short' '--junitxml=$EVIDENCE\correction17-a3c46ca-focused.xml'
+```
+
+命令回执（本机私有证据：`correction17-a3c46ca-focused-command-private.json`）；实际日志（本机私有证据：`correction17-a3c46ca-focused.log`）；JUnit（本机私有证据：`correction17-a3c46ca-focused.xml`）。
+
+postgresql：
+
+```powershell
+& '$PY' '-m' 'pytest' 'tests/test_production_pixiv_a2.py' 'tests/test_production_pixiv_a2_api.py' '-v' '--tb=short' '--junitxml=$EVIDENCE\correction17-a3c46ca-postgresql.xml'
+```
+
+命令回执（本机私有证据：`correction17-a3c46ca-postgresql-command-private.json`）；实际日志（本机私有证据：`correction17-a3c46ca-postgresql.log`）；JUnit（本机私有证据：`correction17-a3c46ca-postgresql.xml`）。
+
+- 88个历史节点实际命令（本机私有证据：`correction17-a3c46ca-validation-historical-remediation-command-private.json`）
+- 完整副本恢复（本机私有证据：`correction17-copy-final-3-recovery-private.json`）
+- 80例逐项结果（本机私有证据：`correction17-copy-final-3-surfaces-combined-quality-private.json`）
+- 十例完整因果差异（本机私有证据：`correction17-copy-final-3-ten-causal-closeout-private.json`）
+- 四张指定样本的原始metadata、角色纠正及响应路径（本机私有证据：`correction17-copy-final-3-four-media-role-lineage-private.json`）
+- 支持变化（本机私有证据：`correction17-copy-final-3-support-transition-private.json`）
+- 完整契约及独立后续门禁（本机私有证据：`correction17-copy-final-3-contract-private.json`）
+- 真实浏览器动作（本机私有证据：`correction17-copy-final-3-surfaces-browser-private.json`）
+- 逐查询性能（本机私有证据：`correction17-copy-final-3-surfaces-workload-private.json`）
+- 逐线程处置（本机私有证据：`correction17-final-review-dispositions-private.json`）
+- 累计费用复算（本机私有证据：`correction17-final-budget-private.json`）
+- 语义请求指纹保持与凭据脱敏回归（本机私有证据：`correction17-package-authority-redaction-check-private.json`）
+- 8694份历史metadata原始输出逐条索引（本机私有证据：`correction17-metadata-raw-complete-extra-index-private.json`）
