@@ -328,6 +328,11 @@ def browser_fixture():
             'image':{'src':f'http://127.0.0.1/api/media/{mid}/file','width':900,'height':700}}]
         browser['actions'] += [{'action':kind,'media_id':mid} for kind in ('close_fullscreen','return_gallery')]
     for row in browser['actions']:row.update(attempt_id=browser['attempt_id'],flow_id='flow-'+str(row['media_id']))
+    browser['old_tag'].update(url='http://127.0.0.1/?q=1girl',query='1girl',request_url='http://127.0.0.1/api/search?q=1girl',attempt_id=browser['attempt_id'])
+    browser['suggestion_display']={'media_id':20,'attempt_id':browser['attempt_id'],'url':'http://127.0.0.1/media/20',
+        'request_url':'http://127.0.0.1/api/media/20','status_code':200,'api_media_id':20,'mutation_performed':False,'tag':'draft',
+        'observed_items':[{'id':90,'media_id':20,'text':'draft','title':'suggestion','tag_name':'SPAN','href':None,'classes':'border-dashed','visible':True}],
+        'api_items':[{'id':90,'name':'draft','is_suggestion':True}]}
     return browser
 
 
@@ -353,7 +358,7 @@ def test_browser_requires_complete_ordered_navigation_in_one_attempt(mutation):
         verify_browser_actions(browser)
 
 
-def test_launcher_uses_recorded_process_and_profile_not_historical_pid_liveness(tmp_path):
+def test_launcher_uses_recorded_process_and_profile_not_historical_pid_liveness(tmp_path,monkeypatch):
     from scripts.production_pixiv_a2_evidence import verify_launcher_action
     launch={'after_pid':123,'database':'prod',
         'normal_entry_invocation':{'executable':str(tmp_path/'V.I.O.L.E.T. Production Launcher.exe'),
@@ -361,6 +366,8 @@ def test_launcher_uses_recorded_process_and_profile_not_historical_pid_liveness(
         'server_process_at_action':{'ProcessId':123,'ParentProcessId':45,'CreationDate':'observed-time','CommandLine':'python run.py'},
         'profile_at_action':{'candidate_head':'b'*40,'pixiv_product_enabled':True,'pixiv_product_apply_enabled':False,
             'database':'prod','code_root':str(tmp_path),'sha256':'c'*64}}
+    from test_production_pixiv_review68 import bind_launcher_fixture
+    bind_launcher_fixture(launch,tmp_path,monkeypatch)
     assert verify_launcher_action(launch,tmp_path,'b'*40)
     launch['profile_at_action']['candidate_head']='old'
     with pytest.raises(ValueError,match='profile_observation_changed'):verify_launcher_action(launch,tmp_path,'b'*40)

@@ -450,15 +450,56 @@ def _role_entropy(roles: Counter[str]) -> float:
     return round(entropy / math.log2(len(roles)), 4)
 
 
+def _ambiguity_evidence_unit(signal: SourceConceptSignalDraft) -> tuple[str, str] | None:
+    # A provider work is one observation unit even across pages, imports and
+    # cache copies. Never manufacture database row IDs for portable inputs.
+    scope = _production_work_scope(signal)
+    if scope:
+        return ('provider_work', scope)
+    work_id = (signal.evidence_payload or {}).get('work_id')
+    if signal.provider == 'pixiv' and re.fullmatch(r'[1-9][0-9]{0,11}', str(work_id)):
+        return ('provider_work', 'pixiv:work:' + str(work_id))
+    if signal.provider and signal.source_record_id:
+        return (signal.provider, str(signal.source_record_id))
+    if signal.media_id is not None:
+        return ('media', str(signal.media_id))
+    if signal.source_metadata_record_id is not None:
+        return ('record', str(signal.source_metadata_record_id))
+    return None
+
+
+def _ambiguity_context_keys(signal, context_alias_by_key):
+    derived = (signal.evidence_payload or {}).get('production_adjudicated_work_context')
+    if _production_work_scope(signal) and isinstance(derived, dict):
+        context, reason = signal_context_key(signal, {}, context_alias_by_key)
+        if context and reason:
+            return {context}
+    return {_context_alias_key(key, context_alias_by_key) for key in _declared_context_keys(signal)} - {None}
+
+
 def build_data_aware_ambiguity_profiles(
     signals: Sequence[SourceConceptSignalDraft],
+    *, _legacy_database_units: bool = False,
 ) -> dict[str, dict[str, Any]]:
     """Score name ambiguity from the fixed evidence snapshot, not length alone."""
 
+    context_alias_by_key = {} if _legacy_database_units else _context_equivalence_lookup(signals)
     grouped: dict[str, list[SourceConceptSignalDraft]] = defaultdict(list)
+    seen = set()
     for signal in signals:
         surface = signal_surface_key(signal)
         if surface and signal.status != "rejected" and signal.trust_tier != "rejected":
+            unit = _ambiguity_evidence_unit(signal)
+            # Duplicating a source cannot change frequency or role entropy.
+            # Preserve distinct role/context claims and their strength.
+            observation = (surface, unit or ('signal', signal.signal_key), signal.role_hint,
+                tuple(sorted(_ambiguity_context_keys(signal, context_alias_by_key))),
+                _context_strength(signal, signal_context_key(signal, {}, context_alias_by_key)[1]),
+                bool(signal.parenthetical_context or parse_parenthetical(signal.raw_value)[1]),
+                _script_family(signal.display_value or signal.raw_value))
+            if not _legacy_database_units and observation in seen:
+                continue
+            seen.add(observation)
             grouped[surface].append(signal)
 
     profiles: dict[str, dict[str, Any]] = {}
@@ -466,7 +507,7 @@ def build_data_aware_ambiguity_profiles(
         contexts = {
             context
             for signal in rows
-            for context in _declared_context_keys(signal)
+            for context in (_declared_context_keys(signal) if _legacy_database_units else _ambiguity_context_keys(signal, context_alias_by_key))
             if context
         }
         providers = {signal.provider for signal in rows if signal.provider}
@@ -493,7 +534,8 @@ def build_data_aware_ambiguity_profiles(
         score += 0.25 * entropy
         if len(providers) > 1 and len(contexts) > 1:
             score += 0.08
-        independent_units = max(len(record_units), len(media_units))
+        independent_units = (max(len(record_units), len(media_units)) if _legacy_database_units else
+            len({_ambiguity_evidence_unit(s) for s in rows if _ambiguity_evidence_unit(s)}))
         if len(contexts) == 1 and independent_units >= 2:
             score -= 0.25
         if has_parenthetical:
@@ -514,6 +556,8 @@ def build_data_aware_ambiguity_profiles(
             "cross_script_family_count": len(scripts),
             "short_length_prior": is_short_ambiguous_key(surface),
         }
+        if not _legacy_database_units:
+            profiles[surface]['distinct_evidence_units'] = independent_units
     return profiles
 
 
@@ -2925,6 +2969,15 @@ def llm_resolver_decision(decision: str | None) -> str:
     return "needs_review"
 
 
+def checked_cache_path(cache_dir, path):
+    """Confine cache operations to the explicitly configured root."""
+    root = Path(cache_dir).resolve()
+    resolved = Path(path).resolve()
+    if not resolved.is_relative_to(root):
+        raise ValueError('production_cache_path_outside_root')
+    return resolved
+
+
 def _cache_root(config: LLMAdjudicationConfig) -> Path:
     if config.durable_cache_dir:
         return Path(config.durable_cache_dir)
@@ -2990,6 +3043,7 @@ def _compatible_decision_cache(config: LLMAdjudicationConfig) -> dict[str, Any]:
     records={}
     for root in sorted({_cache_root(config),*(Path(path) for path in config.semantic_cache_dirs)}):
         for path in sorted([*(root/'records').glob('*.json'),*(root/'response-recovery').glob('*.json')]):
+            path = checked_cache_path(root, path)
             try:
                 record=json.loads(path.read_text(encoding='utf-8'))
                 if record.get('error_state') or any(record.get(k)!=v for k,v in expected.items()):
@@ -3111,9 +3165,9 @@ def llm_cache_metadata(
 
 def _cache_record_paths(root: Path, cache_key: str, pair_identity: str) -> dict[str, Path]:
     return {
-        "record": root / "records" / f"{cache_key}.json",
-        "pair_index": root / "pair-index" / pair_identity / f"{cache_key}.json",
-        "failure": root / "failures" / f"{cache_key}.{time.time_ns()}.json",
+        "record": checked_cache_path(root, root / "records" / f"{cache_key}.json"),
+        "pair_index": checked_cache_path(root, root / "pair-index" / pair_identity / f"{cache_key}.json"),
+        "failure": checked_cache_path(root, root / "failures" / f"{cache_key}.{time.time_ns()}.json"),
     }
 
 
@@ -3293,6 +3347,7 @@ def _load_exact_cache_record(
 ) -> Mapping[str, Any] | None:
     primary = _cache_record_paths(root, str(metadata["cache_key"]), str(metadata["pair_identity"]))["record"]
     for path in (primary,root/'response-recovery'/primary.name):
+        path = checked_cache_path(root, path)
         if not path.exists():continue
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
@@ -3306,7 +3361,7 @@ def _load_exact_cache_record(
 
 
 def _semantic_prior_count(root: Path, *, pair_identity: str, exact_cache_key: str) -> int:
-    index_dir = root / "pair-index" / pair_identity
+    index_dir = checked_cache_path(root, root / "pair-index" / pair_identity)
     if not index_dir.exists():
         return 0
     return sum(1 for path in index_dir.glob("*.json") if path.stem != exact_cache_key)
@@ -3318,7 +3373,7 @@ def _legacy_cache_record(
     legacy_fingerprint: str,
 ) -> Mapping[str, Any] | None:
     for directory in legacy_dirs:
-        path = directory / f"{legacy_fingerprint}.json"
+        path = checked_cache_path(directory, directory / f"{legacy_fingerprint}.json")
         if not path.exists():
             continue
         try:
@@ -4226,7 +4281,7 @@ def run_bounded_llm_adjudication(
                 # failed publication path, leave the reservation recoverable,
                 # and stop instead of recording a model failure or retrying.
                 try:
-                    _atomic_write_json(durable_cache_root/'response-recovery'/f'{metadata["cache_key"]}.json',durable_record)
+                    _atomic_write_json(checked_cache_path(durable_cache_root,durable_cache_root/'response-recovery'/f'{metadata["cache_key"]}.json'),durable_record)
                 except OSError as recovery_error:
                     raise RuntimeError('adjudication_valid_response_recovery_persistence_failed') from recovery_error
                 raise RuntimeError('adjudication_valid_response_persistence_failed') from exc
@@ -4469,13 +4524,15 @@ def resolve_source_concepts(
     llm_config: LLMAdjudicationConfig | None = None,
     llm_judgments: Sequence[Mapping[str, Any]] | None = None,
     concept_namespace: str | None = None,
+    _legacy_database_ambiguity: bool = False,
 ) -> SourceConceptResolutionResult:
     if concept_namespace is not None and not re.fullmatch(r"[a-z][a-z0-9_]{0,63}", concept_namespace):
         raise ValueError("source_concept_namespace_invalid")
     context_alias_by_key, context_equivalence_diagnostics = _context_equivalence_analysis(signals)
     context_by_scope = _context_candidates_by_scope(signals, context_alias_by_key=context_alias_by_key)
     alias_component_by_key = _alias_component_lookup(signals)
-    ambiguity_profiles = build_data_aware_ambiguity_profiles(signals)
+    ambiguity_profiles = (build_data_aware_ambiguity_profiles(signals, _legacy_database_units=True)
+        if _legacy_database_ambiguity else build_data_aware_ambiguity_profiles(signals))
     rejected: list[dict[str, Any]] = []
     eligible_signals: list[SourceConceptSignalDraft] = []
     for signal in signals:

@@ -152,6 +152,31 @@ def test_prior_binding_uses_the_actual_correction_input_and_plan(tmp_path,monkey
         assert not replayed
 
 
+@pytest.mark.parametrize('valid_policy',[True,False])
+def test_policy_only_prior_requires_exact_inputs_and_legacy_policy(tmp_path,monkeypatch,valid_policy):
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    from app.services import production_pixiv_service as production,production_pixiv_release_provenance as provenance
+    from app.services.production_pixiv_pair_correction import bind_correction_prior,read_correction_prior
+    aggregates=[{'fixed':True}];vocabulary={'fixed':True};facts={'records':{}}
+    prior_name=write_prior(tmp_path,[{'left_signal_key':'a','right_signal_key':'b'}])
+    path=tmp_path/'prior-semantic-manifest-private.json';manifest=json.loads(path.read_text())
+    manifest['input_identity'].update({k:canonical_fingerprint(v) for k,v in (
+        ('aggregates',aggregates),('vocabulary',vocabulary),('role_facts',facts))})
+    manifest['input_identity']['versions']={'production_policy':production.HISTORICAL_AMBIGUITY_POLICY if valid_policy else production.PRODUCTION_POLICY}
+    path.write_text(json.dumps(manifest));_,prior=read_correction_prior(tmp_path,prior_name)
+    observed=[]
+    def replay(a,v,f,*args,**kwargs):
+        assert (a,v,f)==(aggregates,vocabulary,facts) and kwargs['historical_predecessor'] is True
+        observed.append(True);return {'selection_replayed':True}
+    monkeypatch.setattr(provenance,'_replay_source_selection',replay)
+    if valid_policy:
+        result=bind_correction_prior(aggregates,vocabulary,facts,prior,tmp_path)
+        assert result['kind']=='ambiguity_policy_only' and result['new_correction_aggregate_count']==0 and observed==[True]
+    else:
+        with pytest.raises(ValueError,match='policy_transition'):bind_correction_prior(aggregates,vocabulary,facts,prior,tmp_path)
+        assert observed==[]
+
+
 def valid_preservation():
     import hashlib
     from scripts.production_pixiv_a2_evidence import PRESERVED_TABLES,PRESERVED_NONEMPTY

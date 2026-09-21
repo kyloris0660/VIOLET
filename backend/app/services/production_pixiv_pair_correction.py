@@ -52,8 +52,7 @@ def verify_correction_prior_sources(rows,config,ledger):
     calls={row['id']:row for row in ledger['calls']};seen=set()
     def load(key):
         for root in roots:
-            parent=(root/'records').resolve();path=(parent/(key+'.json')).resolve()
-            if not path.is_relative_to(parent):raise ValueError('correction_prior_cache_outside_task')
+            path=resolver.checked_cache_path(root,root/'records'/(key+'.json'))
             if path.is_file():return json.loads(path.read_text(encoding='utf-8'))
         raise ValueError('correction_prior_cache_missing')
     for row in rows:
@@ -102,6 +101,20 @@ def bind_correction_prior(aggregates,vocabulary,facts,prior,private_root,*,seman
         path=(root/name).resolve(strict=True)
         if not path.is_relative_to(root):raise ValueError('correction_prior_outside_task')
         return json.loads(path.read_text(encoding='utf-8')),path
+    manifest,_=read(prior['manifest'])
+    current_identity={name:canonical_fingerprint(value) for name,value in (
+        ('aggregates',aggregates),('vocabulary',vocabulary),('role_facts',facts))}
+    from .production_pixiv_service import HISTORICAL_AMBIGUITY_POLICY
+    if all(manifest['input_identity'].get(name)==digest for name,digest in current_identity.items()):
+        if manifest['input_identity'].get('versions',{}).get('production_policy')!=HISTORICAL_AMBIGUITY_POLICY:
+            raise ValueError('correction_prior_policy_transition_invalid')
+        rows,actual_prior=read_correction_prior(root,prior['judgments'])
+        if actual_prior!=prior:raise ValueError('correction_prior_provenance_changed')
+        replay=_replay_source_selection(aggregates,vocabulary,facts,rows,manifest,root,
+            semantic_cache_dirs=semantic_cache_dirs,historical_predecessor=True)
+        return {'prior':prior,'input_identity':current_identity,'kind':'ambiguity_policy_only',
+            'new_correction_aggregate_count':0,'selected_pair_count':len(rows),
+            'source_replay_fingerprint':canonical_fingerprint(replay)}
     provenance=facts.get('incremental_correction_provenance') or facts.get('correction_provenance')
     if not isinstance(provenance,dict):raise ValueError('correction_prior_input_provenance_required')
     previous,previous_path=read(provenance['prior_role_facts'])
@@ -140,7 +153,7 @@ def bind_correction_prior(aggregates,vocabulary,facts,prior,private_root,*,seman
     # A retained legacy execution need not claim today's admission gate. Its
     # actual answers and full selection are still rebuilt, never self-attested.
     replay=_replay_source_selection(aggregates,vocabulary,previous,rows,manifest,root,
-        semantic_cache_dirs=semantic_cache_dirs)
+        semantic_cache_dirs=semantic_cache_dirs,historical_predecessor=True)
     return {'prior':prior,'input_identity':expected,'role_facts':str(previous_path.relative_to(root)),
         'role_facts_sha256':previous_digest,'plan':str(plan_path.relative_to(root)),
         'plan_sha256':hashlib.sha256(plan_path.read_bytes()).hexdigest(),'new_correction_aggregate_count':len(added),

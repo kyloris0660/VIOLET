@@ -50,7 +50,7 @@ def verify_preservation_snapshots(snapshots,*,candidate,database,system_identifi
     return {'table_count':len(baseline),'checkpoint_count':len(snapshots),'media_count':baseline['blombooru_media']['rows']}
 
 
-def verify_browser_actions(browser, *, launch=None):
+def verify_browser_actions(browser, *, launch=None, suggestion_oracle=None):
     if launch is not None:
         from scripts.production_pixiv_a2_service_evidence import verify_browser_service
         verify_browser_service(browser,launch)
@@ -76,6 +76,37 @@ def verify_browser_actions(browser, *, launch=None):
             or urlparse(image['src']).path!=f'/api/media/{mid}/file'):
             raise ValueError('a2_fullscreen_original_not_loaded')
     search=browser['search'];old=browser['old_tag'];chip=browser['source_chip']
+    old_page=urlparse(old.get('url',''));old_request=urlparse(old.get('request_url',''))
+    if (old_page.path!='/' or not old_page.netloc or old_request.path!='/api/search'
+        or (old_page.scheme,old_page.netloc)!=(old_request.scheme,old_request.netloc)
+        or not old.get('query') or parse_qs(old_page.query).get('q')!=[old['query']]
+        or parse_qs(old_request.query).get('q')!=[old['query']]
+        or old.get('attempt_id')!=attempt):
+        raise ValueError('a2_browser_old_tag_navigation_missing')
+    suggestion=browser.get('suggestion_display',{})
+    mid=suggestion.get('media_id');shown=suggestion.get('observed_items');api=suggestion.get('api_items')
+    page=urlparse(suggestion.get('url',''));request=urlparse(suggestion.get('request_url',''))
+    if (type(mid) is not int or mid<=0 or suggestion.get('attempt_id')!=attempt
+        or page.path!=f'/media/{mid}' or request.path!=f'/api/media/{mid}'
+        or not page.netloc or (page.scheme,page.netloc)!=(request.scheme,request.netloc)
+        or suggestion.get('status_code')!=200 or suggestion.get('api_media_id')!=mid
+        or suggestion.get('mutation_performed') is not False or not isinstance(shown,list) or not shown
+        or not isinstance(api,list) or not api):
+        raise ValueError('a2_browser_suggestion_not_observed')
+    if suggestion_oracle is not None and not any(s.get('media_id')==mid and s.get('suggested_tag')==suggestion.get('tag')
+            for s in suggestion_oracle.get('samples',[])):
+        raise ValueError('a2_browser_suggestion_frozen_sample_changed')
+    for item in shown:
+        source=next((s for s in api if s.get('id')==item.get('id')),None)
+        if (type(item.get('id')) is not int or item['id']<=0 or item.get('media_id')!=mid
+            or not item.get('text') or item.get('visible') is not True
+            or item.get('tag_name')!='SPAN' or item.get('href') is not None or 'border-dashed' not in item.get('classes','')
+            or not source or source.get('is_suggestion') is not True or not source.get('name')
+            or source['name']!=suggestion.get('tag')
+            or not (item['text']==source['name'] or item['text'].startswith(source['name']+' (')
+                or item.get('title','').startswith(source['name']+', '))
+            or 'suggestion' not in item.get('title','')):
+            raise ValueError('a2_browser_suggestion_content_changed')
     if set(search['ids'])!=set(search['api_ids']) or set(old['dom_ids'])!=set(old['api_ids']) or not old['api_ids']:
         raise ValueError('a2_browser_dom_api_sets_differ')
     href=urlparse(chip.get('href',''));navigated=urlparse(chip.get('navigated_url',''))
@@ -110,7 +141,7 @@ def verify_launcher_action(launch,repo,candidate):
     entry=launch.get('normal_entry_invocation',{});process=launch.get('server_process_at_action',{})
     profile=launch.get('profile_at_action',{})
     if (Path(entry.get('executable','')).name!='V.I.O.L.E.T. Production Launcher.exe'
-        or entry.get('arguments')!=[] or entry.get('action')!='Restart'
+        or entry.get('arguments')!=[] or entry.get('action') not in {'Start','Restart'}
         or not re.fullmatch('[a-f0-9]{64}',entry.get('sha256',''))):
         raise ValueError('a2_normal_launcher_action_missing')
     if (process.get('ProcessId')!=launch['after_pid'] or not process.get('ParentProcessId')
@@ -123,6 +154,78 @@ def verify_launcher_action(launch,repo,candidate):
         or not recorded_code_root_matches(profile.get('code_root'),repo)
         or not re.fullmatch('[a-f0-9]{64}',profile.get('sha256',''))):
         raise ValueError('a2_launcher_profile_observation_changed')
+    verify_normal_entry_provenance(launch,repo)
+    return True
+
+
+def configured_launcher_root(repo):
+    """Use this repository's shared Git root, not a supplied receipt path."""
+    import subprocess
+    from pathlib import Path
+    common=subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],cwd=repo,text=True).strip()
+    return Path(common).resolve().parent
+
+
+def verify_normal_entry_provenance(launch,repo):
+    import hashlib,json
+    from pathlib import Path
+    entry=launch.get('normal_entry_invocation',{});evidence=launch.get('normal_entry_provenance',{})
+    if not evidence:raise ValueError('a2_normal_entry_provenance_missing')
+    canonical=configured_launcher_root(repo)
+    executable=canonical/'V.I.O.L.E.T. Production Launcher.exe'
+    runtime=canonical/'.local_manifests/production_launcher/launcher-runtime.json'
+    def exact_path(value,path):return isinstance(value,str) and Path(value).is_absolute() and Path(value).resolve()==path.resolve()
+    def observed_file(row,path):
+        return (isinstance(row,dict) and exact_path(row.get('path'),path) and path.is_file()
+            and row.get('sha256')==hashlib.sha256(path.read_bytes()).hexdigest())
+    if (not exact_path(entry.get('executable'),executable)
+        or not observed_file(evidence.get('executable'),executable)
+        or entry.get('sha256')!=evidence['executable']['sha256']
+        or not observed_file(evidence.get('runtime'),runtime)):
+        raise ValueError('a2_normal_entry_configured_file_changed')
+    config=json.loads(runtime.read_text(encoding='utf-8'))
+    controller=Path(repo)/'scripts/violet_production_control.py'
+    profile=Path(repo)/'.local_manifests/production_launcher/production-profile.json'
+    if (not exact_path(config.get('repo_root'),Path(repo)) or not exact_path(config.get('controller'),controller)
+        or not observed_file(evidence.get('controller'),controller)
+        or not observed_file(evidence.get('profile'),profile)
+        or launch['profile_at_action']['sha256']!=evidence['profile']['sha256']):
+        raise ValueError('a2_normal_entry_runtime_binding_changed')
+    actual_profile=json.loads(profile.read_text(encoding='utf-8'))
+    observed=launch['profile_at_action']
+    if (actual_profile.get('candidate_head')!=observed['candidate_head']
+        or actual_profile.get('db',{}).get('name')!=launch['database']
+        or actual_profile.get('pixiv_product_enabled') is not True
+        or actual_profile.get('pixiv_product_apply_enabled') is not False
+        or not exact_path(actual_profile.get('repo_root'),Path(repo))):
+        raise ValueError('a2_normal_entry_profile_content_changed')
+    chain=evidence.get('process_chain_at_action',[])
+    by_pid={row.get('ProcessId'):row for row in chain}
+    if (len(by_pid)!=len(chain) or any(type(pid) is not int or pid<=0 for pid in by_pid)
+        or type(entry.get('pid')) is not int or entry['pid'] not in by_pid
+        or by_pid.get(launch['after_pid'])!=launch['server_process_at_action']):
+        raise ValueError('a2_normal_entry_process_chain_missing')
+    current=launch['after_pid'];visited=[]
+    while current not in visited:
+        visited.append(current);row=by_pid.get(current,{})
+        if not row.get('CreationDate') or not row.get('CommandLine') or not row.get('ExecutablePath'):
+            raise ValueError('a2_normal_entry_process_observation_missing')
+        if current==entry['pid']:break
+        current=row.get('ParentProcessId')
+    import shlex
+    def controller_action(row):
+        try:tokens=[t.strip('"') for t in shlex.split(row['CommandLine'],posix=False)]
+        except ValueError:return False
+        for index,token in enumerate(tokens[:-1]):
+            if exact_path(token,controller) and tokens[index+1]==entry['action'].lower():
+                return any(t=='--profile' and tokens[i+1]==config.get('profile','production-default')
+                    for i,t in enumerate(tokens[:-1]))
+        return False
+    if (current!=entry['pid'] or not exact_path(by_pid[current].get('ExecutablePath'),executable)
+        or not any(controller_action(by_pid[pid]) for pid in visited)):
+        raise ValueError('a2_normal_entry_start_relationship_changed')
+    # Records are captured at the operation. Historical PIDs need not live now;
+    # portable unpacked Electron and controller intermediates remain in chain.
     return True
 
 
@@ -207,6 +310,16 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
     expected_pairs={tuple(sorted(key(n) for n in row['names'])):row['expected'] for row in oracle['identity_pairs']}
     independent={tuple(sorted(key(n) for n in row['names'])):row
         for row in oracle.get('separation_controls',[])}
+    precision={tuple(sorted(key(n) for n in row['names'])):row
+        for row in oracle.get('identity_precision_controls',[])}
+    for pair,control in precision.items():
+        forbidden=control.get('forbidden_media_ids')
+        if (expected_pairs.get(pair)!='must_link' or not control.get('source_evidence')
+            or not isinstance(forbidden,list) or not forbidden or len(set(forbidden))!=len(forbidden)
+            or any(type(mid) is not int or mid<=0 for mid in forbidden)):
+            raise ValueError('a2_independent_identity_precision_invalid')
+    if launch is not None and any(v=='must_link' and pair not in precision for pair,v in expected_pairs.items()):
+        raise ValueError('a2_independent_identity_precision_required')
     if any(v=='cannot_link' for v in expected_pairs.values()) and not independent:
         raise ValueError('a2_independent_separation_controls_required')
     for pair,control in independent.items():
@@ -253,7 +366,11 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             frozen=frozen_identity_recall(pair,decision,baseline,recall_baseline=recall_baseline)
             desired=[want|old for want,old in zip(desired,frozen)]
             passed=all(s['media'] for s in sides) and all(want<=got for want,got in zip(desired,actual))
-            if decision=='must_link':passed=passed and bool(shared)
+            if decision=='must_link':
+                passed=passed and bool(shared)
+                if pair in precision:
+                    forbidden=set(precision[pair]['forbidden_media_ids'])
+                    passed=passed and all(not got&forbidden for got in actual)
             elif decision=='cannot_link':
                 left,right=map(quote,pair)
                 # Distinct identities can co-occur or match old tags. Check the
@@ -326,6 +443,7 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
     if not required<=seen:raise ValueError('a2_quality_case_missing')
     if not set(independent)<=seen:raise ValueError('a2_independent_separation_case_missing')
     return {'case_count':len(results),'failed_cases':sum(not r for r in results),
+            'independent_identity_precision_control_count':len(precision),
             'independent_separation_control_count':len(independent),
             'categories':dict(Counter(c['category'] for c in quality['cases']))}
 

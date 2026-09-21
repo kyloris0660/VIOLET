@@ -182,7 +182,8 @@ def derive_result(private,repo=ROOT):
     require(browser.get('launch_evidence')==manifest['launcher']
         and browser.get('launch_evidence_sha256')==hashlib.sha256(evidence_path(private,manifest['launcher']).read_bytes()).hexdigest(),
         'browser_launch_evidence')
-    browser_actions=verify_browser_actions(browser,launch=launch)
+    browser_actions=verify_browser_actions(browser,launch=launch,
+        suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'))
     verify_launcher_action(launch,repo,head)
     require(browser['candidate_head']==launch['candidate_head']==head and browser['api_result_sets_verified'],'fresh_browser_candidate')
     require(launch['before_pid']!=launch['after_pid'] and launch['after_pid']>0

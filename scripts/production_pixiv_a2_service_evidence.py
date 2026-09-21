@@ -66,9 +66,13 @@ def verify_browser_service(browser,launch):
     chip=browser['source_chip']
     url(chip['href']);url(chip['navigated_url']);url(chip['search']['request_url'])
     search=browser['search'];old=browser['old_tag']
-    for row,query in ((search,parse_qs(url(search.get('url','')).query).get('q')),(old,[old.get('query')])):
+    for row in (search,old):
+        page=url(row.get('url',''))
+        query=parse_qs(page.query).get('q')
         request=url(row.get('request_url',''))
-        if request.path!='/api/search' or not query or parse_qs(request.query).get('q')!=query:
+        if (page.path!='/' or request.path!='/api/search' or not query
+            or parse_qs(request.query).get('q')!=query
+            or row is old and (query!=[old.get('query')] or old.get('attempt_id')!=browser.get('attempt_id'))):
             raise ValueError('a2_browser_search_service_query')
     for name in ('suggestion_display','recovery_page'):
         row=browser[name];url(row.get('url',''),fragment=True);url(row.get('request_url',''))

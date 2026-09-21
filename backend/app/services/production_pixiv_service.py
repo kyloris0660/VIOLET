@@ -23,7 +23,8 @@ from .pixiv_metadata_projection_service import (
 )
 from .source_concept_resolver_service import LLMAdjudicationConfig, resolve_source_concepts
 
-PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v7'
+PRODUCTION_POLICY = 'production_pixiv_fixed_scope_adjudication_v8'
+HISTORICAL_AMBIGUITY_POLICY = 'production_pixiv_fixed_scope_adjudication_v7'
 SUPPORT_NAMESPACE = 'production_pixiv'
 SCOPE_SCHEMA = 'violet.production-pixiv-fixed-scope.v1'
 SELECTION_SCHEMA = 'violet.production-pixiv-fixed-scope-selection.v1'
@@ -136,8 +137,11 @@ def build_production_inputs(session, scope, *, work_ids=None):
     return aggregates,coverage
 
 
-def production_consumer(aggregates):
+def production_consumer(aggregates, *, _historical_policy=None):
     """Adapt artist context while preserving raw facts and all strict PX guards."""
+    if _historical_policy not in (None,HISTORICAL_AMBIGUITY_POLICY):
+        raise ValueError('unsupported_historical_production_policy')
+    policy=_historical_policy or PRODUCTION_POLICY
     aggregates = sorted(aggregates, key=lambda row: row['stable_work_page_key'])
     bundles = []
     for aggregate in aggregates:
@@ -145,7 +149,7 @@ def production_consumer(aggregates):
         for signal in bundle['signals']:
             if signal['role_hint'] == 'artist' and signal['work_context_key'] is not None:
                 signal['evidence'] = {**signal['evidence'],
-                    'production_adapter_version':PRODUCTION_POLICY,
+                    'production_adapter_version':policy,
                     'original_work_context_key':signal['work_context_key']}
                 signal['work_context_key'] = None
         bundle['canonical_fingerprint'] = canonical_fingerprint({key:value for key,value in bundle.items() if key != 'canonical_fingerprint'})
@@ -161,7 +165,7 @@ def production_consumer(aggregates):
     return validate_px1_consumer_artifacts(aggregates=aggregates, signal_bundles=bundles, consumer_contract=contract)
 
 
-def _with_adjudicated_work_context(signals,judgments,run_id):
+def _with_adjudicated_work_context(signals,judgments,run_id,*,_historical_policy=None):
     """Reuse guarded work components as context, without assigning characters.
 
     This first pass uses the same resolver and accepted work judgments. It
@@ -174,7 +178,8 @@ def _with_adjudicated_work_context(signals,judgments,run_id):
     accepted=[row for row in judgments if row['left_signal_key'] in work_keys and row['right_signal_key'] in work_keys]
     if not accepted:return signals
     resolved=resolve_source_concepts(works,run_id=run_id+':work-context',llm_judgments=accepted,
-        llm_config=LLMAdjudicationConfig(enabled=False,max_calls=0),concept_namespace=SUPPORT_NAMESPACE)
+        llm_config=LLMAdjudicationConfig(enabled=False,max_calls=0),concept_namespace=SUPPORT_NAMESPACE,
+        _legacy_database_ambiguity=_historical_policy==HISTORICAL_AMBIGUITY_POLICY)
     aliases={};groups=[];owners=defaultdict(set)
     for concept in resolved.concepts:
         names={signal.canonical_key for signal in concept.signals if signal.canonical_key}
@@ -202,7 +207,10 @@ def _with_adjudicated_work_context(signals,judgments,run_id):
     return tuple(adapted)
 
 
-def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role_facts=None):
+def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role_facts=None, _historical_policy=None):
+    if _historical_policy not in (None,HISTORICAL_AMBIGUITY_POLICY):
+        raise ValueError('unsupported_historical_production_policy')
+    policy=_historical_policy or PRODUCTION_POLICY
     from .production_pixiv_semantics import adapt_production_semantics
     consumer = adapt_production_semantics(consumer,vocabulary,role_facts)
     # Never upsert another consumer's globally keyed support. These keys are
@@ -224,7 +232,7 @@ def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role
                         'decision':j.get('decision'),'confidence':j.get('confidence'),
                         'cache_key':j.get('cache_key'),'error_state':j.get('error_state')}
                        for j in judgments], key=lambda item:(item['left'],item['right']))
-    identity = canonical_fingerprint({'input':consumer.input_fingerprint,'policy':PRODUCTION_POLICY,'judgments':semantic})
+    identity = canonical_fingerprint({'input':consumer.input_fingerprint,'policy':policy,'judgments':semantic})
     run_id = 'production-pixiv:' + identity[:32]
     signals = tuple(replace(signal, signal_key=signal_keys[signal.signal_key],
         created_by_run_id=run_id, source_run_id=run_id,
@@ -234,19 +242,19 @@ def build_production_clustering(consumer, *, judgments=(), vocabulary=None, role
             'original_signal_key': signal.signal_key,
             'production_candidate_scope': 'pixiv:work:' + signal.evidence_payload['work_id']})
         for signal in consumer.signals)
-    signals=_with_adjudicated_work_context(signals,judgments,run_id)
+    signals=_with_adjudicated_work_context(signals,judgments,run_id,_historical_policy=_historical_policy)
     consumer = replace(consumer, signals=signals, bundle_signal_keys={
         key: tuple(signal_keys[value] for value in values)
         for key, values in consumer.bundle_signal_keys.items()})
     result = resolve_source_concepts(signals, run_id=run_id,
                 llm_config=LLMAdjudicationConfig(enabled=False, max_calls=0), llm_judgments=judgments,
-                concept_namespace=SUPPORT_NAMESPACE)
+                concept_namespace=SUPPORT_NAMESPACE,_legacy_database_ambiguity=_historical_policy==HISTORICAL_AMBIGUITY_POLICY)
     run = finish_pixiv_clustering(consumer, result)
     return replace(run, diagnostics={**run.diagnostics,'production_llm_inheritance':{
         'current_clustering_provider_calls':0,'upstream_judgment_count':len(judgments),
         'upstream_valid_judgment_count':sum(not row.get('error_state') for row in judgments),
         'upstream_cost_is_accounted_in_shared_task_ledger':True}}, business_projection_fingerprint=canonical_fingerprint({
-        'resolved_business':run.business_projection_fingerprint,'production_policy':PRODUCTION_POLICY,
+        'resolved_business':run.business_projection_fingerprint,'production_policy':policy,
         'judgments_fingerprint':canonical_fingerprint(semantic)}))
 
 

@@ -47,6 +47,7 @@ def main():
     parser.add_argument('--vocabulary',required=True,type=Path)
     parser.add_argument('--role-facts',type=Path)
     parser.add_argument('--prior-judgments',type=Path,help='retained answers for evidenced semantic correction lineage')
+    parser.add_argument('--cache-only',action='store_true',help='stop at a saved missing-input plan before any provider dispatch')
     parser.add_argument('--diagnostic-names',type=Path,help='private names to trace after graph construction; never model input')
     parser.add_argument('--label',required=True)
     parser.add_argument('--expected-python',required=True)
@@ -58,6 +59,8 @@ def main():
     args=parser.parse_args()
     if args.limit < 0:
         parser.error('--limit must be nonnegative')
+    if args.cache_only and (args.action!='adjudicate' or not args.prior_judgments):
+        parser.error('--cache-only requires adjudicate and --prior-judgments')
     sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'backend'))
     from scripts.check_python_env import run_checks
     from scripts.run_production_pixiv_a2_metadata import read,write,exclusive
@@ -71,7 +74,7 @@ def main():
     if llm['model']!='gpt-4.1-mini' or llm['provider']!='openai_compatible' or llm['base_url'].rstrip('/')!='https://api.openai.com/v1':
         raise RuntimeError('approved_model_or_price_identity_changed')
     os.environ.update(VIOLET_SKIP_DOTENV='1',VIOLET_ENV='test',POSTGRES_DB='blombooru_test',VIOLET_STORAGE_ROOT=str(out/'offline-storage'),
-        TAG_TRANSLATION_LLM_ENABLED='true',TAG_TRANSLATION_LLM_PROVIDER=llm['provider'],TAG_TRANSLATION_LLM_MODEL=llm['model'],
+        TAG_TRANSLATION_LLM_ENABLED='false' if args.cache_only else 'true',TAG_TRANSLATION_LLM_PROVIDER=llm['provider'],TAG_TRANSLATION_LLM_MODEL=llm['model'],
         TAG_TRANSLATION_LLM_API_KEY=llm['api_key'],TAG_TRANSLATION_LLM_BASE_URL=llm['base_url'],TAG_TRANSLATION_LLM_FALLBACK_ENABLED='false')
     from app.services.production_pixiv_service import production_consumer,build_production_clustering
     from app.services.production_pixiv_role_extraction import plan_role_extraction,extract_production_roles
@@ -215,6 +218,8 @@ def main():
                 print(json.dumps({'stage':stage+'_correction_admission',**{k:v for k,v in admission.items()
                     if k not in {'changed_previous_inputs','missing','logical_predecessors'}}}),flush=True)
                 if not admission['budget_headroom_sufficient']:raise RuntimeError('correction_plan_exceeds_remaining_budget')
+                if args.cache_only and admission['missing_distinct_inputs']:
+                    raise RuntimeError('cache_only_missing_inputs_plan_saved')
                 return configured
             config=correction_admission('work',work_edges,run.resolution.signals,config)
             write(out/f'{args.label}-work-selected-pairs-private.json',[asdict(edge) for edge in

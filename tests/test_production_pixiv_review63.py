@@ -19,7 +19,6 @@ def browser():
     value['pages']=[{'url':base+'/media/1','images':[{'src':base+'/api/media/1/file'}]}]
     value['search'].update(url=base+'/?q=a',request_url=base+'/api/search?q=a')
     value['old_tag'].update(query='1girl',request_url=base+'/api/search?q=1girl')
-    value['suggestion_display']={'url':base+'/media/20','request_url':base+'/api/media/20'}
     value['recovery_page']['url']=base+'/admin#dynamic-library-sync-section'
     return value
 
@@ -93,7 +92,8 @@ def test_release_entry_helpers_enforce_the_service_binding(kind):
     value=browser() if kind=='browser' else quality()
     def verify():
         if kind=='browser':return verify_browser_actions(value,launch=workload_launch_fixture())
-        return recompute_quality(value,{'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]},launch=workload_launch_fixture())
+        return recompute_quality(value,{'identity_pairs':[{'names':['a','b'],'expected':'must_link'}],
+            'identity_precision_controls':[{'names':['a','b'],'forbidden_media_ids':[999],'source_evidence':'independent unrelated fixture'}]},launch=workload_launch_fixture())
     verify()
     value['server_identity']['pid']=999
     with pytest.raises(ValueError,match='candidate_service_changed'):verify()

@@ -16,7 +16,7 @@ from .pixiv_metadata_projection_service import canonical_fingerprint
 from .source_metadata_registry_service import canonical_source_key
 from .production_pixiv_semantics import adapt_production_semantics
 from .source_concept_budget import AdjudicationBudgetBlocked
-from .source_concept_resolver_service import _atomic_write_json
+from .source_concept_resolver_service import _atomic_write_json, checked_cache_path
 from .source_name_candidate_extraction_service import (
     SourceCandidateInputGroup,build_extraction_units,deterministic_bundle_for_unit,
     SourceExtractionUnit,
@@ -129,7 +129,7 @@ def _production_messages(messages):
 
 
 def _unit_path(cache_dir,unit):
-    return Path(cache_dir)/'units'/f'{canonical_fingerprint(unit.extraction_key)}.json'
+    return checked_cache_path(cache_dir,Path(cache_dir)/'units'/f'{canonical_fingerprint(unit.extraction_key)}.json')
 
 
 def _adapt_response_record(row,unit):
@@ -423,6 +423,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         paths=[*(self.cache_dir/'raw').glob('*.json'),*(self.cache_dir/'raw'/'attempts').glob('*.json'),
                *(self.cache_dir/'response-recovery').glob('*.json')]
         for path in sorted(paths):
+            path=checked_cache_path(self.cache_dir,path)
             saved=json.loads(path.read_text(encoding='utf-8'))
             if saved.get('model')!=self.model:continue
             if saved.get('request_messages') is not None:
@@ -469,8 +470,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             self.raw_cache_hits+=len(requested)-len(missing)
             return json.dumps({'records':[known.get(row['group_key'],{'group_key':row['group_key'],'verdict':'extraction_error'}) for row in requested]},ensure_ascii=False)
         signature=canonical_fingerprint({'model':self.model,'messages':messages,'temperature':temperature,'max_tokens':max_tokens})
-        path=self.cache_dir/'raw'/f'{signature}.json'
-        previous=[json.loads(p.read_text(encoding='utf-8')) for p in
+        path=checked_cache_path(self.cache_dir,self.cache_dir/'raw'/f'{signature}.json')
+        previous=[json.loads(checked_cache_path(self.cache_dir,p).read_text(encoding='utf-8')) for p in
             ([path] if path.exists() else [])+list((self.cache_dir/'raw'/'attempts').glob(signature+'.*.json'))
             +list((self.cache_dir/'response-recovery').glob(signature+'.*.json'))]
         feedback=None
@@ -488,6 +489,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 return await self.complete_chat(messages,temperature=temperature,max_tokens=max_tokens)
         self.gate.check()
         groups=[self.units[row['group_key']].unit_group for row in requested]
+        checked_cache_path(self.cache_dir,self.cache_dir/'raw'/'attempts')
+        checked_cache_path(self.cache_dir,self.cache_dir/'response-recovery')
         wire=messages if feedback is None else [*messages,{'role':'user','content':
             'The previous response failed schema validation: '+feedback[:500]+'. Return the requested records using the allowed roles, source fields and exact supported raw names. Preserve uncertainty; do not invent identity.'}]
         reservation=self.budget.reserve('role-extraction:'+signature,wire,max_output_tokens=max_tokens,
@@ -506,7 +509,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 'temperature':temperature,'max_tokens':max_tokens,'wire_messages':wire,
                 'wire_fingerprint':canonical_fingerprint(wire),'budget_response':response_identity}
             destination=path if not path.exists() else self.cache_dir/'raw'/'attempts'/f'{signature}.{reservation}.json'
-            _atomic_write_json(destination,saved)
+            _atomic_write_json(checked_cache_path(self.cache_dir,destination),saved)
             self.save_units(content)
             _,validation_error=self.validate_saved(saved)
             self.budget.settle(reservation,self.last_usage,success=validation_error is None)
@@ -518,8 +521,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 # Keep the original reservation even if both locations fail.
                 if saved is not None:
                     try:
-                        _atomic_write_json(self.cache_dir/'response-recovery'/f'{signature}.{reservation}.json',saved)
-                    except OSError:
+                        _atomic_write_json(checked_cache_path(self.cache_dir,self.cache_dir/'response-recovery'/f'{signature}.{reservation}.json'),saved)
+                    except (OSError,ValueError):
                         pass
                 self.gate.reason='role_response_persistence_recovery_required'
                 raise

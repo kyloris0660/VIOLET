@@ -9,6 +9,7 @@ from dataclasses import asdict
 
 from .pixiv_metadata_projection_service import canonical_fingerprint
 from . import source_concept_resolver_service as resolver
+from .production_pixiv_role_extraction import checked_cache_path
 
 
 def replay_role_request_messages(groups):
@@ -39,7 +40,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         SourceCandidateInputGroup,group_prompt_payload,extraction_messages,validate_extraction_record,
         deterministic_bundle_for_unit,SourceNameCandidateExtractionError,build_extraction_units)
     from .source_metadata_registry_service import canonical_source_key
-    cache_dir=Path(cache_dir);calls={r['id']:r for r in ledger['calls']}
+    cache_dir=Path(cache_dir).resolve();calls={r['id']:r for r in ledger['calls']}
     calls_by_key=defaultdict(list)
     for call in calls.values():calls_by_key[call['key']].append(call)
     required_questions={r.get('input_fingerprint') for kind in
@@ -76,7 +77,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             data_origin='production_metadata_contextual_supplement',source_work_id_present=True)
         by_group[group.group_key]=group
     source_by_question=defaultdict(list);source_count=0
-    paths=sorted([*(cache_dir/'raw').glob('*.json'),*(cache_dir/'raw'/'attempts').glob('*.json'),
+    paths=sorted(checked_cache_path(cache_dir,p) for p in [*(cache_dir/'raw').glob('*.json'),*(cache_dir/'raw'/'attempts').glob('*.json'),
                   *(cache_dir/'response-recovery').glob('*.json')])
     # Later attempts retain full request envelopes. They can reconstruct an
     # earlier partial batch's identical group, including answered siblings
@@ -97,9 +98,9 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
     for path in paths:
         saved=json.loads(path.read_text(encoding='utf-8'))
         if saved.get('model')!='gpt-4.1-mini':continue
+        reconstruction=checked_cache_path(cache_dir,cache_dir/'question-reconstruction'/f"{saved.get('input_fingerprint','')}.json")
         try:
             rows=json.loads(saved['content'])['records']
-            reconstruction=cache_dir/'question-reconstruction'/f"{saved['input_fingerprint']}.json"
             if saved.get('request_groups'):
                 groups=[SourceCandidateInputGroup(**g) for g in saved['request_groups']]
             elif reconstruction.is_file():
@@ -310,7 +311,7 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
         if key not in records:
             found=[]
             for root in roots:
-                path=root/'records'/f'{key}.json'
+                path=checked_cache_path(root,root/'records'/f'{key}.json')
                 if path.is_file():found.append(json.loads(path.read_text(encoding='utf-8')))
             if not found:raise ValueError('semantic_judgment_source_cache_missing')
             # Volatile copies may differ in provenance, never in answer/input.
@@ -372,7 +373,7 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
     return {'selected_pair_count':len(selected),'judgment_count':len(judgments),'sources':evidence,'new_provider_calls':0}
 
 
-def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,private_root,*,semantic_cache_dirs=(),history=None):
+def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,private_root,*,semantic_cache_dirs=(),history=None,historical_predecessor=False):
     from .production_pixiv_service import production_consumer,build_production_clustering
     from .source_concept_budget import AdjudicationBudget
     private_root=Path(private_root).resolve(strict=True)
@@ -383,12 +384,17 @@ def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,priv
         return json.loads(path.read_text(encoding='utf-8'))
     receipt=read(manifest['adjudication_receipt'])
     ledger=read('llm-budget-private.json');AdjudicationBudget._charged(ledger)
-    consumer=production_consumer(aggregates)
+    from .production_pixiv_service import PRODUCTION_POLICY,HISTORICAL_AMBIGUITY_POLICY
+    recorded_policy=manifest['input_identity']['versions']['production_policy']
+    historical_policy=(HISTORICAL_AMBIGUITY_POLICY if historical_predecessor and recorded_policy==HISTORICAL_AMBIGUITY_POLICY else None)
+    if recorded_policy!=(historical_policy or PRODUCTION_POLICY):
+        raise ValueError('semantic_production_policy_replay_mismatch')
+    consumer=production_consumer(aggregates,_historical_policy=historical_policy)
     roles=verify_role_response_sources(consumer,vocabulary,facts,private_root/'role-cache',ledger)
     config=resolver.LLMAdjudicationConfig(enabled=True,max_calls=1000000,max_budget_usd=30,
         model_label='gpt-4.1-mini',selection_policy='all_eligible',prompt_version=resolver.PRODUCTION_PAIR_PROMPT_VERSION,
         durable_cache_dir=str(private_root/'llm-cache'),semantic_cache_dirs=tuple(semantic_cache_dirs),semantic_cache_reuse=True)
-    initial=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts)
+    initial=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,_historical_policy=historical_policy)
     by_key={s.signal_key:s for s in initial.resolution.signals}
     def work_pair(edge):return by_key[edge.left_signal_key].role_hint==by_key[edge.right_signal_key].role_hint=='work'
     work_keys={s.signal_key for s in initial.resolution.signals if s.role_hint=='work'}
@@ -401,7 +407,7 @@ def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,priv
     if history:corrections.append(verify_correction_admission('work',work_edges,initial.resolution.signals,
         config,ledger,history,private_root))
     del initial
-    contextual=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=work_judgments)
+    contextual=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=work_judgments,_historical_policy=historical_policy)
     others=resolver.select_llm_adjudication_edges([e for e in contextual.resolution.edge_candidates if not work_pair(e)],
         signals=contextual.resolution.signals,config=config)
     remaining=verify_selected_judgment_sources(others,contextual.resolution.signals,other_judgments,config,ledger)
