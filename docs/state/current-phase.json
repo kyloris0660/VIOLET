@@ -58,7 +58,7 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
-    "20260921适配与五项准入代码集中修复：完整100285信号profile与v7历史等价11949名称核验；实际guard对照保留76条负边，完整四组图仍在收尾。集中定向回归339通过/1跳过，尚非最终候选API或生产验收。18组独立额外命中负对照冻结；新策略v8、旧v7仅精确历史重放，缓存模式先保存缺项计划。新增provider调用和生产写入均为0。 / 20260921正式任务与复审已读；远端79e2b63/main2b742ca、68线程、项目venv与文档预检通过。账本18427/USD13.582644及SHA保持。重新验证784/5147工程解释，旧77/80仅为历史结果；当前四组对照及五项修复尚未完成，新版未发布。",
+    "20260921四组完整图对照完成：两项同时修复使784/5147接入相关别名组件，单项均不足；3915/5256与BlueArchive的5651控制保持。尚非物化/API质量达标。bfedbc7候选PG 89通过；集中回归捕获Windows并发解析扩展前缀误拒绝，按本轮唯一失败补修，仅统一解析后驱动器/UNC路径写法。补修定向341通过/1跳过、双线程重复20通过；真实目录联接越界拒绝。旧候选未完成选对已停并保留，账本SHA与开场完全一致，零新增provider/生产写入。18组独立精度负对照及两库普通标签快照已核实。原生产应用仍未启动，稳定44入口保留；本次收口与不超过100000000字节单ZIP尚待完成。",
     "本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。",
     "a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。",
     "a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。",
@@ -374,7 +374,7 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-09-21T14:29:59.703247+00:00",
+  "updated_at": "2026-09-21T14:59:58.256867+00:00",
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "correction17_progress": {
     "current_execution": {
@@ -684,11 +684,11 @@
     "merge": false
   },
   "correction21_execution": {
-    "stage": "implementation_ready_for_candidate_validation",
+    "stage": "bounded_windows_path_repair_validated",
     "focused_tests": {
-      "passed": 339,
+      "passed": 341,
       "skipped": 1,
-      "artifact": "correction21-freeze-focused-v2.xml"
+      "artifact": "correction21-bounded-repair-focused.xml"
     },
     "profile_signal_count": 100285,
     "profile_name_count": 11949,
@@ -696,6 +696,13 @@
     "production_writes": 0,
     "production_runtime_last_observed": "stopped; original configured stable44 runtime retained; PostgreSQL identity verified read-only",
     "production_current_quality": "not revalidated this invocation",
-    "review_zip_max_bytes": 100000000
+    "review_zip_max_bytes": 100000000,
+    "windows_concurrency_repetitions": {
+      "passed": 20,
+      "artifact": "correction21-path-diagnostic-repaired.log"
+    },
+    "superseded_candidate": "bfedbc725325c40156f1d01e42517e215f7ae6b4",
+    "superseded_reason": "Windows extended path false rejection reproduced with actual exception locals",
+    "four_full_graph_ablation_complete": true
   }
 }

@@ -2973,7 +2973,18 @@ def checked_cache_path(cache_dir, path):
     """Confine cache operations to the explicitly configured root."""
     root = Path(cache_dir).resolve()
     resolved = Path(path).resolve()
-    if not resolved.is_relative_to(root):
+    def comparable(value):
+        # During concurrent file creation Windows resolve() can retain its
+        # extended-length spelling for only one of these two paths. Resolve
+        # junctions first, then compare equivalent drive/UNC spellings.
+        text = str(value)
+        if os.name == 'nt':
+            if text.startswith('\\\\?\\UNC\\'):
+                text = '\\\\' + text[8:]
+            elif text.startswith('\\\\?\\') and re.match(r'^[A-Za-z]:\\', text[4:]):
+                text = text[4:]
+        return Path(text)
+    if not comparable(resolved).is_relative_to(comparable(root)):
         raise ValueError('production_cache_path_outside_root')
     return resolved
 

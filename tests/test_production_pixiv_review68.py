@@ -36,6 +36,20 @@ def test_explicit_legacy_cache_root_remains_supported(tmp_path):
     (legacy/'key.json').write_text(json.dumps(record))
     assert resolver._legacy_cache_record(legacy_dirs=[legacy],legacy_fingerprint='key')==record
 
+@pytest.mark.skipif(sys.platform!='win32',reason='Windows extended path spelling')
+@pytest.mark.parametrize('outside',[False,True])
+def test_cache_boundary_normalizes_extended_windows_spelling_after_resolution(tmp_path,monkeypatch,outside):
+    from app.services.source_concept_resolver_service import checked_cache_path
+    cache=tmp_path/'cache';cache.mkdir()
+    target=cache/'units'/'new.json'
+    actual=(tmp_path/'outside'/'new.json') if outside else target
+    extended=Path('\\\\?\\'+str(actual))
+    original=Path.resolve
+    monkeypatch.setattr(Path,'resolve',lambda path,*a,**kw:extended if path==target else original(path,*a,**kw))
+    if outside:
+        with pytest.raises(ValueError,match='outside_root'):checked_cache_path(cache,target)
+    else:assert checked_cache_path(cache,target)==extended
+
 def test_must_link_shared_wrong_extra_is_rejected():
     value=quality_fixture()[0]
     for row in value['queries'].values():row['ids'].append(999)
