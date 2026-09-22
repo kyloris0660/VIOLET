@@ -1145,6 +1145,19 @@ def build_pixiv_clustering(
         or resolution.summary.get("llm_usage", {}).get("judgment_count") != 0
     ):
         raise PixivMetadataClusteringError("px2_llm_activity_detected")
+    return finish_pixiv_clustering(consumer, resolution)
+
+
+def finish_pixiv_clustering(
+    consumer: ValidatedPixivConsumer,
+    resolution: SourceConceptResolutionResult,
+) -> PixivClusteringRun:
+    """Account for an existing resolution without making provider calls.
+
+    PX2 supplies only its deterministic result. The separately versioned
+    production orchestrator can supply an adjudicated result from this same
+    resolver; the source, identity, and candidate invariants remain enforced.
+    """
     manifest = build_complete_candidate_pair_manifest(resolution.edge_candidates)
     pair_rows, candidate_records, accounting = _candidate_dispositions(
         resolution,

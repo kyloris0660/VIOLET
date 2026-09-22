@@ -68,6 +68,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--list-contracts", action="store_true", help="List registered contracts as JSON and exit.")
     parser.add_argument('--a1-evidence', help='本次 A1 本机操作证据目录。')
+    parser.add_argument('--a2-evidence', help='本次 A2 本机执行与全量结果证据目录。')
     parser.add_argument('--import-recovery-evidence', help='本次生产导入恢复私有证据目录。')
     parser.add_argument("--explain", action="store_true", help="Include contract metadata in output.")
     return parser
@@ -145,6 +146,7 @@ def main(argv: list[str] | None = None) -> int:
         or args.px2_evidence
         or args.px3_evidence
         or args.a1_evidence
+        or args.a2_evidence
         or args.import_recovery_evidence
     ):
         if not args.repo_root:
@@ -220,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
             scv2_px2_evidence=scv2_px2_evidence,
             scv2_px3_evidence=scv2_px3_evidence,
             production_pixiv_a1_evidence=Path(args.a1_evidence) if args.a1_evidence else None,
+            production_pixiv_a2_evidence=Path(args.a2_evidence) if args.a2_evidence else None,
             production_import_recovery_evidence=Path(args.import_recovery_evidence) if args.import_recovery_evidence else None,
         )
 

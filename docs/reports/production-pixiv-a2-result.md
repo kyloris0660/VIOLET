@@ -1,0 +1,109 @@
+# VIOLET A2 本轮纠偏：精度未达标，已恢复此前A2生产基线
+
+<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A2 -->
+
+本轮工程目标未达成。两项适配修复让既定80例通过，但额外命中追溯发现一个原有限精度集未覆盖的真实身份误合并；因此没有宣告工程完成。当前已用新鲜plan/实际apply恢复原A2 `44db0da` 的派生投影和正常EXE入口，未恢复覆盖数据库备份，也未退回A1。`target_met=false`、`safe_to_merge=false`、`route_approved=false`。
+
+同一 [PR #153](https://github.com/kyloris0660/VIOLET/pull/153)、分支 `codex/production-pixiv-a2`；业务候选 `84f999274e0acd04b34ccd1afa1d476a54dc7fce`，当前原生产候选 `44db0da0c1df2fe38434cacc57308f2c0e33ec0f`。报告生成 `2026-09-22T16:55:11.007383+00:00`。最终文档HEAD与这些实际执行身份分开记录。Lead复审及Owner使用验收仍待定。
+
+## 两项适配的实际收益
+
+稳定provider/work来源没有进入数据库无关信号的独立计数、评分使用原始作品上下文而聚类使用已接受作品组件，这两个缺口均成立且共同影响784/5147。四组固定全输入对照分别得到17538、17493、17525、17496个概念，均为100285信号/626779边。单独改一项不足；共同修复让既有日中正向判断通过原短名guard，784/5147各通过三步实际路径进入中文组件。
+
+判断 `75904f904e1441179b43d5ab78a35cc07639c8ccc9d5d54f` 两端作品context均为空、置信度.9；原条件 `ambiguous_short_without_work_context` 拒绝，共同修复后实际union。784描述标签仍是work/needs_review并进入作品候选，5147仍无作品context，未补造所属。完整profile贡献、四组对照、guard值、硬约束及union森林均在包内。
+
+实际旧副本到当前副本，仅“纳西妲”“草神”各127→129，增加784、5147；3915原本已有中文API支持，5256保持，5651为BlueArchive控制。66394条支持总数保持，0新增/0移除，1277条保留支持投影变化，其中16条还改变状态；65117条不变。旧原生产到当前固定输入是66572→66394，316移除、138新增、21836条保留投影变化，分母不同，不归因于本轮两图修复。
+
+## 新发现的实际精度失败
+
+当前组件258条信号中含纳西妲名称，也含57条雷電将軍、10条雷电将军及其他Raiden名称。两条 `魔神(原神)` 来自不同真实作品101686613/128709025，带括号作品上下文；三条旧must_link回答分别把该泛称当成草神/Nahida/Raiden的同一角色名称。同名锚点再连接两条泛称，造成跨角色传递合并。
+
+其中一份原回答明确称魔神是Archons的general term，却仍返回同一角色；另两份也以类别/成员关系支持identity。没有直接Nahida↔Raiden的合并边；包内原/共同修复图各10步实际union路径给出完整桥接，而非仅展示相关标签。四份原pair缓存字节、原问题/回答、置信度、输入、reuse链与哈希已内嵌。
+
+Media 1737 的原来源标题为雷電将軍、当前绑定也是该名称，却因上述组件在“ナヒーダ”查询中新增命中。旧原生产44的该查询67条且不含1737；43号副本已经128条并含1737；当前副本和短暂发布的当前原生产均129条且含1737。故问题在本轮两项适配前的副本已存在，不能归咎于新增784/5147，也不能把所有额外命中都称为合法同名/共现。这里证明的是当前identity桥接依据不足及其实际检索后果，不作全库视觉真值宣称。
+
+当前原生产相对旧原生产有15个冻结身份查询变化、210个唯一变化Media，完整分页与来源已留存，支持revision不匹配为0。历史收据没有顶层total，已如实保存null并另列实际留存ID数；没有补造历史计数。汇总曾因此出现KeyError，原失败日志保留，随后仅兼容证据格式，从该步骤续跑。
+
+## 已通过的检查与未通过的整体结论
+
+| 项目 | 实际结果 |
+|---|---|
+| focused | 341 passed、1权限skip、0 failed |
+| 实际PostgreSQL/API | 89 passed |
+| 原历史失败节点精确复验 | 88 passed；集合重叠，不相加 |
+| Windows补修 | 双线程20轮通过，真实junction越界仍拒绝 |
+| 固定副本 | 六次plan/apply入口、replay、rollback/重复rollback、reapply、逆序分批、source更新/删除恢复、17表保护通过 |
+| 质量 | 副本和短暂发布原生产各80/80、各3/3保留样本；18个原有限独立精度控制无禁止命中，但未覆盖本次真实失败 |
+| 原生产运行 | 5个非唯一索引迁移及幂等保护；新plan4284.891秒、apply4379.203秒；66394支持/8623 Media/1 active/0重复 |
+| 真实界面 | 当前候选普通无参数EXE真实点击、完整来源链，Edge详情/大图/返回、来源chip、旧标签URL、可见suggestion与API、只读恢复页通过，0页面错误 |
+| 性能 | 来源层p95 547.011 ms、最大1449.535 ms，低于750/3000门槛；HTTP p95 2119.121 ms、最大4015.258 ms另列 |
+| 阶段契约 | 注册契约在有限既定条件上返回true；发现真实精度失败后，停止尚在运行的完整17项复算，没有最终17项全通过文件，整体target仍false |
+
+历史一次full non-E2E保持4541 passed、89 failed、15 skipped；88节点当前精确复验，唯一历史AI原证据缺口保留既有裁决。没有再跑全套或为缺历史证据付费。Python身份预检通过，实际解释器 `C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe`。精确命令如下，对应.log/.xml在包内：
+
+```text
+C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_production_pixiv_correction_gates.py tests/test_production_pixiv_review68.py tests/test_production_pixiv_ambiguity_adapter.py tests/test_production_pixiv_a2_evidence.py tests/test_production_pixiv_review63.py tests/test_production_pixiv_release_inputs.py tests/test_production_pixiv_role_extraction.py tests/test_phase45_scv2_r2_constraint_aware_graph_remediation.py -q --junitxml=production-pixiv-a2（本轮工作树）\.local_manifests\pixiv-a2\correction21-84f9992-focused.xml
+```
+```text
+C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_production_pixiv_a2.py tests/test_production_pixiv_a2_api.py tests/test_production_pixiv_a1.py -q --junitxml=production-pixiv-a2（本轮工作树）\.local_manifests\pixiv-a2\correction21-84f9992-real-pg-v2.xml
+```
+```text
+C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tests/test_admin_dynamic_sync_ui.py::test_dynamic_sync_ui_has_persistent_progress_and_confirmation_actions tests/test_current_handoff_freshness.py::test_active_markers_and_contract_commands_are_consistent tests/test_current_handoff_freshness.py::test_conflicting_current_marker_fails_closed tests/test_current_handoff_freshness.py::test_documentation_checker_returns_current_phase_result tests/test_current_handoff_freshness.py::test_handoff_is_exact_generated_projection tests/test_current_handoff_freshness.py::test_live_git_binds_pr148_merge_and_px3_implementation_evidence tests/test_pd1a_mainline_governance.py::test_current_mainline_roadmap_persists_px3_boundary_and_fixed_route tests/test_pd1a_mainline_governance.py::test_handoff_points_to_current_mainline_roadmap tests/test_phase45_doc1_documentation_state.py::test_a1_authority_cannot_expand[llm] tests/test_phase45_doc1_documentation_state.py::test_a1_authority_cannot_expand[provider_network] tests/test_phase45_doc1_documentation_state.py::test_a1_authority_cannot_expand[truth_mutation] tests/test_phase45_doc1_documentation_state.py::test_a2_state_and_active_docs_validate tests/test_phase45_doc1_documentation_state.py::test_current_handoff_is_exact_a2_projection tests/test_phase45_scv2_a1_post_expansion_audit_route_decision.py::test_handoff_roadmap_and_test_workflow_updates_are_factual tests/test_phase45_scv2_ml1_multilingual_alias_source_metadata_closure.py::test_durable_documents_encode_corrected_search_semantics tests/test_phase45_scv2_r1_post_px1_source_concept_triage.py::test_handoff_and_roadmap_follow_current_phase_state_not_r1_history tests/test_pr152_bounded_fix.py::test_bad_subdirectory_preserves_healthy_execution_and_unknown_continuation tests/test_pr152_bounded_fix.py::test_import_exception_reason_once_and_healthy_continues[copy-read_error] tests/test_pr152_bounded_fix.py::test_import_exception_reason_once_and_healthy_continues[decode-import_failed] tests/test_pr152_bounded_fix.py::test_import_exception_reason_once_and_healthy_continues[http-import_failed] tests/test_pr152_bounded_fix.py::test_import_exception_reason_once_and_healthy_continues[process-import_failed] tests/test_pr152_bounded_fix.py::test_import_exception_reason_once_and_healthy_continues[timeout-read_timeout] tests/test_pr152_bounded_fix.py::test_readdir_order_changes_between_public_private_and_execute tests/test_pr152_bounded_fix.py::test_stored_hash_requires_current_bound_version[False-False] tests/test_pr152_bounded_fix.py::test_stored_hash_requires_current_bound_version[True-False] tests/test_pr152_bounded_fix.py::test_stored_hash_requires_current_bound_version[True-True] tests/test_pr152_recovery_state_io.py::test_api_without_attempt_reads_current_metadata_not_stale_columns tests/test_pr152_recovery_state_io.py::test_app_media_followup_does_not_resolve_unneeded_source tests/test_pr152_recovery_state_io.py::test_completed_app_copy_failure_retains_downstream_and_retry tests/test_pr152_recovery_state_io.py::test_completed_media_survives_missing_observation_and_changed_source_reenters tests/test_pr152_recovery_state_io.py::test_defer_after_newer_observation_does_not_bind_old_attempt tests/test_pr152_recovery_state_io.py::test_existing_followup_without_source_hash_executes_only_missing_stage tests/test_pr152_recovery_state_io.py::test_existing_media_copy_precommit_interrupt_recovers_in_new_session[direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_copy_precommit_interrupt_recovers_in_new_session[update] tests/test_pr152_recovery_state_io.py::test_existing_media_downstream_survives_post_hash_failure[copy-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_downstream_survives_post_hash_failure[copy-update] tests/test_pr152_recovery_state_io.py::test_existing_media_downstream_survives_post_hash_failure[decode-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_downstream_survives_post_hash_failure[decode-update] tests/test_pr152_recovery_state_io.py::test_existing_media_downstream_survives_post_hash_failure[http-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_downstream_survives_post_hash_failure[http-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[existing_complete-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[existing_complete-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[existing_gap-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[existing_gap-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[existing_localization_gap-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[existing_localization_gap-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[http409_complete-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[http409_complete-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[http409_gap-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[http409_gap-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[http409_localization_gap-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[http409_localization_gap-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[new-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[new-update] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[post_commit-direct_legacy] tests/test_pr152_recovery_state_io.py::test_existing_media_switch_or_deduplicate_completes_target[post_commit-update] tests/test_pr152_recovery_state_io.py::test_first_import_failure_has_no_completed_media[copy] tests/test_pr152_recovery_state_io.py::test_first_import_failure_has_no_completed_media[http] tests/test_pr152_recovery_state_io.py::test_hash_real_consumers_persist_string_and_diagnostics_and_continue tests/test_pr152_recovery_state_io.py::test_legacy_media_changed_version_reenters_without_update tests/test_pr152_recovery_state_io.py::test_priority_resolve_worker_reaped_identity_retained_and_healthy_executes[failed] tests/test_pr152_recovery_state_io.py::test_priority_resolve_worker_reaped_identity_retained_and_healthy_executes[skipped_duplicate] tests/test_pr152_recovery_state_io.py::test_priority_resolve_worker_reaped_identity_retained_and_healthy_executes[skipped_existing_media] tests/test_pr152_recovery_state_io.py::test_priority_resolve_worker_reaped_identity_retained_and_healthy_executes[unchanged] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[current-defer] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[current-ignore] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[current-terminal] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[null-defer] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[null-ignore] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[null-terminal] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[stale-defer] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[stale-ignore] tests/test_pr152_recovery_state_io.py::test_recovery_api_update_plan_new_session_and_proven_change[stale-terminal] tests/test_pr152_recovery_state_io.py::test_unknown_version_defer_first_fill_then_real_change tests/test_production_import_recovery.py::test_enqueue_then_crash_preserves_every_unattempted_identity tests/test_production_import_recovery.py::test_history_failure_count_is_reconstructed_from_versioned_outcomes tests/test_production_import_recovery.py::test_independent_failures_never_truncate_healthy_candidates[positions0] tests/test_production_import_recovery.py::test_independent_failures_never_truncate_healthy_candidates[positions1] tests/test_production_import_recovery.py::test_independent_failures_never_truncate_healthy_candidates[positions2] tests/test_production_import_recovery.py::test_missing_unlinked_noop_is_observed_and_reenters_when_source_returns tests/test_production_import_recovery.py::test_private_recovery_bounds_large_discovery_and_keeps_missing_link_identity tests/test_production_import_recovery.py::test_private_recovery_endpoint_and_owner_reentry tests/test_production_import_recovery.py::test_production_missing_models_preserves_import_and_pending_downstream tests/test_production_import_recovery.py::test_proven_worker_start_failure_preserves_remaining_work tests/test_production_import_recovery.py::test_real_cap_one_runs_reach_old_retry_tail tests/test_production_import_recovery.py::test_stat_failure_records_exact_listed_identity tests/test_scv2_fl1_i2_validation_receipt.py::test_head_or_tree_drift_never_issues_positive_receipt tests/test_scv2_fl1_i2_validation_receipt.py::test_same_head_receipt_binds_all_evidence -v --tb=short --junitxml=production-pixiv-a2（本轮工作树）\.local_manifests\pixiv-a2\correction21-84f9992-validation-historical-remediation.xml
+```
+
+## 原生产安全恢复与当前入口
+
+先验证旧44工作树干净、profile与本轮备份逐字节一致，再复制7份必要旧输入并校验SHA，共231167147字节；这些是回退输入，不是冗余全量压缩包。旧版新鲜计划的run key及业务结果指纹与历史原生产完全相同。确认无活动用户工作后，停止本应用并由旧44产品入口实际apply，恢复66572支持/8623 Media/1 active/0重复；前后17表保护通过。
+
+恢复apply耗时 1644.375 秒。当前run key `scv2-px3:762dd305bc4c468ae65df18213f5861f`。配置锚点回到 `production-pixiv-a2-stable-44db0da`，使用原日常无参数EXE实际启动；当前API PID 43488、端口8012、DB blombooru、read ON/apply OFF。复查全部 117 个旧原生产查询，完整ID集合与旧收据相同，1737不再被“ナヒーダ”命中。恢复后真实系统Edge再次验证，0页面错误。
+
+恢复后首轮Edge采集在详情页networkidle等待30秒超时，原始失败日志和不完整收据保留；其与117查询复核并发，不能据此确定超时根因。查询完成后，同一未改动浏览器驱动单独重试，成功证据使用surface-v2独立编号，不覆盖首轮失败。启动器首次观察为空白，刷新并置前后观察到完整页面，再实际点击一次Start；其现场过程也保留。
+
+当前原A2恢复的是此前已运行版本及其已知70/80边界，不宣称新候选已被接受。旧44和本轮84代码/输入/失败收据均保留。隔离副本8013已停止、端口释放，DB/存储/原始证据保持；生产8012按交付目标继续运行。
+
+## 具体裁决与有界方案
+
+现有 `production_pixiv_corrections.py` 对 `signal.parenthetical_context` 或独立角色提示直接触发 `semantic_correction_cannot_override_independent_strong_fact`。两条泛称均具括号上下文，因此现行纠正路径会保护它们。不能私下绕过保护、手工改缓存或硬写身份关系。
+
+需要裁决的是：是否区分“括号仅给出作品上下文”与“独立来源确认角色类别”，保留作品上下文本身及真正强角色证据，只让这两个有具体冲突的泛称进入现有有界角色纠正路径。方案已构建两个实际文本请求，原逻辑尝试均未耗尽；按请求字节保守估计输入和6000输出上界，合计预留USD 0.026805，实际调用0。
+
+若批准该适用范围纠正，应保存实际新答案及supersedes，仅失效依赖变更角色输入的旧判断；再重建选择、兼容复用和必要缺项，执行受影响完整图、该反例精度控制、副本恢复及原生产门禁。不能预设模型必然给出期望答案，不降低原80例、不删可靠cannot-link、不扩大总预算、不更换provider/model。若维持现保护范围，则保留当前旧A2生产和明确未达标结论。
+
+## 审阅意见、文件与费用
+
+68条线程保持未解决状态，未新增reviewer或自行resolve。63条历史处置保留；本轮5条的指定反例/回归实现已完成，其中精度意见的实际覆盖仍有本次缺口，不能称总体质量闭合；其他4项现场依据已采集。最新候选和最终文档HEAD尚未取得独立复审。
+
+相对79e2b638的冻结18文件如下；最终只续接状态、生成交接、报告和结果JSON：
+
+- `backend/app/services/production_pixiv_pair_correction.py`
+- `backend/app/services/production_pixiv_release_provenance.py`
+- `backend/app/services/production_pixiv_role_extraction.py`
+- `backend/app/services/production_pixiv_service.py`
+- `backend/app/services/source_concept_resolver_service.py`
+- `docs/current-handoff.md`
+- `docs/development/agent-runbook.md`
+- `docs/plans/production-pixiv-a2.md`
+- `docs/state/current-phase.json`
+- `scripts/check_production_pixiv_a2.py`
+- `scripts/production_pixiv_a2_evidence.py`
+- `scripts/production_pixiv_a2_service_evidence.py`
+- `scripts/run_production_pixiv_a2_concepts.py`
+- `tests/test_production_pixiv_a2_evidence.py`
+- `tests/test_production_pixiv_ambiguity_adapter.py`
+- `tests/test_production_pixiv_correction_gates.py`
+- `tests/test_production_pixiv_review63.py`
+- `tests/test_production_pixiv_review68.py`
+
+31,612对最终问题及回答全部兼容复用：9,070作品阶段+22,542后续阶段，29,006 exact_compatible+2,606 same_decision_input_new_occurrence，无新增请求。45,587初始候选不是最终分母。本轮Pixiv/模型调用均0；账本仍18427次、USD13.582644、54项未知usage，剩余USD16.417356。令牌未轮换但Owner已授权本轮使用，未宣称轮换；A2 fallback OFF，未向应用模型上传图像。
+
+已读取本轮任务/复审报告、既有有效纠偏授权、current-phase及持久计划、runbook、相关实现与测试。持久服务及回归/门禁属于长期代码；本轮恢复、取证与打包脚本属于阶段工具；日志、原metadata、快照、截图、缓存、备份和ZIP属于本地私有证据，不提交Git。完整大文件留本地索引；关键实际记录在单ZIP中，不依赖外部下载。
+
+## 工程判断与停止边界
+
+已修复的漏召回收益成立，但原有限精度控制不足以保证组件正确性。本轮在真正发现额外身份桥接后撤回发布结论、恢复先前A2，没有继续叠加未经裁决的身份规则或反复付费。下一步只需对上述括号强事实适用范围作具体裁决；不是泛化继续审计或增加预算。
+
+没有push main、merge、force-push、进入A3、源/iCloud/staging修改、原图/缩略图/人工标签/相册/Entity真值修改、清理/reset/drop/truncate或覆盖恢复原库。仅按本阶段授权执行owned派生投影切换和非破坏性索引迁移；停止的是本任务测试及验证进程。最终文档提交、同分支push和单ZIP实测结果在最终交付记录另列。
+
+## 实测单文件交付
+
+`correction22-final-review-EVIDENCE.zip`：92019084字节（92.019084 MB），SHA-256 `f53bacb952190de58a6ec833d55e40f95f2d07edc1022fb928705cb3f682cb68`。实际解压、逐文件hash、索引、JSON/JSONL/XML及独立复算通过。

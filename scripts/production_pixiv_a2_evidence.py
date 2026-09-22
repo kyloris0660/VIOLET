@@ -1,0 +1,521 @@
+"""Recompute A2 evidence outcomes without trusting summary booleans."""
+import math
+import re
+import statistics
+from collections import Counter
+from xml.etree import ElementTree
+
+PRESERVED_TABLES=frozenset('blombooru_'+name for name in (
+    'media','albums','album_hierarchy','album_media','entities','entity_aliases','entity_evidence',
+    'entity_external_identities','entity_translations','media_entity_candidates','media_entity_assignments',
+    'media_tags','source_concept_signals','source_concepts','source_concept_aliases',
+    'source_concept_evidence','source_concept_signal_links'))
+PRESERVED_NONEMPTY=frozenset('blombooru_'+name for name in (
+    'media','source_concept_signals','source_concepts','source_concept_aliases',
+    'source_concept_evidence','source_concept_signal_links'))
+
+
+def verify_preserved_tables(snapshot):
+    import hashlib
+    tables=snapshot.get('tables',{})
+    if set(tables)!=PRESERVED_TABLES:raise ValueError('a2_preservation_table_inventory_changed')
+    empty=hashlib.sha256(b'').hexdigest()
+    for name,row in tables.items():
+        count=row.get('rows');digest=row.get('sha256')
+        if (type(count) is not int or count<0 or not isinstance(digest,str)
+            or not re.fullmatch('[a-f0-9]{64}',digest)
+            or (count==0)!=(digest==empty)
+            or (name in PRESERVED_NONEMPTY and count==0)):
+            raise ValueError('a2_preservation_row_digest_invalid:'+name)
+    return tables
+
+
+def verify_preservation_snapshots(snapshots,*,candidate,database,system_identifier,operation):
+    from datetime import datetime
+    if not operation or len(snapshots) not in (3,4):raise ValueError('a2_preservation_checkpoints_missing')
+    checkpoints=['before','after-rollback','after-reapply']+(['after-source'] if len(snapshots)==4 else [])
+    baseline=None;previous=None
+    for snapshot,checkpoint in zip(snapshots,checkpoints):
+        if (snapshot.get('candidate_head')!=candidate or snapshot.get('database')!=database
+            or snapshot.get('system_identifier')!=system_identifier
+            or snapshot.get('operation_id')!=operation or snapshot.get('checkpoint')!=checkpoint):
+            raise ValueError('a2_preservation_operation_binding_changed')
+        started=datetime.fromisoformat(snapshot['started_at']);finished=datetime.fromisoformat(snapshot['finished_at'])
+        if (not started.tzinfo or not finished.tzinfo or finished<started
+            or (previous and started<=previous)):
+            raise ValueError('a2_preservation_checkpoint_order_changed')
+        previous=finished;tables=verify_preserved_tables(snapshot)
+        if baseline is None:baseline=tables
+        elif tables!=baseline:raise ValueError('a2_raw_independent_preservation')
+    return {'table_count':len(baseline),'checkpoint_count':len(snapshots),'media_count':baseline['blombooru_media']['rows']}
+
+
+def verify_browser_actions(browser, *, launch=None, suggestion_oracle=None):
+    if launch is not None:
+        from scripts.production_pixiv_a2_service_evidence import verify_browser_service
+        verify_browser_service(browser,launch)
+    from urllib.parse import urlparse,parse_qs
+    actions=browser.get('actions',[])
+    attempt=browser.get('attempt_id')
+    if not isinstance(attempt,str) or not attempt.strip():raise ValueError('a2_browser_attempt_missing')
+    navigation=('thumbnail_to_detail','open_fullscreen','close_fullscreen','return_gallery')
+    flows={}
+    for row in actions:
+        if row.get('action') not in navigation:continue
+        flow=row.get('flow_id')
+        if row.get('attempt_id')!=attempt or not isinstance(flow,str) or not flow.strip():
+            raise ValueError('a2_browser_attempt_changed')
+        flows.setdefault((row['media_id'],flow),[]).append(row['action'])
+    if not flows or any(tuple(steps)!=navigation for steps in flows.values()):
+        raise ValueError('a2_media_navigation_order_changed')
+    opened={r['media_id']:r for r in actions if r['action']=='open_fullscreen'}
+    if len(opened)<3:raise ValueError('a2_fullscreen_samples_missing')
+    for mid,row in opened.items():
+        image=row['image']
+        if (not row.get('overlay_active') or image.get('width',0)<=0 or image.get('height',0)<=0
+            or urlparse(image['src']).path!=f'/api/media/{mid}/file'):
+            raise ValueError('a2_fullscreen_original_not_loaded')
+    search=browser['search'];old=browser['old_tag'];chip=browser['source_chip']
+    old_page=urlparse(old.get('url',''));old_request=urlparse(old.get('request_url',''))
+    if (old_page.path!='/' or not old_page.netloc or old_request.path!='/api/search'
+        or (old_page.scheme,old_page.netloc)!=(old_request.scheme,old_request.netloc)
+        or not old.get('query') or parse_qs(old_page.query).get('q')!=[old['query']]
+        or parse_qs(old_request.query).get('q')!=[old['query']]
+        or old.get('attempt_id')!=attempt):
+        raise ValueError('a2_browser_old_tag_navigation_missing')
+    suggestion=browser.get('suggestion_display',{})
+    mid=suggestion.get('media_id');shown=suggestion.get('observed_items');api=suggestion.get('api_items')
+    page=urlparse(suggestion.get('url',''));request=urlparse(suggestion.get('request_url',''))
+    if (type(mid) is not int or mid<=0 or suggestion.get('attempt_id')!=attempt
+        or page.path!=f'/media/{mid}' or request.path!=f'/api/media/{mid}'
+        or not page.netloc or (page.scheme,page.netloc)!=(request.scheme,request.netloc)
+        or suggestion.get('status_code')!=200 or suggestion.get('api_media_id')!=mid
+        or suggestion.get('mutation_performed') is not False or not isinstance(shown,list) or not shown
+        or not isinstance(api,list) or not api):
+        raise ValueError('a2_browser_suggestion_not_observed')
+    if suggestion_oracle is not None and not any(s.get('media_id')==mid and s.get('suggested_tag')==suggestion.get('tag')
+            for s in suggestion_oracle.get('samples',[])):
+        raise ValueError('a2_browser_suggestion_frozen_sample_changed')
+    for item in shown:
+        source=next((s for s in api if s.get('id')==item.get('id')),None)
+        if (type(item.get('id')) is not int or item['id']<=0 or item.get('media_id')!=mid
+            or not item.get('text') or item.get('visible') is not True
+            or item.get('tag_name')!='SPAN' or item.get('href') is not None or 'border-dashed' not in item.get('classes','')
+            or not source or source.get('is_suggestion') is not True or not source.get('name')
+            or source['name']!=suggestion.get('tag')
+            or not (item['text']==source['name'] or item['text'].startswith(source['name']+' (')
+                or item.get('title','').startswith(source['name']+', '))
+            or 'suggestion' not in item.get('title','')):
+            raise ValueError('a2_browser_suggestion_content_changed')
+    if set(search['ids'])!=set(search['api_ids']) or set(old['dom_ids'])!=set(old['api_ids']) or not old['api_ids']:
+        raise ValueError('a2_browser_dom_api_sets_differ')
+    href=urlparse(chip.get('href',''));navigated=urlparse(chip.get('navigated_url',''))
+    query=parse_qs(href.query,keep_blank_values=True).get('q',[])
+    observed=chip.get('search',{});request=urlparse(observed.get('request_url',''))
+    if (chip['kind']!='source_concept' or chip['param']!='q' or not chip.get('conceptIds')
+        or href.path!='/' or navigated.path!='/' or not href.netloc or href.scheme not in {'http','https'}
+        or (href.scheme,href.netloc)!=(navigated.scheme,navigated.netloc)
+        or len(query)!=1 or not query[0].strip()
+        or parse_qs(href.query,keep_blank_values=True)!=parse_qs(navigated.query,keep_blank_values=True)
+        or observed.get('query')!=query[0] or request.path!='/api/search'
+        or (request.scheme,request.netloc)!=(href.scheme,href.netloc)
+        or parse_qs(request.query,keep_blank_values=True).get('q')!=query
+        or observed.get('status_code')!=200 or not observed.get('api_ids')
+        or set(observed.get('dom_ids',[]))!=set(observed['api_ids'])):
+        raise ValueError('a2_browser_source_chip_navigation_changed')
+    recovery=browser['recovery_page']
+    if (recovery['status']!=200 or recovery.get('method')!='GET'
+        or recovery.get('mutation_performed') is not False or not recovery.get('text')
+        or urlparse(recovery['request_url']).path!='/api/admin/dynamic-library-sync/recovery-items'):
+        raise ValueError('a2_browser_recovery_page_not_observed')
+    return {'fullscreen_samples':len(opened),'search_dom_api_equal':True,'old_tag_dom_api_equal':True,'recovery_read_observed':True}
+
+
+def recorded_code_root_matches(value,repo):
+    from pathlib import Path
+    return isinstance(value,str) and bool(value.strip()) and Path(value).is_absolute() and Path(value).resolve()==Path(repo).resolve()
+
+
+def verify_launcher_action(launch,repo,candidate):
+    from pathlib import Path
+    entry=launch.get('normal_entry_invocation',{});process=launch.get('server_process_at_action',{})
+    profile=launch.get('profile_at_action',{})
+    if (Path(entry.get('executable','')).name!='V.I.O.L.E.T. Production Launcher.exe'
+        or entry.get('arguments')!=[] or entry.get('action') not in {'Start','Restart'}
+        or not re.fullmatch('[a-f0-9]{64}',entry.get('sha256',''))):
+        raise ValueError('a2_normal_launcher_action_missing')
+    if (process.get('ProcessId')!=launch['after_pid'] or not process.get('ParentProcessId')
+        or not process.get('CreationDate') or not process.get('CommandLine')
+        or not re.search(r'run\.py|uvicorn',process['CommandLine'])):
+        raise ValueError('a2_launcher_process_observation_missing')
+    if (profile.get('candidate_head')!=candidate or profile.get('pixiv_product_enabled') is not True
+        or profile.get('pixiv_product_apply_enabled') is not False
+        or profile.get('database')!=launch['database']
+        or not recorded_code_root_matches(profile.get('code_root'),repo)
+        or not re.fullmatch('[a-f0-9]{64}',profile.get('sha256',''))):
+        raise ValueError('a2_launcher_profile_observation_changed')
+    verify_normal_entry_provenance(launch,repo)
+    return True
+
+
+def configured_launcher_root(repo):
+    """Use this repository's shared Git root, not a supplied receipt path."""
+    import subprocess
+    from pathlib import Path
+    common=subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],cwd=repo,text=True).strip()
+    return Path(common).resolve().parent
+
+
+def verify_normal_entry_provenance(launch,repo):
+    import hashlib,json
+    from pathlib import Path
+    entry=launch.get('normal_entry_invocation',{});evidence=launch.get('normal_entry_provenance',{})
+    if not evidence:raise ValueError('a2_normal_entry_provenance_missing')
+    canonical=configured_launcher_root(repo)
+    executable=canonical/'V.I.O.L.E.T. Production Launcher.exe'
+    runtime=canonical/'.local_manifests/production_launcher/launcher-runtime.json'
+    def exact_path(value,path):return isinstance(value,str) and Path(value).is_absolute() and Path(value).resolve()==path.resolve()
+    def observed_file(row,path):
+        return (isinstance(row,dict) and exact_path(row.get('path'),path) and path.is_file()
+            and row.get('sha256')==hashlib.sha256(path.read_bytes()).hexdigest())
+    if (not exact_path(entry.get('executable'),executable)
+        or not observed_file(evidence.get('executable'),executable)
+        or entry.get('sha256')!=evidence['executable']['sha256']
+        or not observed_file(evidence.get('runtime'),runtime)):
+        raise ValueError('a2_normal_entry_configured_file_changed')
+    config=json.loads(runtime.read_text(encoding='utf-8'))
+    controller=Path(repo)/'scripts/violet_production_control.py'
+    profile=Path(repo)/'.local_manifests/production_launcher/production-profile.json'
+    if (not exact_path(config.get('repo_root'),Path(repo)) or not exact_path(config.get('controller'),controller)
+        or not observed_file(evidence.get('controller'),controller)
+        or not observed_file(evidence.get('profile'),profile)
+        or launch['profile_at_action']['sha256']!=evidence['profile']['sha256']):
+        raise ValueError('a2_normal_entry_runtime_binding_changed')
+    actual_profile=json.loads(profile.read_text(encoding='utf-8'))
+    observed=launch['profile_at_action']
+    if (actual_profile.get('candidate_head')!=observed['candidate_head']
+        or actual_profile.get('db',{}).get('name')!=launch['database']
+        or actual_profile.get('pixiv_product_enabled') is not True
+        or actual_profile.get('pixiv_product_apply_enabled') is not False
+        or not exact_path(actual_profile.get('repo_root'),Path(repo))):
+        raise ValueError('a2_normal_entry_profile_content_changed')
+    chain=evidence.get('process_chain_at_action',[])
+    by_pid={row.get('ProcessId'):row for row in chain}
+    if (len(by_pid)!=len(chain) or any(type(pid) is not int or pid<=0 for pid in by_pid)
+        or type(entry.get('pid')) is not int or entry['pid'] not in by_pid
+        or by_pid.get(launch['after_pid'])!=launch['server_process_at_action']):
+        raise ValueError('a2_normal_entry_process_chain_missing')
+    current=launch['after_pid'];visited=[]
+    while current not in visited:
+        visited.append(current);row=by_pid.get(current,{})
+        if not row.get('CreationDate') or not row.get('CommandLine') or not row.get('ExecutablePath'):
+            raise ValueError('a2_normal_entry_process_observation_missing')
+        if current==entry['pid']:break
+        current=row.get('ParentProcessId')
+    import shlex
+    def controller_action(row):
+        try:tokens=[t.strip('"') for t in shlex.split(row['CommandLine'],posix=False)]
+        except ValueError:return False
+        for index,token in enumerate(tokens[:-1]):
+            if exact_path(token,controller) and tokens[index+1]==entry['action'].lower():
+                return any(t=='--profile' and tokens[i+1]==config.get('profile','production-default')
+                    for i,t in enumerate(tokens[:-1]))
+        return False
+    if (current!=entry['pid'] or not exact_path(by_pid[current].get('ExecutablePath'),executable)
+        or not any(controller_action(by_pid[pid]) for pid in visited)):
+        raise ValueError('a2_normal_entry_start_relationship_changed')
+    # Records are captured at the operation. Historical PIDs need not live now;
+    # portable unpacked Electron and controller intermediates remain in chain.
+    return True
+
+
+def pytest_outcome(command, log, xml_path=None):
+    # Parametrized node IDs and captured application logs can themselves say
+    # "1 error". Only pytest's final summary is an outcome count.
+    kinds=r'passed|failed|skipped|xfailed|xpassed|errors?|warnings?|deselected'
+    summaries=[line.strip('= \r') for line in log.splitlines() if re.fullmatch(
+        rf'\d+ (?:{kinds})(?:, \d+ (?:{kinds}))*(?: in .+)?',line.strip('= \r'))]
+    if not summaries:raise ValueError('a2_pytest_summary_missing')
+    summary=summaries[-1]
+    counts={key:int((re.findall(r'(\d+) '+key+r'\b',summary) or ['0'])[-1])
+            for key in ('passed','failed','skipped')}
+    counts['errors']=int((re.findall(r'(\d+) errors?\b',summary) or ['0'])[-1])
+    failures=set(re.findall(r'^FAILED (\S+)',log,re.MULTILINE))
+    errors=set(re.findall(r'^ERROR (\S+)',log,re.MULTILINE))
+    if xml_path:
+        root=ElementTree.parse(xml_path).getroot()
+        cases=list(root.iter('testcase'))
+        actual={'passed':0,'failed':0,'errors':0,'skipped':0}
+        for case in cases:
+            kind=('errors' if case.find('error') is not None else 'failed' if case.find('failure') is not None
+                  else 'skipped' if case.find('skipped') is not None else 'passed')
+            actual[kind]+=1
+        if any(counts[k]!=actual[k] for k in counts):
+            raise ValueError('a2_pytest_xml_log_count_mismatch')
+    expected_exit=1 if counts['failed'] or counts['errors'] else 0
+    if command.get('status')!='finished' or command.get('exit_code')!=expected_exit:
+        raise ValueError('a2_pytest_exit_or_completion_invalid')
+    if counts['errors'] or errors or re.search(r'^(?:INTERNALERROR|ERRORS? collecting)',log,re.MULTILINE):
+        raise ValueError('a2_pytest_unresolved_error')
+    if len(failures)!=counts['failed']:
+        raise ValueError('a2_pytest_failure_nodes_unaccounted')
+    return counts,failures
+
+
+def latency_statistics(rows):
+    values=sorted(float(row['ms']) for row in rows)
+    if not values or any(not math.isfinite(v) or v<0 for v in values):
+        raise ValueError('a2_query_latency_invalid')
+    return {'p50_ms':round(statistics.median(values),3),
+            'p95_ms':round(values[math.ceil((len(values)-1)*.95)],3),'max_ms':round(max(values),3)}
+
+
+def frozen_identity_recall(pair,decision,baseline,*,recall_baseline=None):
+    """Preserve prior expected supports, not incidental mixed-search extras."""
+    from app.services.source_metadata_registry_service import canonical_source_key as key
+    pair=tuple(sorted(map(key,pair)))
+    def previous(source):
+        return next((row for row in (source or {}).get('cases',[])
+            if 'expected' in row and tuple(sorted(map(key,row['names'])))==pair),None)
+    original=previous(baseline)
+    frozen_source=recall_baseline if recall_baseline is not None else baseline
+    frozen_case=previous(frozen_source)
+    if original is None and frozen_case is None:return [set(),set()]
+    if frozen_case is None or frozen_case['expected']!=decision or original is not None and original['expected']!=decision:
+        raise ValueError('a2_frozen_identity_baseline_case_changed')
+    rows=frozen_source.get('projection_rows')
+    if not isinstance(rows,list) or not rows:raise ValueError('a2_frozen_identity_projection_required')
+    sides=[{row[4] for row in rows if key(row[0])==name} for name in pair]
+    if decision=='must_link':
+        missing={mid for row in (original or {},frozen_case)
+            for values in row.get('missing_recall_media_ids',[]) for mid in values}
+        both=set.union(*sides)|missing
+        return [both,both]
+    return sides
+
+
+def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None,recall_baseline=None,launch=None):
+    if launch is not None:
+        from scripts.production_pixiv_a2_service_evidence import verify_quality_service
+        verify_quality_service(quality,launch)
+    from app.services.source_metadata_registry_service import canonical_source_key as key
+    projection=quality.get('projection_rows')
+    if not isinstance(projection,list) or not projection:
+        raise ValueError('a2_raw_quality_projection_required')
+    names={}
+    for row in projection:
+        raw,role,context,concept,media,work=row
+        entry=names.setdefault(key(raw),{'concepts':set(),'media':set()})
+        entry['concepts'].add(concept);entry['media'].add(media)
+    expected_pairs={tuple(sorted(key(n) for n in row['names'])):row['expected'] for row in oracle['identity_pairs']}
+    independent={tuple(sorted(key(n) for n in row['names'])):row
+        for row in oracle.get('separation_controls',[])}
+    precision={tuple(sorted(key(n) for n in row['names'])):row
+        for row in oracle.get('identity_precision_controls',[])}
+    for pair,control in precision.items():
+        forbidden=control.get('forbidden_media_ids')
+        if (expected_pairs.get(pair)!='must_link' or not control.get('source_evidence')
+            or not isinstance(forbidden,list) or not forbidden or len(set(forbidden))!=len(forbidden)
+            or any(type(mid) is not int or mid<=0 for mid in forbidden)):
+            raise ValueError('a2_independent_identity_precision_invalid')
+    if launch is not None and any(v=='must_link' and pair not in precision for pair,v in expected_pairs.items()):
+        raise ValueError('a2_independent_identity_precision_required')
+    if any(v=='cannot_link' for v in expected_pairs.values()) and not independent:
+        raise ValueError('a2_independent_separation_controls_required')
+    for pair,control in independent.items():
+        if (expected_pairs.get(pair)!='cannot_link' or not control.get('source_evidence')
+            or set(control.get('exclusive_media',{}))!=set(pair)
+            or not all(control['exclusive_media'].values())
+            or any(type(mid) is not int or mid<=0 for values in control['exclusive_media'].values() for mid in values)
+            or set(control['exclusive_media'][pair[0]]) & set(control['exclusive_media'][pair[1]])):
+            raise ValueError('a2_independent_separation_control_invalid')
+    def case_identity(case):
+        if 'expected' in case and 'names' in case:
+            return ('identity',*sorted(key(n) for n in case['names']))
+        category=case['category']
+        if category=='accepted_search_equivalence_only':return ('search_family',case['accepted_family_id'])
+        if category in {'media_set_AND','media_set_negative'}:return (category,*map(key,case['names']))
+        if category.startswith('suggestion_'):return ('suggestion',case['media_id'],case['kind'])
+        if 'expected_account_union_media_ids' in case:return ('creator',case['query'])
+        raise ValueError('a2_quality_case_recomputation_unavailable')
+    actual_case_ids=[case_identity(c) for c in quality['cases']]
+    if len(set(actual_case_ids))!=len(actual_case_ids):raise ValueError('a2_quality_case_duplicate')
+    required_cases={case_identity(c) for c in (baseline or {}).get('cases',[])}
+    required_cases.update(('search_family',r['family_id']) for r in oracle.get('search_only_families',[]))
+    required_cases.update(('creator',r['query']) for r in (creator_oracle or {}).get('selected_families',[]))
+    required_cases.update(('suggestion',r['media_id'],kind) for r in (suggestion_oracle or {}).get('samples',[])
+        for kind in ('suggested_positive','suggested_negative','accepted_positive_control'))
+    if not required_cases<=set(actual_case_ids):raise ValueError('a2_quality_case_missing')
+    queries=quality['queries'];results=[];seen=set()
+    import json
+    quote=lambda n:json.dumps(n,ensure_ascii=False)
+    def ids(query):
+        if query not in queries:raise ValueError('a2_quality_query_missing')
+        row=queries[query]
+        if row['status_code']!=200:raise ValueError('a2_quality_query_failed')
+        return set(row['ids'])
+    for case in quality['cases']:
+        category=case['category']
+        if 'expected' in case and 'names' in case:
+            pair=tuple(sorted(key(n) for n in case['names']))
+            if expected_pairs.get(pair)!=case['expected']:raise ValueError('a2_frozen_quality_expectation_changed')
+            seen.add(pair);sides=[names.get(n,{'concepts':set(),'media':set()}) for n in pair]
+            shared=sides[0]['concepts']&sides[1]['concepts'];actual=[ids(quote(n)) for n in pair]
+            decision=expected_pairs[pair]
+            desired=[sides[0]['media']|sides[1]['media']]*2 if decision=='must_link' else [s['media'] for s in sides]
+            frozen=frozen_identity_recall(pair,decision,baseline,recall_baseline=recall_baseline)
+            desired=[want|old for want,old in zip(desired,frozen)]
+            passed=all(s['media'] for s in sides) and all(want<=got for want,got in zip(desired,actual))
+            if decision=='must_link':
+                passed=passed and bool(shared)
+                if pair in precision:
+                    forbidden=set(precision[pair]['forbidden_media_ids'])
+                    passed=passed and all(not got&forbidden for got in actual)
+            elif decision=='cannot_link':
+                left,right=map(quote,pair)
+                # Distinct identities can co-occur or match old tags. Check the
+                # actual query exclusion/intersection behavior without assuming
+                # their ordinary mixed-search Media sets must be disjoint.
+                compositions=((left+' -'+right,actual[0]-actual[1]),
+                    (right+' -'+left,actual[1]-actual[0]),(left+' '+right,actual[0]&actual[1]))
+                passed=passed and not shared and all(ids(q)==want for q,want in compositions)
+                if pair in independent:
+                    exclusive=independent[pair]['exclusive_media']
+                    # The negative expectation is frozen from source evidence,
+                    # never derived from the very A/B queries being tested.
+                    passed=passed and all(set(exclusive[pair[i]])<=actual[i]
+                        and not set(exclusive[pair[i]])&actual[1-i] for i in (0,1))
+        elif category in {'media_set_AND','media_set_negative'}:
+            left,right=map(quote,case['names']);a,b=ids(left),ids(right)
+            desired=a&b if category=='media_set_AND' else a-b
+            actual=ids(left+' '+('' if category=='media_set_AND' else '-')+right)
+            passed=desired==actual
+        elif category=='accepted_search_equivalence_only':
+            family=next(r for r in oracle['search_only_families'] if r['family_id']==case['accepted_family_id'])
+            previous=next((r for r in (baseline or {}).get('cases',[]) if case_identity(r)==case_identity(case)),None)
+            sample_ids=[r['media_id'] for r in case['samples']]
+            if (len(set(sample_ids))!=len(sample_ids) or previous is not None
+                and set(sample_ids)!={r['media_id'] for r in previous['samples']}):
+                raise ValueError('a2_frozen_search_samples_changed')
+            checks=[[ids(f'id:{s["media_id"]} '+quote(n)) for n in family['names']] for s in case['samples']]
+            revisions=family.get('sample_expectation_revisions',[])
+            revised={r['media_id']:r for r in revisions}
+            if len(revised)!=len(revisions) or any(
+                not r.get('approval') or not r.get('source_evidence') or r.get('previous_expected_ids')!=[r['media_id']]
+                or r.get('expected_ids')!=[] or r['media_id'] not in sample_ids for r in revisions):
+                raise ValueError('a2_search_sample_revision_invalid')
+            passed=bool(checks) and all(all(x==set(revised.get(sample['media_id'],{}).get('expected_ids',[sample['media_id']])) for x in row)
+                for sample,row in zip(case['samples'],checks))
+        elif 'expected_ids' in case and 'actual_ids' in case:
+            samples=(suggestion_oracle or {}).get('samples',[])
+            sample=next((r for r in samples if r['media_id']==case['media_id']),None)
+            if not sample:raise ValueError('a2_frozen_suggestion_sample_missing')
+            kind=case['kind'];mid=sample['media_id']
+            expected=[] if kind=='suggested_positive' else [mid]
+            tag=sample['accepted_control_tag'] if kind=='accepted_positive_control' else sample['suggested_tag']
+            query=f'id:{mid} '+('-' if kind=='suggested_negative' else '')+json.dumps(tag)
+            if (kind not in {'suggested_positive','suggested_negative','accepted_positive_control'}
+                or case['query']!=query or case['expected_ids']!=expected):
+                raise ValueError('a2_frozen_suggestion_expectation_changed')
+            passed=set(expected)==ids(query) and queries[query].get('total')==len(expected)
+        elif 'expected_account_union_media_ids' in case:
+            family=next((r for r in (creator_oracle or {}).get('selected_families',[]) if r['query']==case['query']),None)
+            if not family or set(case['expected_account_union_media_ids'])!=set(family['expected_union_media_ids']):
+                raise ValueError('a2_frozen_creator_expectation_changed')
+            accounts=case['accounts'];concepts=[set(a['concept_ids']) for a in accounts]
+            source={r['provider_creator_id']:set(r['expected_media_ids']) for r in family['creators']}
+            if {r['provider_creator_id'] for r in accounts}!=set(source):raise ValueError('a2_creator_account_missing')
+            for account in accounts:
+                missing=source[account['provider_creator_id']]-set(account['bound_media_ids'])
+                if missing!=set(account['missing_bound_media_ids']):raise ValueError('a2_creator_support_summary_changed')
+            actual=ids(quote(case['query']));expected=set(case['expected_account_union_media_ids'])
+            passed=(expected==actual and queries[quote(case['query'])].get('total')==len(expected)
+                and all(len(c)==1 for c in concepts) and len(set.union(*concepts))==len(concepts)
+                and not any(a['missing_bound_media_ids'] for a in accounts))
+        else:raise ValueError('a2_quality_case_recomputation_unavailable')
+        results.append(bool(passed))
+        if bool(case.get('passed'))!=bool(passed):raise ValueError('a2_quality_summary_disagrees_with_raw')
+    # Keep the original independent denominator; absence cannot silently remove
+    # a formerly present case from release admission.
+    required={pair for pair in expected_pairs if all(n in names for n in pair)}
+    if baseline:
+        required|={tuple(sorted(key(n) for n in c['names'])) for c in baseline['cases'] if 'expected' in c and 'names' in c}
+    if not required<=seen:raise ValueError('a2_quality_case_missing')
+    if not set(independent)<=seen:raise ValueError('a2_independent_separation_case_missing')
+    return {'case_count':len(results),'failed_cases':sum(not r for r in results),
+            'independent_identity_precision_control_count':len(precision),
+            'independent_separation_control_count':len(independent),
+            'categories':dict(Counter(c['category'] for c in quality['cases']))}
+
+
+def recompute_workload(workload, baseline, frozen_cases, *, launch):
+    """Bind the accepted HTTP and three source-layer passes before statistics."""
+    import json
+    from urllib.parse import urlsplit,parse_qs
+    from scripts.production_pixiv_a2_service_evidence import service_origin,verify_service_observation
+    def origin(value):
+        try:return service_origin(value)
+        except ValueError as error:raise ValueError('a2_workload_service_origin') from error
+    try:expected_origin=verify_service_observation(workload,launch)
+    except ValueError as error:raise ValueError('a2_workload_'+str(error).removeprefix('a2_')) from error
+    expected={row['case_id']:row for row in frozen_cases}
+    if not expected or len(expected)!=len(frozen_cases):raise ValueError('a2_frozen_workload_duplicate')
+    def indexed(rows):
+        result={row['case_id']:row for row in rows}
+        if len(result)!=len(rows) or set(result)!=set(expected):raise ValueError('a2_workload_case_coverage')
+        for identity,row in result.items():
+            case=expected[identity]
+            if row['terms']!=case['terms'] or row['category']!=case['category']:
+                raise ValueError('a2_workload_case_identity')
+            query=' '.join(json.dumps(term,ensure_ascii=False) for term in case['terms'])
+            if row['query']!=query or row['status_code']!=200:raise ValueError('a2_workload_query_identity')
+        return result
+    indexed(baseline['queries'])
+    actual=indexed(workload['queries'])
+    for row in actual.values():
+        request=urlsplit(row['request_url'])
+        if origin(row['request_url'])!=expected_origin or request.path!='/api/search' or parse_qs(request.query)!= {'q':[row['query']],'limit':['64']}:
+            raise ValueError('a2_workload_request_parameters')
+    source=workload['source_layer_measurements'];seen=set()
+    for row in source:
+        identity=(row['case_id'],row['repeat'])
+        if identity in seen or row['case_id'] not in expected:raise ValueError('a2_workload_source_coverage')
+        seen.add(identity)
+        if (row['terms']!=expected[row['case_id']]['terms'] or row['include_needs_review'] is not False
+            or row['include_evidence_fallback'] is not True):raise ValueError('a2_workload_source_parameters')
+    if seen!={(case_id,repeat) for case_id in expected for repeat in range(3)}:
+        raise ValueError('a2_workload_source_coverage')
+    return latency_statistics(source),latency_statistics(workload['queries'])
+
+
+def verify_forward_metadata_spacing(journal_bytes, historical_timing):
+    """The accepted journal digest marks the immutable historical prefix."""
+    import hashlib,json
+    from datetime import datetime
+    lines=journal_bytes.splitlines(keepends=True);digest=hashlib.sha256();boundary=None
+    for index,line in enumerate(lines):
+        digest.update(line)
+        if digest.hexdigest()==historical_timing['journal_sha256']:
+            boundary=index+1;break
+    if boundary is None:raise ValueError('a2_historical_metadata_journal_changed')
+    historical=[json.loads(line) for line in lines[:boundary]]
+    dispatch=[r for r in historical if r['event']=='dispatch']
+    if len(dispatch)!=historical_timing['total_acquisition_commands']:
+        raise ValueError('a2_historical_metadata_dispatch_count')
+    previous=datetime.fromisoformat(dispatch[-1]['at']) if dispatch else None
+    if previous is not None and previous.tzinfo is None:raise ValueError('a2_metadata_dispatch_timezone')
+    gaps=[]
+    for line in lines[boundary:]:
+        row=json.loads(line)
+        if row['event']!='dispatch':continue
+        current=datetime.fromisoformat(row['at'])
+        if current.tzinfo is None:raise ValueError('a2_metadata_dispatch_timezone')
+        if previous is not None:
+            gap=(current-previous).total_seconds()
+            if gap<2:raise ValueError('a2_forward_metadata_dispatch_spacing')
+            gaps.append(gap)
+        previous=current
+    return {'historical_dispatch_count':len(dispatch),'forward_dispatch_count':sum(
+        json.loads(line)['event']=='dispatch' for line in lines[boundary:]),
+        'minimum_forward_dispatch_gap_seconds':min(gaps) if gaps else None,
+        'observed_boundary':'metadata_command_dispatch','provider_internal_http_intervals_claimed':False}
