@@ -1,6 +1,6 @@
 {
   "schema_version": "violet.production-pixiv-a2.precision-closeout.v1",
-  "candidate_head": "bfae18bfa875f4878507f1c14aac4f3b2116d35f",
+  "candidate_head": "b154e94941a9d0afab6b49205ff32c6933605799",
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "target_met": false,
   "safe_to_merge": false,
@@ -10,7 +10,7 @@
   "new_production_apply": false,
   "validation": {
     "focused": {
-      "passed": 576,
+      "passed": 584,
       "skipped": 1,
       "failed": 0
     },
@@ -26,7 +26,7 @@
   "role_answer_status": "structurally recovered; semantic repair not established",
   "historical_80_candidate": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
   "baseline_queries_verified": 117,
-  "review_threads": 86,
+  "review_threads": 89,
   "review_package": "correction27-final-review-EVIDENCE.zip",
   "review_package_receipt": "correction27-final-review-package-private.json",
   "engineering_goal_complete": false,
@@ -40,5 +40,6 @@
   "review79_actual_gates": "correction27-review79-local-validation-private.json",
   "review84_actual_gates": "correction27-review84-local-validation-private.json",
   "computer_use_released": true,
-  "review86_actual_gates": "correction27-review86-local-validation-private.json"
+  "review86_actual_gates": "correction27-review86-local-validation-private.json",
+  "review89_actual_gates": "correction27-review89-local-validation-private.json"
 }

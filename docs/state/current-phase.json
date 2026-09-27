@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "bfae18bfa875f4878507f1c14aac4f3b2116d35f",
+  "candidate_head": "b154e94941a9d0afab6b49205ff32c6933605799",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -58,7 +58,7 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
-    "20260927另三项迟到审查已修复：验收时独立重测source性能、同侧别名唯一概念、本机路径转入哈希绑定私有证据并扩展公开锚点检查；开发回归53通过。最终精确HEAD回归待跑，既有86线程576/1及97属此前证据。A2语义仍阻断，Computer Use保持退出。",
+    "20260927最终89线程：独立source计时、同侧别名唯一概念、公开入口路径私有化均修复；业务b154e94通过584 focused/1 skip与97真实PG/API。实际332文件身份及隔离副本三次只读采样通过。旧44和账本不变，Computer Use退出；语义仍阻断，target/safe/route false。精确HEAD单包九项离线复算，待Lead裁决。",
     "本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。",
     "a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。",
     "a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。",
@@ -849,13 +849,13 @@
   },
   "result_path": "docs/reports/production-pixiv-a2-summary.json",
   "correction27_execution": {
-    "stage": "review89_fixes_awaiting_exact_head_regression",
+    "stage": "semantic_blocked_review89_handoff",
     "authority": "VIOLET-A2-下一步纠偏执行任务-20260927.md",
     "opening_head": "9676dff65cb6d8deaf6c025097ce40c3b35a6f49",
     "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
     "opening_runtime": "stopped_verified; existing projection intact",
     "role_targets": 2,
-    "review_threads": 86,
+    "review_threads": 89,
     "new_provider_calls": 6,
     "budget_policy": "whole task estimate times 2 to 3; existing atomic cap extension authorized if needed",
     "source_reference_report_available": false,
@@ -889,10 +889,10 @@
     "new_production_apply": false,
     "role_recovery": "correction27-role-recovery-private.json",
     "recovery_new_provider_calls": 0,
-    "frozen_code_head": "bfae18bfa875f4878507f1c14aac4f3b2116d35f",
+    "frozen_code_head": "b154e94941a9d0afab6b49205ff32c6933605799",
     "response_adapter_fix_pending_freeze": false,
     "final_focused": {
-      "passed": 576,
+      "passed": 584,
       "skipped": 1,
       "failed": 0
     },
@@ -905,7 +905,7 @@
     "dependency_diagnostic": "correction27-dependency-diagnostic-v3-private.json",
     "invalidated_previous_inputs": 8,
     "unchanged_direct_dependencies": 31604,
-    "current_registered_contract": "correction27-review86-delivery-check-private.json",
+    "current_registered_contract": "correction27-review89-delivery-check-private.json",
     "current_browser": "correction27-baseline-browser-private.json",
     "review_package": "correction27-final-review-EVIDENCE.zip",
     "package_receipt": "correction27-final-review-package-private.json",
@@ -931,7 +931,7 @@
     "prior_verified_package_head": "b63a58f006e275c4945ed2654700361c2de37d7d",
     "review75_dispositions": "correction27-review75-dispositions-private.json",
     "actual_live_gates": "correction27-review75-live-gates-private.json",
-    "package_verification": "External receipt binds exact delivery HEAD, bytes, hashes, clean extraction and eight offline replays; historical files retained.",
+    "package_verification": "External receipt binds exact delivery HEAD, bytes, hashes, clean extraction and nine offline replays; historical files retained.",
     "current_copy_browser": "correction27-review75-copy-browser-private.json",
     "current_copy_browser_check": "correction27-review75-current-browser-check-private.json",
     "current_copy_browser_passed": false,
@@ -944,6 +944,8 @@
     "review84_actual_gates": "correction27-review84-local-validation-private.json",
     "computer_use_released": true,
     "review86_dispositions": "correction27-review86-dispositions-private.json",
-    "review86_actual_gates": "correction27-review86-local-validation-private.json"
+    "review86_actual_gates": "correction27-review86-local-validation-private.json",
+    "review89_dispositions": "correction27-review89-dispositions-private.json",
+    "review89_actual_gates": "correction27-review89-local-validation-private.json"
   }
 }
