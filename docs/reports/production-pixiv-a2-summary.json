@@ -26,7 +26,7 @@
   "role_answer_status": "structurally recovered; semantic repair not established",
   "historical_80_candidate": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
   "baseline_queries_verified": 117,
-  "review_threads": 92,
+  "review_threads": 93,
   "review_package": "correction27-final-review-EVIDENCE.zip",
   "review_package_receipt": "correction27-final-review-package-private.json",
   "engineering_goal_complete": false,
@@ -43,5 +43,6 @@
   "review86_actual_gates": "correction27-review86-local-validation-private.json",
   "review89_actual_gates": "correction27-review89-local-validation-private.json",
   "review92_actual_gates": "correction27-review92-local-validation-private.json",
-  "historical_non_e2e_current_acceptance": false
+  "historical_non_e2e_current_acceptance": false,
+  "review93_ancestry_proof": "correction27-review93-ancestry-proof-private.json"
 }
