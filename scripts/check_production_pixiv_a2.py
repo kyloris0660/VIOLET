@@ -77,6 +77,13 @@ def verify_required_test_command(private,gate,command,label):
         'validation_required_xml')
 
 
+def verify_historical_suite_carry_forward(source_head,candidate,*,repo=ROOT):
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    require(candidate_behavior_carry_forward(repo,candidate),'validation_current_behavior')
+    require(source_head==candidate or candidate_behavior_carry_forward(repo,source_head),
+        'validation_historical_passes_not_carried_forward')
+
+
 def validation_evidence(private,record,candidate):
     from scripts.production_pixiv_a2_evidence import pytest_outcome
     summary={}
@@ -118,6 +125,7 @@ def validation_evidence(private,record,candidate):
     summary['non_e2e']['known_historical_failures']=len(known)
     summary['non_e2e']['resolved_initial_failures']=len(all_failures-known)
     require(record.get('full_non_e2e_invocations')==1,'one_full_suite')
+    verify_historical_suite_carry_forward(summary['non_e2e']['source_head'],candidate)
     return summary
 
 
@@ -284,6 +292,8 @@ def derive_result(private,repo=ROOT):
             require(cursor.fetchone()==(backup['database'],backup['system_identifier']),'creator_live_database_identity')
             creator_projection=collect_creator_projection(cursor)
             identity_projection=collect_identity_projection(cursor)
+            from scripts.production_pixiv_a2_evidence import collect_final_projection,verify_final_projection
+            verify_final_projection(final['after'],collect_final_projection(cursor))
     verify_identity_projection(quality,identity_projection)
     precision_actual=recompute_precision({**quality,'projection_rows':identity_projection},load_precision_controls(),
         private_root=private,database=backup['database'],system_identifier=backup['system_identifier'])

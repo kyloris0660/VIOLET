@@ -19,7 +19,8 @@
     "tests/test_production_pixiv_review75.py",
     "tests/test_phase45_scv2_r2r_autonomous_recall_search_closure.py",
     "tests/test_production_pixiv_review86.py",
-    "tests/test_production_pixiv_review89.py"
+    "tests/test_production_pixiv_review89.py",
+    "tests/test_production_pixiv_review92.py"
   ],
   "postgresql": [
     "tests/test_production_pixiv_a2.py",

@@ -30,6 +30,7 @@ def database_state(session,run_key=None):
     bindings=session.query(SourceConceptProductMediaBinding).filter(
         SourceConceptProductMediaBinding.product_run_id.in_([row.id for row in rows])).all()
     return {'active_runs':len(rows),'run_keys':[row.run_key for row in rows],
+        'binding_rows':sorted([[row.id,row.product_run_id,row.evidence_id,row.source_metadata_record_id,row.media_id,row.source_revision] for row in bindings]),
         'bindings':len(bindings),'bound_media_ids':sorted({row.media_id for row in bindings}),
         'source_record_ids':sorted({row.source_metadata_record_id for row in bindings}),
         'duplicate_support_count':len(bindings)-len({(row.evidence_id,row.source_metadata_record_id,row.media_id) for row in bindings})}

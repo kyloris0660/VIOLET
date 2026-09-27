@@ -1045,6 +1045,9 @@ def apply_pixiv_product_plan(
             raise PixivProductIntegrationError(
                 "px3_product_projection_persist_mismatch"
             )
+        if existing.source_mode in {'existing_source_metadata','production_scope'}:
+            from .source_binding_revision import advance_projection_cache_epoch
+            advance_projection_cache_epoch(session)
         if commit:
             session.commit()
     except Exception:
@@ -1231,6 +1234,9 @@ def rollback_pixiv_product_run(session: Session, run_key: str, *, commit: bool =
         "source_withdrawal_reconciled_count": len(guard.get('source_invalidations', [])),
         "forbidden_truth_table_write_count": 0,
     }
+    if row.source_mode in {'existing_source_metadata','production_scope'}:
+        from .source_binding_revision import advance_projection_cache_epoch
+        advance_projection_cache_epoch(session)
     if commit:
         session.commit()
     else:

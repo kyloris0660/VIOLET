@@ -312,6 +312,27 @@ def collect_creator_projection(cursor):
             for row in cursor.fetchall()]
 
 
+def collect_final_projection(cursor):
+    cursor.execute("""select id,run_key from blombooru_source_concept_product_runs
+        where source_mode in ('existing_source_metadata','production_scope') and status='active' order by id""")
+    runs=cursor.fetchall()
+    cursor.execute("""select b.id,b.product_run_id,b.evidence_id,b.source_metadata_record_id,b.media_id,b.source_revision
+        from blombooru_source_concept_product_media_bindings b join blombooru_source_concept_product_runs p on p.id=b.product_run_id
+        where p.source_mode in ('existing_source_metadata','production_scope') and p.status='active' order by b.id""")
+    rows=[list(r) for r in cursor.fetchall()]
+    return {'active_runs':len(runs),'run_keys':[r[1] for r in runs],'binding_rows':rows,'bindings':len(rows),
+        'bound_media_ids':sorted({r[4] for r in rows}),'source_record_ids':sorted({r[3] for r in rows}),
+        'duplicate_support_count':len(rows)-len({(r[2],r[3],r[4]) for r in rows})}
+
+
+def verify_final_projection(recorded,actual):
+    fields=('active_runs','run_keys','bindings','binding_rows','bound_media_ids','source_record_ids','duplicate_support_count')
+    if (actual.get('active_runs')!=1 or actual.get('duplicate_support_count')!=0
+        or any(k not in recorded or recorded[k]!=actual.get(k) for k in fields)):
+        raise ValueError('a2_live_final_projection_changed')
+    return actual
+
+
 def collect_identity_projection(cursor):
     """Read name/role/concept/Media support from the same active database."""
     cursor.execute('''select s.raw_value,s.role_hint,s.work_context_key,e.concept_id,b.media_id,r.source_work_id

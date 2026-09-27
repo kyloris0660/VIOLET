@@ -149,6 +149,42 @@ def test_full_scope_replay_and_tail_exclusion(database):
     assert first['contract_id']=='production_pixiv_a2_v1'
 
 
+@pytest.mark.parametrize('prefix',['search','media_list','media_detail','danbooru'])
+def test_projection_epoch_survives_redis_invalidation_outage(database,monkeypatch,prefix):
+    import asyncio
+    from starlette.requests import Request
+    from app.utils import cache
+    from scripts.run_production_pixiv_a2_product import database_state
+    from scripts.production_pixiv_a2_evidence import collect_final_projection,verify_final_projection
+    class RetainedRedis:
+        _enabled=True
+        def __init__(self):self.values={}
+        def get(self,key):return self.values.get(key)
+        def set(self,key,value,**kw):self.values[key]=value
+    retained=RetainedRedis();monkeypatch.setattr(cache,'redis_cache',retained)
+    monkeypatch.setattr(cache,'invalidate_source_concept_search_cache',lambda:None)
+    monkeypatch.setattr(product,'invalidate_source_concept_search_cache',lambda:None)
+    request=Request({'type':'http','scheme':'http','server':('fixture',80),'path':'/api/search','query_string':b'q=fixture','headers':[]})
+    @cache.cache_response(key_prefix=prefix)
+    async def endpoint(*,request,db):return {'active':db.query(SourceConceptProductRun).filter_by(status='active').count()}
+    def fetch():return asyncio.run(endpoint(request=request,db=database))
+    def epoch():return database.execute(text('select revision from blombooru_source_binding_cache_epoch where id=1')).scalar_one()
+    assert fetch()=={'active':0};before=epoch()
+    result=apply(database,build(database),scope_for(database))
+    assert epoch()>before and fetch()=={'active':1}
+    receipt=database_state(database)
+    if database.bind.dialect.name=='postgresql':
+        cursor=database.connection().connection.cursor()
+        try:assert verify_final_projection(receipt,collect_final_projection(cursor))==receipt
+        finally:cursor.close()
+    committed=epoch();product.rollback_pixiv_product_run(database,result['run_key'],commit=False)
+    assert epoch()>committed
+    database.rollback();assert epoch()==committed and fetch()=={'active':1}
+    product.rollback_pixiv_product_run(database,result['run_key'])
+    assert epoch()>committed and fetch()=={'active':0}
+    assert len(retained.values)==3
+
+
 def test_cumulative_atomic_replacement_keeps_audit(database,monkeypatch):
     scope=scope_for(database)
     partial=build(database,['910000001'])
@@ -157,6 +193,7 @@ def test_cumulative_atomic_replacement_keeps_audit(database,monkeypatch):
     with pytest.raises(ValueError,match='fixed_media_binding'):
         apply(database,partial,scope)
     original=seed_historical_partial(database,partial,scope)
+    previous_epoch=database.execute(text('select revision from blombooru_source_binding_cache_epoch where id=1')).scalar_one()
     full=build(database)
     plan=replace_production_projection(database,full,scope=scope)
     persist=product.persist_media_bindings
@@ -166,6 +203,7 @@ def test_cumulative_atomic_replacement_keeps_audit(database,monkeypatch):
     with pytest.raises(RuntimeError,match='injected failure'):
         replace_production_projection(database,full,scope=scope,apply=True,accepted_plan=plan)
     assert database.query(SourceConceptProductRun).filter_by(run_key=original['run_key']).one().status=='active'
+    assert database.execute(text('select revision from blombooru_source_binding_cache_epoch where id=1')).scalar_one()==previous_epoch
     assert {r.media_id for r in database.query(SourceConceptProductMediaBinding)}=={1,2}
     monkeypatch.setattr(product,'persist_media_bindings',persist)
     final=apply(database,full,scope)

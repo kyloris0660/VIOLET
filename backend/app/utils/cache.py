@@ -29,7 +29,7 @@ def cache_response(expire: int = 3600, key_prefix: str = "cache"):
             
             # Generate cache key based on URL and query params
             url = str(request.url)
-            if key_prefix == 'search':
+            if key_prefix in {'search','media_list','media_detail','danbooru'}:
                 db = kwargs.get('db')
                 if db is None:
                     return await func(*args, **kwargs)
