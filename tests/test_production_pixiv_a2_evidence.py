@@ -398,7 +398,8 @@ def test_launcher_cannot_infer_unrecorded_code_root_from_working_directory(tmp_p
 
 
 def test_unrelated_passing_node_cannot_resolve_a_historical_failure(tmp_path):
-    from scripts.check_production_pixiv_a2 import validation_evidence
+    import sys
+    from scripts.check_production_pixiv_a2 import ROOT,validation_evidence
     def write(name,value):
         (tmp_path/name).write_text(json.dumps(value) if isinstance(value,dict) else value,encoding='utf-8')
     passed='tests/test_current.py::test_unrelated';failed='tests/test_bug.py::test_bug'
@@ -411,5 +412,12 @@ def test_unrelated_passing_node_cannot_resolve_a_historical_failure(tmp_path):
     gate={'command':'current-command.json','log':'current.log','passed':1,'failed':0,'skipped':0}
     record={'focused':gate,'postgresql':gate,'non_e2e':{**gate,'command':'history-command.json','log':'history.log','failed':1},
         'remediation':[gate],'node_mappings':{failed:{'nodes':[passed]}},'full_non_e2e_invocations':1}
+    required=json.loads((ROOT/'docs/state/production-pixiv-a2-required-tests.json').read_text())
+    for label in ('focused','postgresql'):
+        xml=tmp_path/(label+'.xml')
+        xml.write_text('<testsuites><testsuite><testcase name="test_unrelated"/></testsuite></testsuites>')
+        write(label+'-command.json',{**command,'cwd':str(ROOT),
+            'argv':[sys.executable,'-m','pytest',*required[label],'-q','--junitxml='+str(xml)]})
+        record[label]={**gate,'command':label+'-command.json','xml':xml.name}
     with pytest.raises(ValueError,match='unverified_remediation_node_mapping'):
         validation_evidence(tmp_path,record,'current')

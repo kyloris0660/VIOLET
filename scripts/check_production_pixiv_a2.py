@@ -84,12 +84,13 @@ def validation_evidence(private,record,candidate):
     for label in ('focused','postgresql','non_e2e'):
         gate=record[label];command=read(private,gate['command'])
         log=evidence_path(private,gate['log']).read_text(encoding='utf-8')
+        xml_path=evidence_path(private,gate['xml']) if gate.get('xml') else None
         require(command['argv'][1:3]==['-m','pytest'],'validation_command')
         require(command.get('status')=='finished','validation_finished')
         if label!='non_e2e':
             require(command['source_head']==candidate,'validation_candidate')
             verify_required_test_command(private,gate,command,label)
-        actual,failures=pytest_outcome(command,log,evidence_path(private,gate['xml']) if gate.get('xml') else None)
+        actual,failures=pytest_outcome(command,log,xml_path)
         require(all(actual[key]==gate[key] for key in ('passed','failed','skipped')) and actual['passed']>0,'validation_counts')
         if label!='non_e2e':require(not failures and actual['failed']==0,'focused_or_postgresql_failure')
         else:
