@@ -11,6 +11,7 @@ def summary():
         'production':{'active_runs':1,'bound_media':8,'duplicate_support_count':0},
         'budget':{'cap_usd':10,'charged_or_reserved_usd':0.4},
         'quality':{'case_count':40,'failed_cases':0},'workload':{'query_count':240,'failed_queries':0},
+        'identity_precision':{'case_count':2,'failed_cases':0},
         'browser':{'originals_loaded':3,'thumbnails_loaded':3},
         'launcher':{'new_process':True,'apply_enabled':False},'validation':{},'recovery':{}}
 
@@ -22,7 +23,7 @@ def test_public_projection_cannot_substitute_for_actual_private_evidence():
     assert any(item.code=='a2_evidence_invalid' for item in result.errors)
 
 
-@pytest.mark.parametrize('fault',['pending','budget','binding','owner','apply'])
+@pytest.mark.parametrize('fault',['pending','budget','binding','owner','apply','precision','missing_precision'])
 def test_completion_rejects_material_gaps_and_authority_claims(fault):
     value=summary()
     if fault=='pending':value['coverage']['counts']={'metadata_complete':8,'metadata_pending':2}
@@ -30,4 +31,6 @@ def test_completion_rejects_material_gaps_and_authority_claims(fault):
     if fault=='binding':value['production']['bound_media']=7
     if fault=='owner':value['project_lead_acceptance']='accepted'
     if fault=='apply':value['launcher']['apply_enabled']=True
+    if fault=='precision':value['identity_precision']['failed_cases']=1
+    if fault=='missing_precision':value.pop('identity_precision')
     with pytest.raises(ValueError):check_public_result(value)

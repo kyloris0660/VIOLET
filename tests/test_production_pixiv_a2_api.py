@@ -2,7 +2,7 @@ import pytest
 from app.models import SourceConceptProductRun,SourceConceptProductMediaBinding,SourceMetadataRecord,Media
 from app.services import pixiv_product_integration_service as product
 from test_production_pixiv_a1 import real_api,ids
-from test_production_pixiv_a2 import scope_for,build,apply
+from test_production_pixiv_a2 import scope_for,build,apply,seed_historical_partial
 
 
 def test_completion_non_name_withdraws_source_search_support(real_api,tmp_path):
@@ -77,7 +77,7 @@ def test_cumulative_projection_search_and_owned_rollback_preserve_independent_co
         independent_row=db.query(SourceConceptProductRun).filter_by(run_key=independent['run_key']).one()
         independent_fingerprint=product._rollback_ownership_fingerprint(db,independent_row)
         scope=scope_for(db)
-        first=apply(db,build(db,['910000001']),scope)
+        first=seed_historical_partial(db,build(db,['910000001']),scope)
         full=apply(db,build(db),scope)
         assert product._rollback_ownership_fingerprint(db,independent_row)==independent_fingerprint
         owned=db.query(SourceConceptProductRun).filter_by(run_key=full['run_key']).one()
@@ -113,6 +113,14 @@ def test_full_scope_source_change_withdrawal_and_formal_replacement(real_api,cha
         else:db.commit()
     assert (1 in ids(client,'MoonGarden')) is (change=='transaction_rollback')
     with factory() as db:
+        if change in {'partial_update','delete'}:
+            before=[(b.id,b.product_run_id,b.media_id) for b in db.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+            with pytest.raises(ValueError,match='fixed_media'):
+                apply(db,build(db),scope)
+            assert before==[(b.id,b.product_run_id,b.media_id) for b in db.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+            assert db.query(SourceConceptProductRun).filter_by(run_key=first['run_key']).one().status=='active'
+            assert db.query(SourceConceptProductRun).filter_by(run_key=independent_key).one().status=='active'
+            return
         withdrawn=product.rollback_pixiv_product_run(db,first['run_key'])
         assert withdrawn['rolled_back']
         assert product.rollback_pixiv_product_run(db,first['run_key'])['idempotent_replay']

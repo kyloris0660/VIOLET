@@ -127,6 +127,9 @@ def test_suggestion_summary_cannot_replace_actual_query_receipt(change):
 @pytest.mark.parametrize('change',['valid','missing','http_failure','wrong_ids','extra_ids','wrong_total'])
 def test_creator_union_uses_actual_query_receipt(change):
     value=quality_fixture()[0];oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    value['projection_rows'] += [['ArtistTwin','artist',None,mid,mid,'w'] for mid in (20,21)]
+    value['creator_projection_rows']=[{'provider':'pixiv','provider_creator_id':name,'concept_id':mid,'media_id':mid}
+        for name,mid in [('left',20),('right',21)]]
     family={'query':'ArtistTwin','expected_union_media_ids':[20,21],
         'creators':[{'provider_creator_id':'left','expected_media_ids':[20]},
                     {'provider_creator_id':'right','expected_media_ids':[21]}]}

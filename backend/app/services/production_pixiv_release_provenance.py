@@ -210,7 +210,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         direct=source_by_question.get(record.get('input_fingerprint'),[])
         if not direct:raise ValueError('semantic_role_coverage_original_question_missing:'+record['extraction_key'])
         targets=json.loads(direct[0]['group'].data_type_label.split(': ',1)[1])
-        current=roles.role_target_coverage(SimpleNamespace(raw_values=targets),record)
+        current=roles.role_target_coverage(SimpleNamespace(raw_values=targets,unit_group=direct[0]['group']),record)
         if record.get('inherited_valid_response_keys'):
             outcomes={};all_targets=set()
             for parent in record['inherited_valid_response_keys']:

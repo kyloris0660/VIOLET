@@ -4,11 +4,27 @@ from types import SimpleNamespace
 from .pixiv_metadata_projection_service import canonical_fingerprint
 
 
-def verify_t0_scope(scope, inventory, database, system_identifier):
+def verify_t0_scope(scope, inventory, database, system_identifier, *, anchor=None):
     from .production_pixiv_service import build_fixed_scope
     from .pixiv_metadata_ingestion_service import is_trusted_complete_pixiv_metadata_record
     from .pixiv_product_media_binding import verified_local_binding_provenance
     summary = inventory['summary']
+    if anchor is None:
+        import json
+        from pathlib import Path
+        anchor = json.loads((Path(__file__).resolve().parents[3] /
+            'docs/state/production-pixiv-a2-t0-anchor.json').read_text(encoding='utf-8'))
+    from datetime import datetime
+    media = [{**row, 'uploaded_at': str(datetime.fromisoformat(row['uploaded_at']))}
+             if row.get('uploaded_at') else row for row in inventory['media']]
+    if (anchor.get('schema_version') != 'violet.production-pixiv-t0-anchor.v1'
+        or anchor.get('identity') != {'database': database, 'system_identifier': system_identifier}
+        or summary['watermark'] != anchor.get('watermark')
+        or len(media) != anchor.get('media_count')
+        or canonical_fingerprint(media) != anchor.get('media_fingerprint')
+        or canonical_fingerprint(inventory['metadata']) != anchor.get('metadata_fingerprint')
+        or scope.get('canonical_fingerprint') != anchor.get('scope_fingerprint')):
+        raise ValueError('production_t0_independent_anchor_mismatch')
     if summary['identity'] != {'database': database, 'system_identifier': system_identifier}:
         raise ValueError('production_t0_database_identity_changed')
     records = [SimpleNamespace(provider='pixiv', **row) for row in inventory['metadata']]
@@ -22,9 +38,27 @@ def verify_t0_scope(scope, inventory, database, system_identifier):
             'scope_fingerprint': expected['canonical_fingerprint']}
 
 
-def verify_full_input(aggregates, live, coverage):
+def verify_full_input(aggregates, live, coverage, *, scope=None):
     if not aggregates or canonical_fingerprint(aggregates) != canonical_fingerprint(live):
         raise ValueError('complete_source_snapshot_changed_refresh_required')
+    items = coverage['items']
+    media_ids = [row.get('media_id') for row in items]
+    terminal = {'metadata_complete', 'terminal_remote_unavailable',
+        'deferred_nonblocking_source_page_mismatch', 'conflicting_filename_priors',
+        'not_applicable', 'media_removed_after_t0'}
+    if (any(type(mid) is not int or mid<=0 for mid in media_ids)
+        or len(set(media_ids))!=len(media_ids)
+        or any(row['disposition'] not in terminal for row in items)
+        or any(row['disposition']=='metadata_complete' and
+            (not row.get('eligible_record_ids') or not set(row['eligible_record_ids'])<=set(row.get('source_record_ids',[])))
+            for row in items)):
+        raise ValueError('production_fixed_media_not_closed_or_unverified')
+    if scope is not None:
+        expected = {r['media_id']:(r['work_id'],r['page_index']) for r in scope['mappings']}
+        actual = {r['media_id']:(r['work_id'],r['page_index']) for r in items}
+        if (expected != actual or len(expected)!=len(scope['mappings'])
+            or coverage.get('scope_fingerprint')!=scope['canonical_fingerprint']):
+            raise ValueError('production_fixed_media_mapping_incomplete')
     expected_pages = {(row['work_id'], row['page_index']) for row in coverage['items']
                       if row['disposition'] == 'metadata_complete'}
     actual_pages = {(row['work_id'], row['page_index']) for row in aggregates if row['disposition'] == 'complete'}

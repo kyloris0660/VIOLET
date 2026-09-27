@@ -53,11 +53,13 @@ def check_public_result(value,root=ROOT):
     cap=value['budget']['cap_usd']
     require(cap in (10,30) and 0<value['budget']['charged_or_reserved_usd']<=cap,'budget')
     require(value['quality']['failed_cases']==0 and value['quality']['case_count']>0,'quality')
+    require(value.get('identity_precision',{}).get('failed_cases')==0
+        and value['identity_precision'].get('case_count',0)>=2,'identity_precision')
     require(value['workload']['query_count']>=240 and value['workload']['failed_queries']==0,'workload')
     require(value['browser']['originals_loaded']>0 and value['browser']['thumbnails_loaded']>0,'real_media')
     require(value['launcher']['new_process'] and value['launcher']['apply_enabled'] is False,'launcher')
     require(set(value)=={'contract_id','target_met','safe_to_merge','route_approved','project_lead_acceptance',
-        'candidate_head','coverage','production','budget','quality','workload','browser','launcher','validation','recovery'},'public_fields')
+        'candidate_head','coverage','production','budget','quality','identity_precision','workload','browser','launcher','validation','recovery'},'public_fields')
     require(not re.search(r'(?i)([A-Z]:[\\/]|postgres(?:ql)?://|password|api_key|raw_metadata|source_url)',json.dumps(value)),'public_privacy')
 
 
@@ -199,12 +201,24 @@ def derive_result(private,repo=ROOT):
         require(evidence_path(private,name).stat().st_size>1000,'browser_screenshot')
     quality=read(private,manifest['quality']);workload=read(private,manifest['workload'])
     require(quality['candidate_head']==workload['candidate_head']==head,'quality_candidate')
-    from scripts.production_pixiv_a2_evidence import recompute_quality,recompute_workload
+    from scripts.production_pixiv_precision_evidence import recompute_precision,load_precision_controls
+    precision_actual=recompute_precision(quality,load_precision_controls())
+    from scripts.production_pixiv_a2_evidence import recompute_quality,recompute_workload,collect_creator_projection
+    import psycopg2
+    cfg=json.loads((repo/'.local_manifests/production_launcher/production-profile.json').read_text(encoding='utf-8'))['db']
+    require(cfg['name']==backup['database'],'creator_live_database')
+    with psycopg2.connect(host=cfg['host'],port=cfg['port'],user=cfg['user'],password=cfg['password'],dbname=cfg['name'],
+        options='-c default_transaction_read_only=on -c statement_timeout=30000 -c lock_timeout=3000') as conn:
+        with conn.cursor() as cursor:
+            cursor.execute('select current_database(),system_identifier::text from pg_control_system()')
+            require(cursor.fetchone()==(backup['database'],backup['system_identifier']),'creator_live_database_identity')
+            creator_projection=collect_creator_projection(cursor)
     quality_actual=recompute_quality(quality,read(private,quality['oracle_input']),
         suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'),
         creator_oracle=read(private,'independent-creator-homonym-oracle-private.json'),
         baseline=read(private,'full-production-final-1-combined-quality-private.json'),
-        recall_baseline=read(private,'closeout43-copy-surfaces-1-combined-quality-private.json'),launch=launch)
+        recall_baseline=read(private,'closeout43-copy-surfaces-1-combined-quality-private.json'),launch=launch,
+        creator_projection=creator_projection)
     require(quality['independent_answer_sources'] and quality_actual['case_count']>=80
         and quality_actual['failed_cases']==0,'independent_quality')
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
@@ -222,7 +236,7 @@ def derive_result(private,repo=ROOT):
             'bound_media':len(bound),'duplicate_support_count':final['after']['duplicate_support_count']},
         'budget':{'model':ledger['model'],'cap_usd':cap,'charged_or_reserved_usd':budget['charged_or_reserved_usd'],
             'call_count':budget['call_count'],'unknown_usage_count':budget['unknown_usage_count']},
-        'quality':quality_actual,
+        'quality':quality_actual,'identity_precision':precision_actual,
         'workload':{'query_count':len(workload['queries']),'failed_queries':0,**http_latency,
             'source_layer_latency_ms':source_latency,'applicable_source_layer_p95_gate_ms':p95_gate},
         'browser':{**{key:browser[key] for key in ('originals_loaded','thumbnails_loaded')},**browser_actions},

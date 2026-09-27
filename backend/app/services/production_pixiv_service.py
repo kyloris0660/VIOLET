@@ -309,6 +309,9 @@ def replace_production_projection(session, run, *, scope, apply=False, accepted_
     source revision guards are exercised, never removed or manually bypassed.
     """
     from .pixiv_product_integration_service import apply_pixiv_product_plan, rollback_pixiv_product_run
+    from .production_pixiv_release_inputs import verify_full_input
+    live,coverage=build_production_inputs(session,scope)
+    verify_full_input(live,live,coverage,scope=scope)
     selection = scope_selection(scope, run)
     scope_key = 'pixiv:production:' + scope['canonical_fingerprint'][:32]
     if apply and session.bind.dialect.name == 'postgresql':
@@ -323,6 +326,12 @@ def replace_production_projection(session, run, *, scope, apply=False, accepted_
         raise ValueError('production_pixiv_other_fixed_scope_active')
     plan = apply_pixiv_product_plan(session, run, scope_key=scope_key, source_mode='production_scope',
                                    input_selection=selection, apply=False)
+    # The binding planner restricts every edge to an eligible source and the
+    # exact frozen Media/work/page mapping. Thus cardinality equality closes
+    # the entire complete-Media set, including shared work pages.
+    if plan['media_binding']['planned_media_binding_count'] != sum(
+        row['disposition']=='metadata_complete' for row in coverage['items']):
+        raise ValueError('production_fixed_media_binding_incomplete')
     plan['replaces'] = [{'run_key':row.run_key,'result_fingerprint':row.result_fingerprint} for row in previous if row.run_key != plan['run_key']]
     plan['production_policy_version'] = PRODUCTION_POLICY
     plan['replacement_fingerprint'] = canonical_fingerprint({key:plan[key] for key in

@@ -32,10 +32,18 @@ def test_scope_recomputed_from_independent_t0_rejects_self_consistent_truncation
     inventory={'media':media,'metadata':[], 'summary':{'identity':{'database':'prod','system_identifier':'system'},
         'media_total':2,'watermark':{'t0':'T0'}}}
     scope=build_fixed_scope(media,watermark='T0')
-    verify_t0_scope(scope,inventory,'prod','system')
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    anchor={'schema_version':'violet.production-pixiv-t0-anchor.v1',
+        'identity':inventory['summary']['identity'], 'watermark':inventory['summary']['watermark'],
+        'media_count':2,'media_fingerprint':canonical_fingerprint(media),
+        'metadata_fingerprint':canonical_fingerprint([]),'scope_fingerprint':scope['canonical_fingerprint']}
+    verify_t0_scope(scope,inventory,'prod','system',anchor=anchor)
     shortened=build_fixed_scope(media[:1],watermark='T0')
-    with pytest.raises(ValueError,match='accepted_t0'):
-        verify_t0_scope(shortened,inventory,'prod','system')
+    with pytest.raises(ValueError,match='t0_'):
+        verify_t0_scope(shortened,inventory,'prod','system',anchor=anchor)
+    reduced=copy.deepcopy(inventory);reduced['media']=media[:1];reduced['summary']['media_total']=1
+    with pytest.raises(ValueError,match='t0_'):
+        verify_t0_scope(shortened,reduced,'prod','system',anchor=anchor)
 
 
 def test_legacy_raw_requires_matching_paid_attempt_even_without_reservation_field(tmp_path):
@@ -76,7 +84,9 @@ def test_release_replays_inherited_partial_answers_without_borrowing_other_quest
 def test_full_live_input_rejects_subset_revision_change_and_page_mismatch():
     live=[{'work_id':'12345678','page_index':0,'disposition':'complete','revision':2},
           {'work_id':'22222222','page_index':1,'disposition':'complete','revision':3}]
-    coverage={'items':[{'work_id':r['work_id'],'page_index':r['page_index'],'disposition':'metadata_complete'} for r in live]}
+    coverage={'items':[{'media_id':i,'work_id':r['work_id'],'page_index':r['page_index'],
+        'disposition':'metadata_complete','source_record_ids':[i],'eligible_record_ids':[i]}
+        for i,r in enumerate(live,1)]}
     verify_full_input(live,live,coverage)
     for changed in (live[:1], [{**live[0],'revision':1},live[1]], []):
         with pytest.raises(ValueError,match='snapshot_changed'):

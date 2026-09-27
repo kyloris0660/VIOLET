@@ -83,6 +83,17 @@ def apply(db, run, scope):
     return replace_production_projection(db,run,scope=scope,apply=True,accepted_plan=plan)
 
 
+def seed_historical_partial(db,run,scope):
+    from app.services.production_pixiv_service import scope_selection
+    args={'scope_key':'pixiv:production:'+scope['canonical_fingerprint'][:32],
+        'source_mode':'production_scope','input_selection':scope_selection(scope,run)}
+    plan=product.apply_pixiv_product_plan(db,run,**args,apply=False)
+    return product.apply_pixiv_product_plan(db,run,**args,apply=True,
+        accepted_selection_fingerprint=plan['selection_fingerprint'],
+        accepted_product_fingerprint=plan['product_result_fingerprint'],
+        accepted_binding_fingerprint=plan['media_binding']['local_binding_fingerprint'])
+
+
 def test_scope_uses_trusted_source_and_keeps_conflicts():
     rows=[{'id':1,'filename':'12345678_22222222_p1.png'},
           {'id':2,'filename':'12345678.png'}, {'id':3,'filename':'other.png'}]
@@ -120,7 +131,11 @@ def test_full_scope_replay_and_tail_exclusion(database):
 def test_cumulative_atomic_replacement_keeps_audit(database,monkeypatch):
     scope=scope_for(database)
     partial=build(database,['910000001'])
-    original=apply(database,partial,scope)
+    # Seed the historical partial projection through its original lower-level
+    # API. Today's replacement boundary must reject creation of this state.
+    with pytest.raises(ValueError,match='fixed_media_binding'):
+        apply(database,partial,scope)
+    original=seed_historical_partial(database,partial,scope)
     full=build(database)
     plan=replace_production_projection(database,full,scope=scope)
     persist=product.persist_media_bindings
@@ -147,7 +162,7 @@ def test_source_change_invalidates_prepared_replacement(database):
     plan=replace_production_projection(database,run,scope=scope)
     database.query(SourceMetadataRecord).filter_by(id=101).one().title='New title'
     database.commit()
-    with pytest.raises(ValueError,match='accepted_replacement_changed'):
+    with pytest.raises(ValueError,match='accepted_replacement_changed|fixed_media'):
         replace_production_projection(database,build(database),scope=scope,apply=True,accepted_plan=plan)
     assert database.query(SourceConceptProductRun).count()==0
 
@@ -178,8 +193,9 @@ def test_production_snapshot_accounts_missing_page_without_poisoning_valid_page(
     assert coverage['counts']=={'metadata_complete':3,'metadata_pending':1}
     assert all(row['disposition']=='complete' for row in aggregates)
     assert {(row['work_id'],row['page_index']) for row in aggregates}=={('910000001',0),('910000002',0),('910000003',0)}
-    apply(database,build_production_clustering(production_consumer(aggregates)),scope)
-    assert {row.media_id for row in database.query(SourceConceptProductMediaBinding)}=={1,3,4}
+    with pytest.raises(ValueError,match='fixed_media'):
+        apply(database,build_production_clustering(production_consumer(aggregates)),scope)
+    assert database.query(SourceConceptProductMediaBinding).count()==0
 
 
 def test_partial_release_admission_leaves_existing_projection_unchanged(database):
@@ -193,6 +209,63 @@ def test_partial_release_admission_leaves_existing_projection_unchanged(database
         verify_full_input(live[:1],live,coverage)
     assert before==[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
     verify_full_input(live,live,coverage)
+
+
+@pytest.mark.parametrize('status',['metadata_pending','metadata_retryable','provider_identity_mismatch'])
+def test_shared_page_incomplete_media_rejected_before_withdrawal(database,monkeypatch,status):
+    from app.services.production_pixiv_service import build_production_inputs
+    scope=scope_for(database);run=build(database)
+    apply(database,run,scope)
+    before=[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    original_runs=[(r.id,r.status) for r in database.query(SourceConceptProductRun)]
+    database.get(SourceMetadataRecord,102).status=status
+    database.commit()
+    live,coverage=build_production_inputs(database,scope)
+    assert {(a['work_id'],a['page_index']) for a in live}=={(a['work_id'],a['page_index']) for a in run.consumer.aggregates}
+    candidate=build_production_clustering(production_consumer(live))
+    def forbidden(*args,**kwargs):raise AssertionError('withdrawal attempted before closure')
+    monkeypatch.setattr(product,'rollback_pixiv_product_run',forbidden)
+    for should_apply in (False,True):
+        with pytest.raises(ValueError,match='fixed_media'):
+            replace_production_projection(database,candidate,scope=scope,apply=should_apply)
+    assert before==[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    assert original_runs==[(r.id,r.status) for r in database.query(SourceConceptProductRun)]
+
+
+def test_creator_gate_recomputes_actual_database_accounts_and_rejects_invented_summary(database):
+    from scripts.production_pixiv_a2_evidence import collect_creator_projection,recompute_quality
+    from test_production_pixiv_a2_evidence import quality_fixture
+    apply(database,build(database),scope_for(database))
+    cursor=database.connection().connection.cursor()
+    raw=collect_creator_projection(cursor)
+    accounts=[]
+    for creator,expected in [('920000001',[1,2,3]),('920000002',[4])]:
+        rows=[r for r in raw if r['provider_creator_id']==creator]
+        concepts=sorted({r['concept_id'] for r in rows})
+        assert len(concepts)==1
+        accounts.append({'provider_creator_id':creator,'concept_ids':concepts,
+            'bound_media_ids':sorted({r['media_id'] for r in rows}),'missing_bound_media_ids':[]})
+    family={'query':'AsterCurrent','expected_union_media_ids':[1,2,3,4],
+        'creators':[{'provider_creator_id':a['provider_creator_id'],'expected_media_ids':a['bound_media_ids']} for a in accounts]}
+    quality=quality_fixture()[0]
+    quality['projection_rows'] += [['AsterCurrent','artist',None,r['concept_id'],r['media_id'],'w'] for r in raw]
+    quality['cases'].append({'category':'bare_name_distinct_creator_accounts','query':'AsterCurrent',
+        'expected_account_union_media_ids':[1,2,3,4],'accounts':accounts,'passed':True})
+    quality['queries']['"AsterCurrent"']={'status_code':200,'ids':[1,2,3,4],'total':4}
+    oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    assert recompute_quality(quality,oracle,creator_oracle={'selected_families':[family]},creator_projection=raw)['failed_cases']==0
+    from app.models import SourceConceptEvidence
+    left=accounts[0]['concept_ids'][0];right=accounts[1]['concept_ids'][0]
+    database.query(SourceConceptEvidence).filter_by(concept_id=right).update({'concept_id':left})
+    database.flush()
+    changed=collect_creator_projection(cursor)
+    assert {r['concept_id'] for r in changed}=={left}
+    quality['projection_rows']=[[*r[:3],left,*r[4:]] if r[1]=='artist' and r[3]==right else r
+        for r in quality['projection_rows']]
+    # The cached attachment still reports two separate IDs and the API union is
+    # unchanged, but the actual source projection now has one account concept.
+    with pytest.raises(ValueError,match='creator_support_summary'):
+        recompute_quality(quality,oracle,creator_oracle={'selected_families':[family]},creator_projection=changed)
 
 
 def test_omitted_completion_universe_cannot_replace_existing_projection(database):

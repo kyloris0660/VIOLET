@@ -294,7 +294,24 @@ def frozen_identity_recall(pair,decision,baseline,*,recall_baseline=None):
     return sides
 
 
-def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None,recall_baseline=None,launch=None):
+def collect_creator_projection(cursor):
+    """Read actual stable-account support, never account summaries or names."""
+    cursor.execute('''select distinct r.provider,r.artist_id,e.concept_id,b.media_id
+        from blombooru_source_concept_product_media_bindings b
+        join blombooru_source_concept_product_runs p on p.id=b.product_run_id
+        join blombooru_source_concept_evidence e on e.id=b.evidence_id
+        join blombooru_source_concept_signals s on s.id=e.signal_id
+        join blombooru_source_metadata_records r on r.id=b.source_metadata_record_id
+        where p.source_mode='production_scope' and p.status='active'
+          and b.source_revision=r.binding_revision and r.provider='pixiv'
+          and s.role_hint='artist'
+          and s.origin_type in ('pixiv_creator_identity_anchor','pixiv_creator_observation')
+        order by r.provider,r.artist_id,e.concept_id,b.media_id''')
+    return [dict(zip(('provider','provider_creator_id','concept_id','media_id'),row))
+            for row in cursor.fetchall()]
+
+
+def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None,recall_baseline=None,launch=None,creator_projection=None):
     if launch is not None:
         from scripts.production_pixiv_a2_service_evidence import verify_quality_service
         verify_quality_service(quality,launch)
@@ -422,12 +439,31 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             family=next((r for r in (creator_oracle or {}).get('selected_families',[]) if r['query']==case['query']),None)
             if not family or set(case['expected_account_union_media_ids'])!=set(family['expected_union_media_ids']):
                 raise ValueError('a2_frozen_creator_expectation_changed')
-            accounts=case['accounts'];concepts=[set(a['concept_ids']) for a in accounts]
-            source={r['provider_creator_id']:set(r['expected_media_ids']) for r in family['creators']}
-            if {r['provider_creator_id'] for r in accounts}!=set(source):raise ValueError('a2_creator_account_missing')
+            accounts=case['accounts']
+            account_key=lambda r:(r.get('provider','pixiv'),r['provider_creator_id'])
+            source={account_key(r):set(r['expected_media_ids']) for r in family['creators']}
+            if (len(source)!=len(family['creators']) or len(accounts)!=len(source)
+                or {account_key(r) for r in accounts}!=set(source)):
+                raise ValueError('a2_creator_account_missing_or_duplicate')
+            raw=creator_projection if creator_projection is not None else quality.get('creator_projection_rows')
+            if not isinstance(raw,list) or not raw:raise ValueError('a2_creator_raw_projection_required')
+            actual_accounts={identity:{'concepts':set(),'media':set()} for identity in source}
+            artist_support={(row[3],row[4]) for row in projection if row[1]=='artist'}
+            for row in raw:
+                identity=account_key(row)
+                if identity not in source:continue
+                if (row['concept_id'],row['media_id']) not in artist_support:
+                    raise ValueError('a2_creator_projection_support_changed')
+                actual_accounts[identity]['concepts'].add(row['concept_id'])
+                actual_accounts[identity]['media'].add(row['media_id'])
+            concepts=[actual_accounts[account_key(a)]['concepts'] for a in accounts]
             for account in accounts:
-                missing=source[account['provider_creator_id']]-set(account['bound_media_ids'])
-                if missing!=set(account['missing_bound_media_ids']):raise ValueError('a2_creator_support_summary_changed')
+                identity=account_key(account);actual_account=actual_accounts[identity]
+                missing=source[identity]-actual_account['media']
+                if (set(account['concept_ids'])!=actual_account['concepts']
+                    or set(account['bound_media_ids'])!=actual_account['media']
+                    or missing!=set(account['missing_bound_media_ids'])):
+                    raise ValueError('a2_creator_support_summary_changed')
             actual=ids(quote(case['query']));expected=set(case['expected_account_union_media_ids'])
             passed=(expected==actual and queries[quote(case['query'])].get('total')==len(expected)
                 and all(len(c)==1 for c in concepts) and len(set.union(*concepts))==len(concepts)

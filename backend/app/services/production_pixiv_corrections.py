@@ -15,6 +15,28 @@ def correction_question_identity(unit):
     return canonical_fingerprint({k:v for k,v in group_prompt_payload(unit.unit_group).items() if k!='group_key'})
 
 
+def _validate_correction_target(signal, request):
+    if signal.evidence_payload.get('production_role_hint_evidence') or signal.role_hint == 'artist':
+        raise ValueError('semantic_correction_cannot_override_independent_strong_fact')
+    if not signal.parenthetical_context:
+        return
+    authority = request.get('parenthetical_role_correction', {})
+    if not isinstance(authority, dict):
+        raise ValueError('semantic_correction_parenthetical_authority_scope_invalid')
+    expected = {'aggregate_fingerprint': signal.evidence_payload['aggregate_fingerprint'],
+        'signal_key': signal.signal_key, 'raw_value': signal.raw_value,
+        'parenthetical_base': signal.parenthetical_base,
+        'parenthetical_context': signal.parenthetical_context, 'supersedes': signal_semantics(signal)}
+    targets = authority.get('targets', [])
+    if (not request.get('authorization') or authority.get('authorization') != request['authorization']
+        or authority.get('retain_context_source') is not True
+        or not isinstance(targets, list) or targets.count(expected) != 1
+        or len(targets) != len(request['raw_targets'])
+        or any(not isinstance(r, dict) for r in targets)
+        or {r.get('raw_value') for r in targets} != set(request['raw_targets'])):
+        raise ValueError('semantic_correction_parenthetical_authority_scope_invalid')
+
+
 def correction_units(consumer,facts,requests):
     from .production_pixiv_role_extraction import CORRECTION_ORIGIN,SourceCandidateInputGroup,SourceExtractionUnit
     by_aggregate=defaultdict(list)
@@ -30,6 +52,8 @@ def correction_units(consumer,facts,requests):
         seen.add(aggregate)
         before={raw:signal_semantics(by_raw[raw]) for raw in raws}
         if request.get('supersedes')!=before:raise ValueError('semantic_correction_previous_fact_changed')
+        for raw in raws:
+            _validate_correction_target(by_raw[raw], request)
         tags=tuple({'raw_tag':raw,'source_tag_kind':'provider_tag'} for raw in sorted(by_raw,key=lambda s:(canonical_source_key(s),s)))
         signature=canonical_fingerprint({'origin':CORRECTION_ORIGIN,'tags':tags,'request':request})
         key='production-role-correction:'+signature
@@ -75,8 +99,7 @@ def apply_semantic_corrections(consumer,facts):
         aggregate=signal.evidence_payload.get('aggregate_fingerprint');request=requests.get(aggregate)
         if not request or signal.raw_value not in request['raw_targets']:
             signals.append(signal);continue
-        if signal.parenthetical_context or signal.evidence_payload.get('production_role_hint_evidence'):
-            raise ValueError('semantic_correction_cannot_override_independent_strong_fact')
+        _validate_correction_target(signal, request)
         replay,coverage=replayed[aggregate];outcome=coverage['outcomes'][signal.raw_value]
         matches=[c for c in replay['candidates'] if _context_candidate_matches(c,signal.raw_value)]
         # F7a adds deterministic fragments from *other* tags in the context.
@@ -88,13 +111,14 @@ def apply_semantic_corrections(consumer,facts):
         if explicit:matches=explicit
         roles={role_from_source_role(c['candidate_role']) for c in matches}
         role=signal.role_hint;context=signal.work_context_key;status=signal.status;trust=signal.trust_tier
-        if len(roles)==1 and next(iter(roles)) in {'character','person','work'}:
+        if outcome['disposition']=='non_name':role='unknown';trust=status='rejected';context=None
+        elif outcome['disposition']=='unknown':role='unknown';status='needs_review';trust='weak';context=None
+        elif len(roles)==1 and next(iter(roles)) in {'character','person','work'}:
             best=max(matches,key=lambda c:c['confidence']);role=next(iter(roles))
             trust,status=_trust_for_f7a_candidate(SimpleNamespace(**{**best,'status':'active'}))
             contexts={canonical_source_key(c.get('work_context_key')) for c in matches if c.get('work_context_key')}
             context=next(iter(contexts)) if len(contexts)==1 and role!='work' else None
-        elif outcome['disposition']=='non_name':role='unknown';trust=status='rejected';context=None
-        elif outcome['disposition']=='unknown' or roles=={'unknown'}:
+        elif roles=={'unknown'}:
             role='unknown';status='needs_review';trust='weak';context=None
         elif len(roles)==1 and next(iter(roles))=='source_title':
             role='source_title';status='needs_review';trust='weak';context=None

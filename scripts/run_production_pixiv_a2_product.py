@@ -135,7 +135,7 @@ def main():
             aggregates=read(args.aggregates)
             live,coverage=build_production_inputs(session,scope,
                 work_ids={row['work_id'] for row in aggregates} if args.allow_partial_copy else None)
-            if not args.allow_partial_copy:verify_full_input(aggregates,live,coverage)
+            if not args.allow_partial_copy:verify_full_input(aggregates,live,coverage,scope=scope)
             elif canonical_fingerprint(live)!=canonical_fingerprint(aggregates):
                 raise RuntimeError('selected_source_snapshot_changed_refresh_required')
             receipt['tail_media_ids']=coverage['tail_media_ids']

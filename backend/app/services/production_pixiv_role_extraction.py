@@ -350,7 +350,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 if verdict.extraction_verdict.startswith('extraction_error'):raise ValueError('role_response_error_verdict')
                 if group.data_origin in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}:
                     targets=json.loads(group.data_type_label.split(': ',1)[1])
-                    coverage=role_target_coverage(SimpleNamespace(raw_values=targets),{
+                    coverage=role_target_coverage(SimpleNamespace(raw_values=targets,unit_group=group),{
                         'verdict':verdict.extraction_verdict,'candidates':[asdict(c) for c in candidates],
                         'validated_response':row})
                     if coverage['missing_raw_tags']:raise ValueError('role_response_missing_target_dispositions')
@@ -732,6 +732,19 @@ def role_target_coverage(unit,record):
     outcomes={};missing=[]
     for raw in unit.raw_values:
         matched=[row for row in record.get('candidates',[]) if _context_candidate_matches(row,raw)]
+        rows=by_raw.get(raw,[])
+        if getattr(getattr(unit,'unit_group',None),'data_origin',None)==CORRECTION_ORIGIN and rows:
+            # Explicit target outcomes outrank syntactic fragments recovered by
+            # F7a. Conflicting actual model candidates remain an invalid answer.
+            negative=(len(rows)==1 and rows[0].get('disposition') in {'unknown','non_name'}
+                and isinstance(rows[0].get('reason_code'),str) and rows[0]['reason_code'].strip())
+            explicit=[c for c in matched if c.get('evidence_payload',{}).get('llm_structured_extraction')]
+            if negative and not explicit:
+                outcomes[raw]={'disposition':rows[0]['disposition'],'reason_code':rows[0]['reason_code']}
+                continue
+            if negative or len(rows)!=1:
+                missing.append(raw)
+                continue
         if matched:
             outcomes[raw]={'disposition':'candidate','reported_roles':sorted({row['candidate_role'] for row in matched})}
             continue

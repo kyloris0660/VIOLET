@@ -129,6 +129,7 @@ def public_result(candidate):
         'production': {'active_runs': 1, 'duplicate_support_count': 0, 'bound_media': 6},
         'budget': {'cap_usd': 30, 'charged_or_reserved_usd': 1},
         'quality': {'failed_cases': 0, 'case_count': 80},
+        'identity_precision': {'failed_cases': 0, 'case_count': 2},
         'workload': {'query_count': 240, 'failed_queries': 0},
         'browser': {'originals_loaded': 3, 'thumbnails_loaded': 3},
         'launcher': {'new_process': True, 'apply_enabled': False}, 'validation': {}, 'recovery': {}}
