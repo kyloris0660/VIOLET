@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0",
+  "candidate_head": "7e54a8bbaadc16fdeaa748a2fe18ee056903fb83",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -58,7 +58,7 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
-    "20260927新增至79线程：逻辑尝试键精确绑定、重复raw目标拒绝、付费前完整预算授权及五步有序生命周期门禁已实现，开发66项通过，开始冻结候选验证。六次实际角色答复仍未解决泛称身份；原生产44保持可用，target/safe/route均false。",
+    "20260927最终79线程：最后4项逻辑寿命/重复目标/付费前授权/生命周期门禁已修复，业务7e54a8b通过538 focused/1 skip与96真实PG/API。旧84五步原收据、真实USD30授权和六次调用逻辑键通过新校验；保持历史身份。两个实际work/character答案未解决泛称身份，原生产44仍可用，target/safe/route均false；单文件包按精确交付HEAD干净解压及六项离线复算交接，等待Lead语义裁决。",
     "本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。",
     "a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。",
     "a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。",
@@ -849,7 +849,7 @@
   },
   "result_path": "docs/reports/production-pixiv-a2-summary.json",
   "correction27_execution": {
-    "stage": "review79_regression_in_progress_semantic_blocked",
+    "stage": "semantic_blocked_review79_handoff",
     "authority": "VIOLET-A2-下一步纠偏执行任务-20260927.md",
     "opening_head": "9676dff65cb6d8deaf6c025097ce40c3b35a6f49",
     "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
@@ -889,10 +889,10 @@
     "new_production_apply": false,
     "role_recovery": "correction27-role-recovery-private.json",
     "recovery_new_provider_calls": 0,
-    "frozen_code_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0",
+    "frozen_code_head": "7e54a8bbaadc16fdeaa748a2fe18ee056903fb83",
     "response_adapter_fix_pending_freeze": false,
     "final_focused": {
-      "passed": 515,
+      "passed": 538,
       "skipped": 1,
       "failed": 0
     },
@@ -931,10 +931,14 @@
     "prior_verified_package_head": "b63a58f006e275c4945ed2654700361c2de37d7d",
     "review75_dispositions": "correction27-review75-dispositions-private.json",
     "actual_live_gates": "correction27-review75-live-gates-private.json",
-    "package_verification": "External package receipt binds exact delivery HEAD, byte size, hashes, extraction and five offline replays; historical packages retained separately.",
+    "package_verification": "External receipt binds exact delivery HEAD, bytes, hashes, clean extraction and six offline replays; predecessor archives preserved.",
     "current_copy_browser": "correction27-review75-copy-browser-private.json",
     "current_copy_browser_check": "correction27-review75-current-browser-check-private.json",
-    "current_copy_browser_passed": true,
-    "current_copy_server_stopped": true
+    "current_copy_browser_passed": false,
+    "current_copy_server_stopped": true,
+    "review79_dispositions": "correction27-review79-dispositions-private.json",
+    "review79_actual_gates": "correction27-review79-local-validation-private.json",
+    "prior_copy_browser_passed": true,
+    "prior_copy_browser_business_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0"
   }
 }
