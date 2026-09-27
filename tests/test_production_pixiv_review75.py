@@ -19,7 +19,7 @@ def test_precision_source_requires_actual_bounded_file_digest_and_identity(tmp_p
     controls=fixture()[1]
     source={'identity':{'current_database':'prod','system_identifier':'system'},
         'metadata':[{'media_id':i,'provider':'pixiv','status':'observed','source_work_id':str(100+i),
-            'source_page_index':0,'raw_metadata_json':{'id':100+i,'page_count':1,'tags':['Name'],
+            'source_page_index':0,'raw_metadata_json':{'id':100+i,'page_count':1,'tags':{1:['Alpha'],2:['Beta'],3:['Alpha','Beta']}[i],
                 'user':{'id':7},'title':'Original title'}} for i in (1,2,3)]}
     path=tmp_path/'source.json';path.write_text(json.dumps(source),encoding='utf-8')
     digest=hashlib.sha256(path.read_bytes()).hexdigest()

@@ -83,6 +83,24 @@ def apply(db, run, scope):
     return replace_production_projection(db,run,scope=scope,apply=True,accepted_plan=plan)
 
 
+def test_real_source_sampler_records_database_identity_clock_and_replay(database):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real source sampler PostgreSQL identity')
+    import subprocess
+    from pathlib import Path
+    from scripts.production_pixiv_source_measurement import measure_source_case,replay_source_results
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    actual=tuple(database.execute(text('select current_database(),system_identifier::text from pg_control_system()')).one())
+    root=Path(__file__).resolve().parents[1]
+    head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+    case={'case_id':'real-source','terms':['fixture absent name']}
+    sample=measure_source_case(database,case,0,candidate=head,database=actual[0],system_identifier=actual[1])
+    assert sample['execution']['candidate_head']==head and sample['execution']['database']==actual[0]
+    assert sample['ms']>0 and sample['result_fingerprint']==canonical_fingerprint(sample['ids'])
+    assert replay_source_results(database,[case],database=actual[0],system_identifier=actual[1])=={case['case_id']:sample['ids']}
+    with pytest.raises(ValueError,match='runtime_identity'):
+        measure_source_case(database,case,0,candidate='0'*40,database=actual[0],system_identifier=actual[1])
+
+
 def seed_historical_partial(db,run,scope):
     from app.services.production_pixiv_service import scope_selection
     args={'scope_key':'pixiv:production:'+scope['canonical_fingerprint'][:32],

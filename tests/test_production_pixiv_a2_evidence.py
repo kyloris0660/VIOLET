@@ -206,6 +206,13 @@ def workload_fixture():
         'include_needs_review':False,'include_evidence_fallback':True,'ms':1}
         for case in cases for repeat in range(3)]
     launch=workload_launch_fixture()
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    import sys
+    for row in source:
+        row.update(include_production_alias_evidence=True,started_perf_ns=1000000,finished_perf_ns=2000000,
+            ids=[],result_fingerprint=canonical_fingerprint([]),execution={'candidate_head':launch['candidate_head'],
+                'database':launch['database'],'system_identifier':'system','code_root':launch['code_root'],
+                'python_executable':sys.executable,'pid':123})
     identity={'pid':launch['identity_pid'],'port':8012,'db_name':launch['database'],
         'git_sha':launch['candidate_head'][:7],'code_root':launch['code_root']}
     return {'queries':rows,'source_layer_measurements':source,'candidate_head':launch['candidate_head'],

@@ -311,6 +311,14 @@ def main():
         started=time.monotonic();results_count=Counter();new_calls=0
         def capture(command,**kwargs):
             nonlocal new_calls
+            from scripts.production_pixiv_metadata_entrypoint import verify_metadata_entrypoint
+            verify_metadata_entrypoint(auth,command=command)
+            if kwargs.get('shell'):
+                raise RuntimeError('metadata_shell_execution_forbidden')
+            # The accepted external Python provider must not inherit an
+            # unrelated task's module injection path.
+            kwargs['env']={k:v for k,v in kwargs.get('env',os.environ).items()
+                if k.upper() not in {'PYTHONPATH','PYTHONHOME'}}
             work=command[-1].rsplit('/',1)[-1]
             attempt=attempts[work]+1
             if attempt>3:raise RuntimeError('durable_attempt_admission_exhausted')
@@ -334,7 +342,12 @@ def main():
         replay={work:cached[work].read_text(encoding='utf-8') for work in works if work in cached}
         # Disable the CLI's default four hidden retries; the durable task
         # journal owns the three-attempt cap, including across continuations.
+        # Cached replay performs no process execution and keeps the original
+        # command only as provenance. Every real dispatch revalidates above.
         entrypoint=[*auth['entrypoint']['command'],'--retries','0','--sleep-request','2']
+        if any(work not in cached for work in works):
+            from scripts.production_pixiv_metadata_entrypoint import verify_metadata_entrypoint
+            entrypoint=verify_metadata_entrypoint(auth)
         result=run_bounded_acquisition(session,works,entrypoint=entrypoint,authentication_passed=True,
             accept_local_credential_risk=True,env=dict(os.environ),command_runner=capture,timeout_seconds=90,
             max_attempts_per_work=3,prior_attempt_counts=dict(attempts),result_callback=checkpoint,

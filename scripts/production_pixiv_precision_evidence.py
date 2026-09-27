@@ -42,6 +42,30 @@ def verify_precision_sources(controls, private_root, *, database, system_identif
     required.update(mid for c in controls.get('cooccurrence_controls',[]) for mid in c['media_ids'])
     if not required or not required<=observed:
         raise ValueError('a2_precision_source_media_missing')
+    from app.services.source_metadata_registry_service import canonical_source_key
+    tags_by_media={}
+    for row in source.get('metadata',[]):
+        if not complete_original(row):continue
+        names=set()
+        for tag in row['raw_metadata_json']['tags']:
+            if isinstance(tag,str):names.add(canonical_source_key(tag))
+            elif isinstance(tag,dict):
+                for field in ('name','translated_name'):
+                    if isinstance(tag.get(field),str):names.add(canonical_source_key(tag[field]))
+        tags_by_media.setdefault(row['media_id'],set()).update(names)
+    for case in controls['identity_separations']:
+        sides=case['sides']
+        for index,side in enumerate(sides):
+            names={canonical_source_key(n) for n in side['names']}
+            other={canonical_source_key(n) for n in sides[1-index]['names']}
+            for mid in side['exclusive_media_ids']:
+                tags=tags_by_media.get(mid,set())
+                if not names&tags or other&tags:
+                    raise ValueError('a2_precision_source_exclusive_name_relation')
+    for case in controls.get('cooccurrence_controls',[]):
+        for mid in case['media_ids']:
+            if not {canonical_source_key(n) for n in case['names']}<=tags_by_media.get(mid,set()):
+                raise ValueError('a2_precision_source_cooccurrence_name_relation')
     return {'source_sha256':digest,'source_media_count':len(observed),'required_media_ids':sorted(required)}
 
 
@@ -85,6 +109,10 @@ def recompute_precision(quality, controls, *, private_root=None, database=None, 
         left,right=case['names'];a,b=ids(left),ids(right);shared=set(case['media_ids'])
         if not case.get('source_evidence_sha256') or not shared<=a&b:
             raise ValueError('a2_precision_legitimate_cooccurrence_lost')
+        concepts=[{r[3] for r in projection if canonical_source_key(r[0])==canonical_source_key(name)
+            and r[1] in {'character','person'}} for name in (left,right)]
+        if not all(concepts) or concepts[0]&concepts[1]:
+            raise ValueError('a2_precision_cooccurrence_identities_merged_or_missing')
         qa,qb=(json.dumps(n,ensure_ascii=False) for n in (left,right))
         for query,expected in ((qa+' '+qb,a&b),(qa+' -'+qb,a-b),(qb+' -'+qa,b-a)):
             row=queries.get(query)

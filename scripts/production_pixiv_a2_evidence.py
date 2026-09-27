@@ -3,6 +3,7 @@ import math
 import re
 import statistics
 from collections import Counter
+from pathlib import Path
 from xml.etree import ElementTree
 
 PRESERVED_TABLES=frozenset('blombooru_'+name for name in (
@@ -509,7 +510,7 @@ def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle
             'categories':dict(Counter(c['category'] for c in quality['cases']))}
 
 
-def recompute_workload(workload, baseline, frozen_cases, *, launch):
+def recompute_workload(workload, baseline, frozen_cases, *, launch, system_identifier=None, source_results=None):
     """Bind the accepted HTTP and three source-layer passes before statistics."""
     import json
     from urllib.parse import urlsplit,parse_qs
@@ -538,12 +539,31 @@ def recompute_workload(workload, baseline, frozen_cases, *, launch):
         if origin(row['request_url'])!=expected_origin or request.path!='/api/search' or parse_qs(request.query)!= {'q':[row['query']],'limit':['64']}:
             raise ValueError('a2_workload_request_parameters')
     source=workload['source_layer_measurements'];seen=set()
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    import math
     for row in source:
         identity=(row['case_id'],row['repeat'])
         if identity in seen or row['case_id'] not in expected:raise ValueError('a2_workload_source_coverage')
         seen.add(identity)
         if (row['terms']!=expected[row['case_id']]['terms'] or row['include_needs_review'] is not False
-            or row['include_evidence_fallback'] is not True):raise ValueError('a2_workload_source_parameters')
+            or row['include_evidence_fallback'] is not True
+            or row.get('include_production_alias_evidence') is not True):raise ValueError('a2_workload_source_parameters')
+        execution=row.get('execution',{})
+        if (execution.get('candidate_head')!=workload['candidate_head'] or execution.get('database')!=workload['database']
+            or not execution.get('system_identifier') or (system_identifier is not None and execution['system_identifier']!=system_identifier)
+            or not recorded_code_root_matches(execution.get('code_root'),Path(launch['code_root']))
+            or not execution.get('python_executable') or type(execution.get('pid')) is not int or execution['pid']<=0):
+            raise ValueError('a2_workload_source_execution_identity')
+        start=row.get('started_perf_ns');end=row.get('finished_perf_ns');ms=row.get('ms')
+        if (type(start) is not int or type(end) is not int or not 0<=start<end
+            or not isinstance(ms,(int,float)) or not math.isfinite(ms)
+            or abs(ms-(end-start)/1000000)>1e-9):
+            raise ValueError('a2_workload_source_clock')
+        ids=row.get('ids')
+        if (not isinstance(ids,list) or any(type(mid) is not int or mid<=0 for mid in ids)
+            or ids!=sorted(set(ids)) or row.get('result_fingerprint')!=canonical_fingerprint(ids)
+            or (source_results is not None and ids!=source_results.get(row['case_id']))):
+            raise ValueError('a2_workload_source_result')
     if seen!={(case_id,repeat) for case_id in expected for repeat in range(3)}:
         raise ValueError('a2_workload_source_coverage')
     return latency_statistics(source),latency_statistics(workload['queries'])

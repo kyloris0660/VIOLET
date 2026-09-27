@@ -280,7 +280,20 @@ def derive_result(private,repo=ROOT):
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
     baseline=read(private,manifest['workload_baseline'])
     frozen_workload=[json.loads(line) for line in evidence_path(private,'accepted-240-query-workload-private.jsonl').read_text(encoding='utf-8').splitlines()]
-    source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload,launch=launch)
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import URL
+    from sqlalchemy.orm import Session
+    from scripts.production_pixiv_source_measurement import replay_source_results
+    engine=create_engine(URL.create('postgresql+psycopg2',username=cfg['user'],password=cfg['password'],
+        host=cfg['host'],port=cfg['port'],database=cfg['name']),
+        connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=30000 -c lock_timeout=3000'})
+    try:
+        with Session(engine) as session:
+            source_results=replay_source_results(session,frozen_workload,database=backup['database'],
+                system_identifier=backup['system_identifier'])
+    finally:engine.dispose()
+    source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload,launch=launch,
+        system_identifier=backup['system_identifier'],source_results=source_results)
     require(source_latency==workload['accepted_source_layer_latency_ms'] and http_latency==workload['latency_ms'],'query_statistics')
     p95_gate=750
     require(source_latency['p95_ms']<=p95_gate and source_latency['max_ms']<=3000,'full_scale_source_search_performance')
