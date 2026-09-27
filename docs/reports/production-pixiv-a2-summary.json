@@ -1,27 +1,31 @@
 {
   "schema_version": "violet.production-pixiv-a2.precision-closeout.v1",
-  "candidate_head": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
+  "candidate_head": "f6dca054d46609fec53ac02647c868e47acbd941",
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
-  "status": "PRODUCTION_PIXIV_A2_CORRECTION21_PRECISION_BLOCKED_PRIOR_A2_RESTORED_PENDING_PROJECT_LEAD_REVIEW",
-  "finite_quality_cases": 80,
-  "finite_quality_failures": 0,
-  "uncovered_precision_defect": true,
-  "incident": "correction22-precision-incident-private.json",
-  "proposal": "correction22-precision-correction-proposal-v2-private.json",
-  "registered_contract_observation": "correction22-production-registered-public-result.json; finite historical gate returned true before uncovered precision override",
+  "status": "PRODUCTION_PIXIV_A2_CORRECTION27_SEMANTIC_BLOCKED_BASELINE_AVAILABLE",
   "full_contract_completed": false,
-  "restored_baseline_verified": true,
-  "baseline_queries_verified": 117,
-  "provider_calls_this_correction": 0,
-  "budget_unchanged": true,
-  "review_package": {
-    "filename": "correction22-final-review-EVIDENCE.zip",
-    "bytes": 92019084,
-    "sha256": "f53bacb952190de58a6ec833d55e40f95f2d07edc1022fb928705cb3f682cb68",
-    "receipt": "correction22-final-review-package-private.json"
+  "new_production_apply": false,
+  "validation": {
+    "focused": {
+      "passed": 450,
+      "skipped": 1,
+      "failed": 0
+    },
+    "postgresql_api": {
+      "passed": 93,
+      "failed": 0
+    }
   },
-  "observed_at": "2026-09-22T16:56:38.066472+00:00"
+  "new_provider_calls": 6,
+  "recovery_provider_calls": 0,
+  "new_charge_usd": 0.006785,
+  "cumulative_charge_usd": 13.589429,
+  "role_answer_status": "structurally recovered; semantic repair not established",
+  "historical_80_candidate": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
+  "baseline_queries_verified": 117,
+  "review_threads": 71,
+  "review_package": "correction27-final-review-EVIDENCE.zip"
 }

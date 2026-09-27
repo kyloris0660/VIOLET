@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
+  "candidate_head": "f6dca054d46609fec53ac02647c868e47acbd941",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -30,7 +30,7 @@
     "legacy_main_documentation_check": "a1_live_branch",
     "legacy_permission_fields": "原执行代理阶段字段保留；不否定39号已接受、已合并及发布对齐授权，也不授予再次merge或推main权限。"
   },
-  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION27_EXECUTING",
+  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION27_SEMANTIC_BLOCKED_BASELINE_AVAILABLE",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -58,7 +58,7 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
-    "20260927：三项准入及两目标边界已实现；4faa9a6通过443 focused/1 skip和93真实PG/API，旧44正常EXE启动及117全分页查询一致。六次原始回答曾因base/括号字面覆盖漏接失败，零调用恢复后两个目标分别实际为work与character，仍未形成有效泛称纠正；原失败、费用和每目标三次寿命保留。继续来源依赖审计、适配回归和单包交付，新生产未apply。",
+    "20260927：业务f6dca05完成三项准入、括号纠正边界及真实base响应绑定；450 focused/1 skip、93真实PG/API通过。6付费raw零新增调用恢复，两个实际答案仍为work/character，泛称身份未纠正；全量依赖诊断8旧输入失效，原判断均保留。旧44正常EXE可用、117查询一致、真实Edge通过；71线程逐项对账。新副本/生产未执行，target/safe/route均false，单包解压复算交付继续。",
     "本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。",
     "a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。",
     "a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。",
@@ -120,7 +120,7 @@
     "普通启动预检发现原候选目录漂移，已备份并固定44db0da运行目录，普通EXE停止/启动与自动preflight/健康通过；原生产8623/66572、保护不变，新版未部署。",
     "完整注册契约实际失败且后续可独立门禁逐项执行；质量与新生产门禁未通过，target/safe_to_merge/route_approved均false。十例中文人工对照指南、操作恢复文档和私有审阅包已生成；上传包361164482 bytes、150505文件，完整档案726782423 bytes、150541文件，ZIP校验与10张指南图片引用通过。仅省去41个有索引的中间文件，完整档案及原失败保留。同一PR153已更新，测试/调试入口关闭，普通旧生产继续可用。"
   ],
-  "next_required_checkpoint": "Freeze response-provenance repair, finish dependency diagnostics, baseline Edge, 71-thread accounting and extracted single ZIP. Actual role answers remain semantically insufficient; no new production apply.",
+  "next_required_checkpoint": "Lead review of actual work/character answers and bounded correction method; no new role lifetime reset. Verify single ZIP handoff; no production apply until identity and all contract gates pass.",
   "durable_links": [
     {
       "label": "A2实施方案",
@@ -849,7 +849,7 @@
   },
   "result_path": "docs/reports/production-pixiv-a2-summary.json",
   "correction27_execution": {
-    "stage": "saved_raw_recovered_semantic_repair_not_established",
+    "stage": "semantic_blocked_owner_handoff",
     "authority": "VIOLET-A2-下一步纠偏执行任务-20260927.md",
     "opening_head": "9676dff65cb6d8deaf6c025097ce40c3b35a6f49",
     "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
@@ -889,10 +889,10 @@
     "new_production_apply": false,
     "role_recovery": "correction27-role-recovery-private.json",
     "recovery_new_provider_calls": 0,
-    "frozen_code_head": "4faa9a69bdee1252a546b4b6ab1f6c4b86465c64",
-    "response_adapter_fix_pending_freeze": true,
+    "frozen_code_head": "f6dca054d46609fec53ac02647c868e47acbd941",
+    "response_adapter_fix_pending_freeze": false,
     "final_focused": {
-      "passed": 443,
+      "passed": 450,
       "skipped": 1,
       "failed": 0
     },
@@ -901,6 +901,11 @@
       "failed": 0
     },
     "baseline_complete_queries": 117,
-    "baseline_queries_equal": true
+    "baseline_queries_equal": true,
+    "dependency_diagnostic": "correction27-dependency-diagnostic-v3-private.json",
+    "invalidated_previous_inputs": 8,
+    "unchanged_direct_dependencies": 31604,
+    "current_registered_contract": "correction27-final-registered-contract-private.json",
+    "current_browser": "correction27-baseline-browser-private.json"
   }
 }

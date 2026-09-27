@@ -4,7 +4,7 @@
 
 当前状态以 docs/state/current-phase.json 为准。
 
-- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_CORRECTION27_EXECUTING`。
+- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_CORRECTION27_SEMANTIC_BLOCKED_BASELINE_AVAILABLE`。
 - 分支：`codex/production-pixiv-a2`；PR：`153`。
 - 已接受并合并基线：PR #152 / `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。
 - 工程目标完成：`False`；负责人接受：`pending_project_lead_review`。
@@ -12,7 +12,7 @@
 
 ## 已完成检查点
 
-- 20260927：三项准入及两目标边界已实现；4faa9a6通过443 focused/1 skip和93真实PG/API，旧44正常EXE启动及117全分页查询一致。六次原始回答曾因base/括号字面覆盖漏接失败，零调用恢复后两个目标分别实际为work与character，仍未形成有效泛称纠正；原失败、费用和每目标三次寿命保留。继续来源依赖审计、适配回归和单包交付，新生产未apply。
+- 20260927：业务f6dca05完成三项准入、括号纠正边界及真实base响应绑定；450 focused/1 skip、93真实PG/API通过。6付费raw零新增调用恢复，两个实际答案仍为work/character，泛称身份未纠正；全量依赖诊断8旧输入失效，原判断均保留。旧44正常EXE可用、117查询一致、真实Edge通过；71线程逐项对账。新副本/生产未执行，target/safe/route均false，单包解压复算交付继续。
 - 本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。
 - a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。
 - a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。
@@ -103,7 +103,7 @@
 - 不合并、不推main、不触发额外reviewer、不进入A3。
 - 自动验证、负责人接受及产品用户体验分别记账。
 
-下一检查点：Freeze response-provenance repair, finish dependency diagnostics, baseline Edge, 71-thread accounting and extracted single ZIP. Actual role answers remain semantically insufficient; no new production apply.
+下一检查点：Lead review of actual work/character answers and bounded correction method; no new role lifetime reset. Verify single ZIP handoff; no production apply until identity and all contract gates pass.
 
 ## 持久入口
 
