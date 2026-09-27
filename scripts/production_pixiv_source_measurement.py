@@ -35,3 +35,22 @@ def replay_source_results(session,cases,*,database,system_identifier):
     if tuple(session.execute(text('select current_database(),system_identifier::text from pg_control_system()')).one())!=(database,system_identifier):
         raise ValueError('a2_source_replay_database_identity')
     return {case['case_id']:source_ids(session,case['terms']) for case in cases}
+
+
+def verify_live_source_performance(session,cases,*,candidate,database,system_identifier):
+    """Release timing comes from this execution, never from editable receipts."""
+    from scripts.production_pixiv_a2_evidence import latency_statistics
+    if not cases or len({c['case_id'] for c in cases})!=len(cases):
+        raise ValueError('a2_live_source_case_coverage')
+    samples=[measure_source_case(session,case,repeat,candidate=candidate,database=database,
+        system_identifier=system_identifier) for repeat in range(3) for case in cases]
+    results={}
+    for sample in samples:
+        key=sample['case_id']
+        if key in results and results[key]!=sample['ids']:
+            raise ValueError('a2_live_source_result_changed')
+        results[key]=sample['ids']
+    latency=latency_statistics(samples)
+    if latency['p95_ms']>750 or latency['max_ms']>3000:
+        raise ValueError('a2_live_source_performance_failed')
+    return {'results':results,'latency':latency,'samples':samples}

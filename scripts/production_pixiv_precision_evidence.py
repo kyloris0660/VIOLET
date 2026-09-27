@@ -95,8 +95,12 @@ def recompute_precision(quality, controls, *, private_root=None, database=None, 
             names={canonical_source_key(n) for n in side['names']}
             # Co-occurring different roles and literal ordinary tags remain
             # valid; only character/person identity support defines this set.
-            current={r[3] for r in projection if canonical_source_key(r[0]) in names and r[1] in {'character','person'}}
-            if not current:raise ValueError('a2_precision_identity_support_missing')
+            per_name=[{r[3] for r in projection if canonical_source_key(r[0])==name
+                and r[1] in {'character','person'}} for name in names]
+            if not all(per_name):raise ValueError('a2_precision_identity_support_missing')
+            current=set.union(*per_name)
+            if len(current)!=1:
+                raise ValueError('a2_precision_alias_identity_split:'+case['id'])
             concepts.append(current)
             for name in side['names']:
                 actual=ids(name)
@@ -111,7 +115,7 @@ def recompute_precision(quality, controls, *, private_root=None, database=None, 
             raise ValueError('a2_precision_legitimate_cooccurrence_lost')
         concepts=[{r[3] for r in projection if canonical_source_key(r[0])==canonical_source_key(name)
             and r[1] in {'character','person'}} for name in (left,right)]
-        if not all(concepts) or concepts[0]&concepts[1]:
+        if any(len(c)!=1 for c in concepts) or concepts[0]&concepts[1]:
             raise ValueError('a2_precision_cooccurrence_identities_merged_or_missing')
         qa,qb=(json.dumps(n,ensure_ascii=False) for n in (left,right))
         for query,expected in ((qa+' '+qb,a&b),(qa+' -'+qb,a-b),(qb+' -'+qa,b-a)):

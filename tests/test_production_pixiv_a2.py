@@ -87,7 +87,7 @@ def test_real_source_sampler_records_database_identity_clock_and_replay(database
     if database.bind.dialect.name!='postgresql':pytest.skip('real source sampler PostgreSQL identity')
     import subprocess
     from pathlib import Path
-    from scripts.production_pixiv_source_measurement import measure_source_case,replay_source_results
+    from scripts.production_pixiv_source_measurement import measure_source_case,replay_source_results,verify_live_source_performance
     from app.services.pixiv_metadata_projection_service import canonical_fingerprint
     actual=tuple(database.execute(text('select current_database(),system_identifier::text from pg_control_system()')).one())
     root=Path(__file__).resolve().parents[1]
@@ -97,6 +97,9 @@ def test_real_source_sampler_records_database_identity_clock_and_replay(database
     assert sample['execution']['candidate_head']==head and sample['execution']['database']==actual[0]
     assert sample['ms']>0 and sample['result_fingerprint']==canonical_fingerprint(sample['ids'])
     assert replay_source_results(database,[case],database=actual[0],system_identifier=actual[1])=={case['case_id']:sample['ids']}
+    fresh=verify_live_source_performance(database,[case],candidate=head,database=actual[0],system_identifier=actual[1])
+    assert len(fresh['samples'])==3 and fresh['results'][case['case_id']]==sample['ids']
+    assert fresh['latency']['p95_ms']>0
     with pytest.raises(ValueError,match='runtime_identity'):
         measure_source_case(database,case,0,candidate='0'*40,database=actual[0],system_identifier=actual[1])
 

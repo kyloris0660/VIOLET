@@ -4024,6 +4024,11 @@ def check_documentation_state(
     implementation_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state = load_state(root / "docs" / "state" / "current-phase.json")
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A2':
+        for path in (root/'docs/state').glob('production-pixiv-a2*.json'):
+            serialized=path.read_text(encoding='utf-8')
+            if any(p.search(serialized) for p in PUBLIC_FORBIDDEN) or re.search(r'[A-Za-z]:/',serialized):
+                raise DocumentationStateError('public_a2_anchor_redaction_failure:'+path.name)
     validate_state(state, root=root)
     if root.resolve() == ROOT.resolve():
         validate_git_ancestry(

@@ -186,6 +186,7 @@ def derive_result(private,repo=ROOT):
     head=manifest['candidate_head']
     from scripts.trusted_git import candidate_behavior_carry_forward
     require(candidate_behavior_carry_forward(repo,head),'behavior_carry_forward')
+    execution_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
     backup=read(private,'backup-private.json');restore=read(private,'restore-private.json')
     dump=Path(backup['dump_path'])
     require(dump.is_file() and dump.stat().st_size==backup['bytes']>0,'backup_file')
@@ -300,18 +301,20 @@ def derive_result(private,repo=ROOT):
     from sqlalchemy import create_engine
     from sqlalchemy.engine import URL
     from sqlalchemy.orm import Session
-    from scripts.production_pixiv_source_measurement import replay_source_results
+    from scripts.production_pixiv_source_measurement import verify_live_source_performance
     engine=create_engine(URL.create('postgresql+psycopg2',username=cfg['user'],password=cfg['password'],
         host=cfg['host'],port=cfg['port'],database=cfg['name']),
         connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=30000 -c lock_timeout=3000'})
     try:
         with Session(engine) as session:
-            source_results=replay_source_results(session,frozen_workload,database=backup['database'],
+            live_source=verify_live_source_performance(session,frozen_workload,candidate=execution_head,database=backup['database'],
                 system_identifier=backup['system_identifier'])
     finally:engine.dispose()
     source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload,launch=launch,
-        system_identifier=backup['system_identifier'],source_results=source_results)
+        system_identifier=backup['system_identifier'],source_results=live_source['results'])
     require(source_latency==workload['accepted_source_layer_latency_ms'] and http_latency==workload['latency_ms'],'query_statistics')
+    # Both historical and freshly measured performance must pass. Preserve the
+    # original statistics in the deterministic report; reruns naturally differ.
     p95_gate=750
     require(source_latency['p95_ms']<=p95_gate and source_latency['max_ms']<=3000,'full_scale_source_search_performance')
     validation=validation_evidence(private,read(private,manifest['validation']),head)
@@ -324,7 +327,8 @@ def derive_result(private,repo=ROOT):
             'call_count':budget['call_count'],'unknown_usage_count':budget['unknown_usage_count']},
         'quality':quality_actual,'identity_precision':precision_actual,
         'workload':{'query_count':len(workload['queries']),'failed_queries':0,**http_latency,
-            'source_layer_latency_ms':source_latency,'applicable_source_layer_p95_gate_ms':p95_gate},
+            'source_layer_latency_ms':source_latency,'applicable_source_layer_p95_gate_ms':p95_gate,
+            'live_source_performance_rechecked':True},
         'browser':{**{key:browser[key] for key in ('originals_loaded','thumbnails_loaded')},**browser_actions},
         'launcher':{'new_process':True,'apply_enabled':launch['apply_enabled']},'validation':validation,
         'recovery':{'independent_restore':True,'owned_rollback_replay':True,'independent_support_preserved':True,'batch_business_equivalent':True,

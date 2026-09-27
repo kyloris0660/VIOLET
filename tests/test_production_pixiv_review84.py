@@ -78,7 +78,10 @@ def test_provider_command_cannot_be_selected_by_private_canary(tmp_path,monkeypa
     anchor={'accepted_canary_fingerprint':hashlib.sha256(json.dumps(auth,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest(),
         'entrypoint':copy.deepcopy(auth['entrypoint']),'files':[{'path':str(exe),'sha256':hashlib.sha256(exe.read_bytes()).hexdigest()}]}
     directory=tmp_path/'docs/state';directory.mkdir(parents=True)
-    (directory/'production-pixiv-a2-metadata-entrypoint.json').write_text(json.dumps(anchor))
+    private=tmp_path/'.local_manifests/pixiv-a2';private.mkdir(parents=True)
+    raw=json.dumps(anchor).encode();(private/'identity.json').write_bytes(raw)
+    (directory/'production-pixiv-a2-metadata-entrypoint.json').write_text(json.dumps({
+        'private_identity_file':'identity.json','private_identity_sha256':hashlib.sha256(raw).hexdigest()}))
     monkeypatch.setattr(gate,'ROOT',tmp_path)
     prefix=gate.verify_metadata_entrypoint(auth)
     command=[*prefix,'--dump-json','--no-download','https://www.pixiv.net/artworks/123']
