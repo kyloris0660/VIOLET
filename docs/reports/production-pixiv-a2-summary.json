@@ -27,5 +27,9 @@
   "historical_80_candidate": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
   "baseline_queries_verified": 117,
   "review_threads": 71,
-  "review_package": "correction27-final-review-EVIDENCE.zip"
+  "review_package": "correction27-final-review-EVIDENCE.zip",
+  "review_package_receipt": "correction27-final-review-package-private.json",
+  "package_core_extracted_and_recomputed": true,
+  "offline_replay_scripts_passed": 4,
+  "engineering_goal_complete": false
 }

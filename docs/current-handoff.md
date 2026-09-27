@@ -12,7 +12,7 @@
 
 ## 已完成检查点
 
-- 20260927：业务f6dca05完成三项准入、括号纠正边界及真实base响应绑定；450 focused/1 skip、93真实PG/API通过。6付费raw零新增调用恢复，两个实际答案仍为work/character，泛称身份未纠正；全量依赖诊断8旧输入失效，原判断均保留。旧44正常EXE可用、117查询一致、真实Edge通过；71线程逐项对账。新副本/生产未执行，target/safe/route均false，单包解压复算交付继续。
+- 20260927：业务f6dca05完成三项准入、括号纠正边界及真实base响应绑定；450 focused/1 skip、93真实PG/API通过。6付费raw零新增调用恢复，两个实际答案仍为work/character，泛称身份未纠正；全量依赖诊断8旧输入失效，原判断均保留。旧44正常EXE可用、117查询一致、真实Edge通过；71线程逐项对账。新副本/生产未执行，target/safe/route均false，单包实际解压、全部JSON/XML及相对文档引用检查、4项独立复算通过；按明确失败交接，等待Lead语义裁决。
 - 本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。
 - a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。
 - a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。
@@ -103,7 +103,7 @@
 - 不合并、不推main、不触发额外reviewer、不进入A3。
 - 自动验证、负责人接受及产品用户体验分别记账。
 
-下一检查点：Lead review of actual work/character answers and bounded correction method; no new role lifetime reset. Verify single ZIP handoff; no production apply until identity and all contract gates pass.
+下一检查点：Lead review of actual work/character answers and bounded correction method. Preserve original logical lifetimes and old production; no new production apply until identity and all contract gates pass.
 
 ## 持久入口
 
