@@ -1,0 +1,28 @@
+{
+  "focused": [
+    "tests/test_production_pixiv_review71.py",
+    "tests/test_production_pixiv_precision_evidence.py",
+    "tests/test_production_pixiv_a2_contract.py",
+    "tests/test_production_pixiv_review60.py",
+    "tests/test_production_pixiv_corrections.py",
+    "tests/test_production_pixiv_role_coverage.py",
+    "tests/test_production_pixiv_correction_gates.py",
+    "tests/test_production_pixiv_review68.py",
+    "tests/test_production_pixiv_ambiguity_adapter.py",
+    "tests/test_production_pixiv_a2_evidence.py",
+    "tests/test_production_pixiv_review63.py",
+    "tests/test_production_pixiv_release_inputs.py",
+    "tests/test_production_pixiv_role_extraction.py",
+    "tests/test_phase45_scv2_r2_constraint_aware_graph_remediation.py",
+    "tests/test_production_pixiv_review84.py",
+    "tests/test_production_pixiv_review79.py",
+    "tests/test_production_pixiv_review75.py",
+    "tests/test_phase45_scv2_r2r_autonomous_recall_search_closure.py",
+    "tests/test_production_pixiv_review86.py"
+  ],
+  "postgresql": [
+    "tests/test_production_pixiv_a2.py",
+    "tests/test_production_pixiv_a2_api.py",
+    "tests/test_production_pixiv_a1.py"
+  ]
+}

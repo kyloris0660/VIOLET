@@ -63,6 +63,20 @@ def check_public_result(value,root=ROOT):
     require(not re.search(r'(?i)([A-Z]:[\\/]|postgres(?:ql)?://|password|api_key|raw_metadata|source_url)',json.dumps(value)),'public_privacy')
 
 
+def verify_required_test_command(private,gate,command,label):
+    import sys
+    manifest=json.loads((ROOT/'docs/state/production-pixiv-a2-required-tests.json').read_text(encoding='utf-8'))
+    argv=command.get('argv',[])
+    expected=manifest[label]
+    require(len(argv)==len(expected)+5 and argv[1:3]==['-m','pytest']
+        and argv[-2]=='-q' and argv[-1].startswith('--junitxml='),'validation_required_command')
+    require(Path(argv[0]).resolve()==Path(sys.executable).resolve()
+        and Path(command['cwd']).resolve()==ROOT.resolve(),'validation_runtime_identity')
+    require(len(set(argv[3:-2]))==len(expected) and set(argv[3:-2])==set(expected),'validation_required_tests')
+    require(Path(argv[-1].split('=',1)[1]).resolve()==evidence_path(private,gate['xml']),
+        'validation_required_xml')
+
+
 def validation_evidence(private,record,candidate):
     from scripts.production_pixiv_a2_evidence import pytest_outcome
     summary={}
@@ -72,7 +86,9 @@ def validation_evidence(private,record,candidate):
         log=evidence_path(private,gate['log']).read_text(encoding='utf-8')
         require(command['argv'][1:3]==['-m','pytest'],'validation_command')
         require(command.get('status')=='finished','validation_finished')
-        if label!='non_e2e':require(command['source_head']==candidate,'validation_candidate')
+        if label!='non_e2e':
+            require(command['source_head']==candidate,'validation_candidate')
+            verify_required_test_command(private,gate,command,label)
         actual,failures=pytest_outcome(command,log,evidence_path(private,gate['xml']) if gate.get('xml') else None)
         require(all(actual[key]==gate[key] for key in ('passed','failed','skipped')) and actual['passed']>0,'validation_counts')
         if label!='non_e2e':require(not failures and actual['failed']==0,'focused_or_postgresql_failure')

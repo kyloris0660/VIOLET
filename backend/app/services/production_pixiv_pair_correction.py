@@ -82,7 +82,8 @@ def verify_correction_prior_sources(rows,config,ledger):
         response=source.get('budget_response')
         if response:
             call=calls.get(response['reservation'])
-            if not call or call['status']=='reserved' or call['key']!=response['key']:
+            if (not call or call['status']!='success' or call.get('business_valid',True) is not True
+                or call['key']!=response['key']):
                 raise ValueError('correction_prior_attempt_unverified')
             if call.get('usage_known') and call['usage']!={k:response['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
                 raise ValueError('correction_prior_usage_changed')
