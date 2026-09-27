@@ -1,6 +1,6 @@
 {
   "schema_version": "violet.production-pixiv-a2.precision-closeout.v1",
-  "candidate_head": "f6dca054d46609fec53ac02647c868e47acbd941",
+  "candidate_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0",
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "target_met": false,
   "safe_to_merge": false,
@@ -10,12 +10,12 @@
   "new_production_apply": false,
   "validation": {
     "focused": {
-      "passed": 450,
+      "passed": 515,
       "skipped": 1,
       "failed": 0
     },
     "postgresql_api": {
-      "passed": 93,
+      "passed": 96,
       "failed": 0
     }
   },
@@ -26,10 +26,10 @@
   "role_answer_status": "structurally recovered; semantic repair not established",
   "historical_80_candidate": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
   "baseline_queries_verified": 117,
-  "review_threads": 71,
+  "review_threads": 75,
   "review_package": "correction27-final-review-EVIDENCE.zip",
   "review_package_receipt": "correction27-final-review-package-private.json",
-  "package_core_extracted_and_recomputed": true,
-  "offline_replay_scripts_passed": 4,
-  "engineering_goal_complete": false
+  "engineering_goal_complete": false,
+  "review75_actual_gates": "correction27-review75-live-gates-private.json",
+  "package_verification": "Exact final receipt is external to the ZIP and bound to delivery HEAD."
 }

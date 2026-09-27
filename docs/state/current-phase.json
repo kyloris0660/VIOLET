@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "f6dca054d46609fec53ac02647c868e47acbd941",
+  "candidate_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -58,7 +58,7 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
-    "20260927交付前远端自动新增4条意见，75线程。实际身份投影改由数据库重算，精度控制绑定受限路径实际hash/身份，隔离部分演练恢复选择分母，生产alias/R2R开关分离并审计同类QA路径。修前8失败/2通过保留，98受影响及63搜索回归通过，当前真实PG与新HEAD冻结验证中；旧包对应b63a58f作为历史保留，随后按当前代码重新解压复算。两目标语义阻断和旧44不变。",
+    "20260927最终75线程：新增4项来源/隔离/搜索意见修复，业务6d520d8通过515 focused/1 skip和96真实PG/API。66,572条实际投影与精度来源hash/身份已重算，伪造附件及旧84误召回被拒绝。6次角色raw恢复但实际work/character未形成泛称身份纠正；8条旧判断依赖失效、原始回答/费用保留。旧44保持可用，新副本/生产不执行，target/safe/route均false；单文件包以外部精确HEAD解压复算收据交接，等待Lead语义裁决。",
     "本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。",
     "a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。",
     "a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。",
@@ -849,7 +849,7 @@
   },
   "result_path": "docs/reports/production-pixiv-a2-summary.json",
   "correction27_execution": {
-    "stage": "review75_fixes_current_validation",
+    "stage": "semantic_blocked_review75_handoff",
     "authority": "VIOLET-A2-下一步纠偏执行任务-20260927.md",
     "opening_head": "9676dff65cb6d8deaf6c025097ce40c3b35a6f49",
     "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
@@ -889,15 +889,15 @@
     "new_production_apply": false,
     "role_recovery": "correction27-role-recovery-private.json",
     "recovery_new_provider_calls": 0,
-    "frozen_code_head": "f6dca054d46609fec53ac02647c868e47acbd941",
+    "frozen_code_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0",
     "response_adapter_fix_pending_freeze": false,
     "final_focused": {
-      "passed": 450,
+      "passed": 515,
       "skipped": 1,
       "failed": 0
     },
     "final_postgresql_api": {
-      "passed": 93,
+      "passed": 96,
       "failed": 0
     },
     "baseline_complete_queries": 117,
@@ -909,8 +909,6 @@
     "current_browser": "correction27-baseline-browser-private.json",
     "review_package": "correction27-final-review-EVIDENCE.zip",
     "package_receipt": "correction27-final-review-package-private.json",
-    "package_core_extracted_and_recomputed": false,
-    "offline_replay_scripts_passed": 4,
     "package_hash_policy": "Exact final archive size/hash is in the external receipt to avoid archive self-reference; documentation-only synchronization is re-extracted and rechecked.",
     "review75_findings": [
       "actual identity projection",
@@ -930,6 +928,9 @@
       "passed": 63,
       "failed": 0
     },
-    "prior_verified_package_head": "b63a58f006e275c4945ed2654700361c2de37d7d"
+    "prior_verified_package_head": "b63a58f006e275c4945ed2654700361c2de37d7d",
+    "review75_dispositions": "correction27-review75-dispositions-private.json",
+    "actual_live_gates": "correction27-review75-live-gates-private.json",
+    "package_verification": "External package receipt binds exact delivery HEAD, byte size, hashes, extraction and five offline replays; historical packages retained separately."
   }
 }

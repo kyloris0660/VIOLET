@@ -2,7 +2,7 @@
 
 本轮未达到 A2 工程通过。三个发布准入缺口、括号目标纠正边界和真实回答解析已修复并验证；两个真实回答仍将已证实泛称认作作品或角色，不能作为成功纠正发布。保留可用旧生产，target_met / safe_to_merge / route_approved 均为 false。
 
-同一 PR #153 / codex/production-pixiv-a2。业务代码 HEAD：`f6dca054d46609fec53ac02647c868e47acbd941`；此前实现提交：`4faa9a69bdee1252a546b4b6ab1f6c4b86465c64`。开工本地/远端 `9676dff65cb6d8deaf6c025097ce40c3b35a6f49`，可信 origin/main `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。旧84行为候选的80/80属于历史有限口径，当前生产为 `44db0da0c1df2fe38434cacc57308f2c0e33ec0f`。
+同一 PR #153 / codex/production-pixiv-a2。业务代码 HEAD：`6d520d88f690b96bb6c93046fa268bd7dfc28ee0`；此前实现提交：`4faa9a69bdee1252a546b4b6ab1f6c4b86465c64`。开工本地/远端 `9676dff65cb6d8deaf6c025097ce40c3b35a6f49`，可信 origin/main `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。旧84行为候选的80/80属于历史有限口径，当前生产为 `44db0da0c1df2fe38434cacc57308f2c0e33ec0f`。
 
 ## 已完成实现与实际验证
 
@@ -12,6 +12,14 @@
 - 仅本任务两目标可纠正；独立角色事实、作者、范围外目标仍受保护。non_name和unknown的实际角色投影及原始响应来源重放均有回归。保留原括号base/context和原模型事实。
 - 精度控制独立于原80例：来源冻结1737反例、784反向独占、5147真实多角色同图，并保持3915/5256/5651/718/714/715。新门禁实际拒绝旧84的nahida误召回；注册契约在缺少本候选完整生产证据时实际拒绝 `a2_behavior_carry_forward`。
 - 全量选中31,612判断有界筛查得到5项关键词线索；两项为合法名称形式，已知泛称桥接成立；两条Fate可疑理由经实际副本307条相关绑定复核没有合并为同一概念，未扩展付费目标。
+
+## 交付前新增75线程复核
+
+远端自动新增4条实际意见，未主动触发reviewer。当前全部75线程逐项对账；新增四项已修复：身份判断改从实时数据库重建名称/角色/概念/Media关系并与质量附件按multiset核对；精度来源从证据根限制路径读取，验证实际SHA、每case摘要和数据库身份；隔离库部分演练按选择work计分母并验证实际数据库名，原生产仍禁止部分替换；生产alias与R2R fallback分别受各自开关控制，同类QA路径同步修复。
+
+修前8失败/2通过、修后98受影响检查及63搜索回归均保留。开发PG首次95通过/1失败是新增测试错误把工作910000001的2条Media期望写为3，已依据实际固定映射纠正；不是放宽生产门禁。来源校验首次把observed状态误当作内容不完整而拒绝784/1737，已改为核对原始完整Pixiv response本身的work/page、title/tags/user。冻结来源字节与hash不变，不能用归一化工作流状态否定既存完整原始证据；真实源身份不匹配/字段缺失有独立反例。
+
+当前精确业务HEAD通过515 focused/1权限skip及96真实PG/API。只读实际收集66,572条现有投影，伪造附件立即拒绝；来源hash和数据库身份校验通过，要求的784/1737/5147均有完整原始记录；旧84精度反例及当前缺生产证明的注册契约仍实际拒绝。原模型费用、原逻辑寿命、旧44运行及无新生产apply不变。准确命令使用correction27-review75-source-final前缀；旧450/93和513/96均为相应历史提交，不合并计算。
 
 ## 六次原始响应与零调用恢复
 
@@ -25,7 +33,7 @@
 
 ## 精确验证与现状
 
-业务HEAD的focused为450 passed、1 skipped（Windows权限节点），真实PostgreSQL/API为93 passed、0 failed。准确argv、环境身份、退出码和JUnit在 `correction27-recovery-final-*-command-private.json` 与同名前缀XML/log。此前4faa9a6的443/1和93、开发失败及修前9 failed/1 passed均留存。未重跑全套non-E2E；原历史AI证据例外不扩展。
+业务HEAD的focused为515 passed、1 skipped（Windows权限节点），真实PostgreSQL/API为96 passed、0 failed。准确argv、环境身份、退出码和JUnit在 `correction27-review75-source-final-*-command-private.json` 与同名前缀XML/log。此前4faa9a6的443/1和93、开发失败及修前9 failed/1 passed均留存。未重跑全套non-E2E；原历史AI证据例外不扩展。
 
 开工旧服务已停止、投影完整；通过原无参数EXE点击Start恢复可用，profile未改。当前PID52900、8012、旧44、read ON/apply OFF，66572支持/8623绑定Media，38114总Media，无尾部新增/固定缺失/活动工作。实际117全分页查询与旧基线一致，nahida不含1737。系统Edge完成三图原图/缩略图/来源chip、标签/suggestion、搜索及恢复页，0页面错误；截图已实际查看。完整原启动EXE祖先因便携进程退出未留齐，不声称新候选正式正常入口验收。
 
@@ -36,7 +44,7 @@
 
 
 
-71条线程已逐项对账：68条历史状态/例外保持，3条新增实现和当前回归已核对；不resolve、不触发reviewer。单文件包 `correction27-final-review-EVIDENCE.zip` 含原包核心及本轮决定性输入、代码、raw、完整页、失败和独立复算脚本；实际尺寸/hash与干净解压结果在包外同名交付收据及最终回复，避免自引用哈希。
+75条线程已逐项对账：原71条保留并更新验证，后续4条实际意见已实现与验证；不resolve、不触发reviewer。单文件包 `correction27-final-review-EVIDENCE.zip` 含原包核心及本轮决定性输入、代码、raw、完整页、失败和独立复算脚本；实际尺寸/hash与干净解压结果在包外同名交付收据及最终回复，避免自引用哈希。
 
 未merge、未推main、未force、未A3；未改Entity、原媒体、缩略图、人工标签、源/iCloud目录或provider路由，未新增Pixiv获取。数据库写入仅隔离测试schema，原生产投影未替换，未覆盖备份；保留debug.log。
 
