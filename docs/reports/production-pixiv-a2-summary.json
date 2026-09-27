@@ -31,5 +31,8 @@
   "review_package_receipt": "correction27-final-review-package-private.json",
   "engineering_goal_complete": false,
   "review75_actual_gates": "correction27-review75-live-gates-private.json",
-  "package_verification": "Exact final receipt is external to the ZIP and bound to delivery HEAD."
+  "package_verification": "Exact final receipt is external to the ZIP and bound to delivery HEAD.",
+  "current_copy_browser_passed": true,
+  "current_copy_browser": "correction27-review75-copy-browser-private.json",
+  "current_copy_browser_scope": "UI/runtime over historical existing copy projection; not fresh full-copy acceptance"
 }
