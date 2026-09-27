@@ -713,7 +713,8 @@ def source_concept_media_condition_for_term(
     if not (include_evidence_fallback or include_production_alias_evidence) or not keys:
         return identity_condition
     overlay_media_ids = _overlay_fallback_media_ids(db, keys) if include_evidence_fallback else set()
-    overlay_media_ids.update(_production_alias_direct_evidence_media_ids(db,concept_ids))
+    if include_production_alias_evidence:
+        overlay_media_ids.update(_production_alias_direct_evidence_media_ids(db,concept_ids))
     evidence_fallback_condition = Media.id.in_(sorted(overlay_media_ids)) if overlay_media_ids else None
     if identity_condition is None:
         return evidence_fallback_condition
@@ -728,6 +729,7 @@ def source_layer_search_path_media_ids(
     *,
     include_needs_review: bool = True,
     include_evidence_fallback: bool = False,
+    include_production_alias_evidence: bool = False,
 ) -> dict[str, set[int]]:
     """Return separate identity and evidence-fallback result sets for QA.
 
@@ -781,6 +783,7 @@ def source_layer_search_path_media_ids(
         fallback_ids.update(
             _overlay_fallback_media_ids(db, keys)
         )
+    if include_production_alias_evidence and keys:
         fallback_ids.update(_production_alias_direct_evidence_media_ids(db,concept_ids))
     return {
         "identity": identity_ids,

@@ -311,12 +311,37 @@ def collect_creator_projection(cursor):
             for row in cursor.fetchall()]
 
 
-def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None,recall_baseline=None,launch=None,creator_projection=None):
+def collect_identity_projection(cursor):
+    """Read name/role/concept/Media support from the same active database."""
+    cursor.execute('''select s.raw_value,s.role_hint,s.work_context_key,e.concept_id,b.media_id,r.source_work_id
+        from blombooru_source_concept_product_media_bindings b
+        join blombooru_source_concept_product_runs p on p.id=b.product_run_id
+        join blombooru_source_concept_evidence e on e.id=b.evidence_id
+        join blombooru_source_concept_signals s on s.id=e.signal_id
+        join blombooru_source_metadata_records r on r.id=b.source_metadata_record_id
+        where p.source_mode='production_scope' and p.status='active'
+          and b.source_revision=r.binding_revision''')
+    return [list(row) for row in cursor.fetchall()]
+
+
+def verify_identity_projection(quality, actual):
+    from collections import Counter
+    reported=quality.get('projection_rows')
+    if (not isinstance(actual,list) or not actual or not isinstance(reported,list)
+        or any(not isinstance(r,(list,tuple)) or len(r)!=6 for r in [*reported,*actual])
+        or Counter(map(tuple,reported))!=Counter(map(tuple,actual))):
+        raise ValueError('a2_live_identity_projection_changed')
+    return actual
+
+
+def recompute_quality(quality, oracle, *, suggestion_oracle=None, creator_oracle=None, baseline=None,recall_baseline=None,launch=None,creator_projection=None,identity_projection=None):
     if launch is not None:
         from scripts.production_pixiv_a2_service_evidence import verify_quality_service
         verify_quality_service(quality,launch)
     from app.services.source_metadata_registry_service import canonical_source_key as key
     projection=quality.get('projection_rows')
+    if identity_projection is not None:
+        projection=verify_identity_projection(quality,identity_projection)
     if not isinstance(projection,list) or not projection:
         raise ValueError('a2_raw_quality_projection_required')
     names={}

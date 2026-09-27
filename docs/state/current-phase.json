@@ -58,7 +58,7 @@
     "confirmed_entity_write": false
   },
   "completed_checkpoints": [
-    "20260927：业务f6dca05完成三项准入、括号纠正边界及真实base响应绑定；450 focused/1 skip、93真实PG/API通过。6付费raw零新增调用恢复，两个实际答案仍为work/character，泛称身份未纠正；全量依赖诊断8旧输入失效，原判断均保留。旧44正常EXE可用、117查询一致、真实Edge通过；71线程逐项对账。新副本/生产未执行，target/safe/route均false，单包实际解压、全部JSON/XML及相对文档引用检查、4项独立复算通过；按明确失败交接，等待Lead语义裁决。",
+    "20260927交付前远端自动新增4条意见，75线程。实际身份投影改由数据库重算，精度控制绑定受限路径实际hash/身份，隔离部分演练恢复选择分母，生产alias/R2R开关分离并审计同类QA路径。修前8失败/2通过保留，98受影响及63搜索回归通过，当前真实PG与新HEAD冻结验证中；旧包对应b63a58f作为历史保留，随后按当前代码重新解压复算。两目标语义阻断和旧44不变。",
     "本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。",
     "a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。",
     "a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。",
@@ -849,13 +849,13 @@
   },
   "result_path": "docs/reports/production-pixiv-a2-summary.json",
   "correction27_execution": {
-    "stage": "semantic_blocked_verified_single_package_handoff",
+    "stage": "review75_fixes_current_validation",
     "authority": "VIOLET-A2-下一步纠偏执行任务-20260927.md",
     "opening_head": "9676dff65cb6d8deaf6c025097ce40c3b35a6f49",
     "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
     "opening_runtime": "stopped_verified; existing projection intact",
     "role_targets": 2,
-    "review_threads": 71,
+    "review_threads": 75,
     "new_provider_calls": 6,
     "budget_policy": "whole task estimate times 2 to 3; existing atomic cap extension authorized if needed",
     "source_reference_report_available": false,
@@ -909,8 +909,27 @@
     "current_browser": "correction27-baseline-browser-private.json",
     "review_package": "correction27-final-review-EVIDENCE.zip",
     "package_receipt": "correction27-final-review-package-private.json",
-    "package_core_extracted_and_recomputed": true,
+    "package_core_extracted_and_recomputed": false,
     "offline_replay_scripts_passed": 4,
-    "package_hash_policy": "Exact final archive size/hash is in the external receipt to avoid archive self-reference; documentation-only synchronization is re-extracted and rechecked."
+    "package_hash_policy": "Exact final archive size/hash is in the external receipt to avoid archive self-reference; documentation-only synchronization is re-extracted and rechecked.",
+    "review75_findings": [
+      "actual identity projection",
+      "precision source digest and identity",
+      "isolated partial-copy denominator",
+      "independent search flags"
+    ],
+    "review75_before": {
+      "passed": 2,
+      "failed": 8
+    },
+    "review75_free": {
+      "passed": 98,
+      "failed": 0
+    },
+    "review75_search": {
+      "passed": 63,
+      "failed": 0
+    },
+    "prior_verified_package_head": "b63a58f006e275c4945ed2654700361c2de37d7d"
   }
 }

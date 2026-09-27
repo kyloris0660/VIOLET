@@ -8,10 +8,37 @@ def load_precision_controls():
         'docs/state/production-pixiv-a2-precision-controls.json').read_text(encoding='utf-8'))
 
 
-def recompute_precision(quality, controls):
+def verify_precision_sources(controls, private_root, *, database, system_identifier):
+    import hashlib
+    root=Path(private_root).resolve(strict=True)
+    try:
+        path=(root/controls['independent_source']).resolve(strict=True)
+        if not path.is_relative_to(root) or not path.is_file():
+            raise ValueError('a2_precision_source_outside_root')
+        raw=path.read_bytes();digest=hashlib.sha256(raw).hexdigest()
+        source=json.loads(raw)
+    except (OSError,KeyError,TypeError,ValueError) as exc:
+        raise ValueError('a2_precision_source_unavailable') from exc
+    cases=[*controls['identity_separations'],*controls.get('cooccurrence_controls',[])]
+    if (digest!=controls.get('source_evidence_sha256')
+        or any(c.get('source_evidence_sha256')!=digest for c in cases)
+        or source.get('identity')!={'current_database':database,'system_identifier':system_identifier}):
+        raise ValueError('a2_precision_source_digest_or_identity_changed')
+    observed={r['media_id'] for r in source.get('metadata',[]) if r.get('provider')=='pixiv'
+        and r.get('status')=='metadata_complete'}
+    required={mid for c in controls['identity_separations'] for s in c['sides'] for mid in s['exclusive_media_ids']}
+    required.update(mid for c in controls.get('cooccurrence_controls',[]) for mid in c['media_ids'])
+    if not required or not required<=observed:
+        raise ValueError('a2_precision_source_media_missing')
+    return {'source_sha256':digest,'source_media_count':len(observed),'required_media_ids':sorted(required)}
+
+
+def recompute_precision(quality, controls, *, private_root=None, database=None, system_identifier=None):
     from app.services.source_metadata_registry_service import canonical_source_key
     if controls.get('schema_version')!='violet.production-pixiv-precision-controls.v1':
         raise ValueError('a2_precision_controls_invalid')
+    if private_root is not None:
+        verify_precision_sources(controls,private_root,database=database,system_identifier=system_identifier)
     queries=quality['queries'];projection=quality['projection_rows']
     def ids(name):
         query=json.dumps(name,ensure_ascii=False)

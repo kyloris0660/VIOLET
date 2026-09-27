@@ -302,7 +302,8 @@ def validate_scope_selection(run, selection):
     return dict(selection)
 
 
-def replace_production_projection(session, run, *, scope, apply=False, accepted_plan=None):
+def replace_production_projection(session, run, *, scope, apply=False, accepted_plan=None,
+                                  partial_copy_work_ids=None, partial_copy_database=None):
     """Replace owned support in one transaction; readers see old or new scope.
 
     The existing product run audit rows are retained. A1's owned rollback and
@@ -310,8 +311,21 @@ def replace_production_projection(session, run, *, scope, apply=False, accepted_
     """
     from .pixiv_product_integration_service import apply_pixiv_product_plan, rollback_pixiv_product_run
     from .production_pixiv_release_inputs import verify_full_input
-    live,coverage=build_production_inputs(session,scope)
-    verify_full_input(live,live,coverage,scope=scope)
+    selected=None
+    if partial_copy_work_ids is not None:
+        # The production boundary remains full-scope. Only an explicitly
+        # named, actually connected isolated A2 database may rehearse a subset.
+        if (session.get_bind().dialect.name!='postgresql' or not isinstance(partial_copy_database,str)
+            or not re.fullmatch(r'(?:blombooru|violet)_pixiv_a2_test_[0-9_]+',partial_copy_database)
+            or session.execute(text('select current_database()')).scalar_one()!=partial_copy_database):
+            raise ValueError('partial_experiments_require_isolated_database')
+        selected=set(partial_copy_work_ids)
+        if not selected or selected!={r['work_id'] for r in run.consumer.aggregates}:
+            raise ValueError('production_partial_copy_selection_changed')
+    live,coverage=build_production_inputs(session,scope,work_ids=selected)
+    checked=coverage if selected is None else {**coverage,
+        'items':[r for r in coverage['items'] if r['work_id'] in selected]}
+    verify_full_input(live,live,checked,scope=scope if selected is None else None)
     selection = scope_selection(scope, run)
     scope_key = 'pixiv:production:' + scope['canonical_fingerprint'][:32]
     if apply and session.bind.dialect.name == 'postgresql':

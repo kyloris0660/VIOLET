@@ -211,6 +211,42 @@ def test_partial_release_admission_leaves_existing_projection_unchanged(database
     verify_full_input(live,live,coverage)
 
 
+def test_explicit_isolated_partial_copy_preserves_selected_denominator(database):
+    if database.get_bind().dialect.name!='postgresql':pytest.skip('actual isolated database identity required')
+    name=database.execute(text('select current_database()')).scalar_one()
+    scope=scope_for(database);run=build(database,['910000001'])
+    kwargs={'partial_copy_work_ids':{'910000001'},'partial_copy_database':name}
+    with pytest.raises(ValueError,match='fixed_media_binding'):
+        replace_production_projection(database,run,scope=scope)
+    plan=replace_production_projection(database,run,scope=scope,**kwargs)
+    assert plan['media_binding']['planned_media_binding_count']==2
+    result=replace_production_projection(database,run,scope=scope,apply=True,accepted_plan=plan,**kwargs)
+    assert result['applied']
+    assert {r.media_id for r in database.query(SourceConceptProductMediaBinding)}=={1,2}
+
+
+def test_partial_copy_flag_cannot_bypass_production_or_wrong_database_identity(database):
+    run=build(database,['910000001']);scope=scope_for(database)
+    for name in ('blombooru','blombooru_pixiv_a2_test_99999999'):
+        with pytest.raises(ValueError,match='partial_experiments_require_isolated_database'):
+            replace_production_projection(database,run,scope=scope,partial_copy_work_ids={'910000001'},partial_copy_database=name)
+    assert database.query(SourceConceptProductMediaBinding).count()==0
+
+
+def test_identity_gate_reads_actual_database_instead_of_forged_attachment(database):
+    from scripts.production_pixiv_a2_evidence import collect_identity_projection,verify_identity_projection
+    from app.models import SourceConceptEvidence
+    apply(database,build(database),scope_for(database))
+    cursor=database.connection().connection.cursor();actual=collect_identity_projection(cursor)
+    quality={'projection_rows':copy.deepcopy(actual)}
+    assert verify_identity_projection(quality,actual)==actual
+    concepts=sorted({r[3] for r in actual});assert len(concepts)>1
+    database.query(SourceConceptEvidence).filter_by(concept_id=concepts[1]).update({'concept_id':concepts[0]})
+    database.flush()
+    with pytest.raises(ValueError,match='identity_projection'):
+        verify_identity_projection(quality,collect_identity_projection(cursor))
+
+
 @pytest.mark.parametrize('status',['metadata_pending','metadata_retryable','provider_identity_mismatch'])
 def test_shared_page_incomplete_media_rejected_before_withdrawal(database,monkeypatch,status):
     from app.services.production_pixiv_service import build_production_inputs
@@ -303,7 +339,10 @@ def test_accepted_alias_recalls_untyped_literal_tags_without_identity_union(data
         'decision':'must_link','confidence':0.99,'cache_key':'test-accepted-distinct-spellings'}
     run=build_production_clustering(consumer,judgments=[judgment])
     applied=apply(database,run,scope_for(database))
-    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,include_evidence_fallback=True)
+    assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True)['evidence_fallback']
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,include_evidence_fallback=True,
+        include_production_alias_evidence=True)
     assert 4 not in observed['identity'] and 4 in observed['evidence_fallback']
     unknown=database.query(SourceConceptSignal).filter_by(created_by_run_id=run.resolution.run_id,
         canonical_key='sunpetal',role_hint='unknown').one()
@@ -311,11 +350,11 @@ def test_accepted_alias_recalls_untyped_literal_tags_without_identity_union(data
     # A literal artwork title cannot gain this source-tag recall permission.
     unknown.origin_type='pixiv_title_observation';database.flush()
     assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
-        include_evidence_fallback=True)['combined']
+        include_evidence_fallback=True,include_production_alias_evidence=True)['combined']
     unknown.origin_type='pixiv_tag_observation';database.flush()
     source=database.get(SourceMetadataRecord,104);source.title='Changed source revision';database.commit()
     assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
-        include_evidence_fallback=True)['combined']
+        include_evidence_fallback=True,include_production_alias_evidence=True)['combined']
 
 
 def test_batch_order_and_resume_receipts_do_not_change_business_identity(database):

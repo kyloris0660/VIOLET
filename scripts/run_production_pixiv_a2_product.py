@@ -151,8 +151,10 @@ def main():
                 judgments=read(args.judgments) if args.judgments else ())
             receipt['input_fingerprint']=canonical_fingerprint(aggregates)
             receipt['run_id']=run.resolution.run_id
+            partial={'partial_copy_work_ids':{r['work_id'] for r in aggregates},
+                'partial_copy_database':args.database} if args.allow_partial_copy else {}
             if args.action=='plan':
-                receipt['result']=compact_result(replace_production_projection(session,run,scope=scope))
+                receipt['result']=compact_result(replace_production_projection(session,run,scope=scope,**partial))
             else:
                 if not args.accepted_plan:raise RuntimeError('actual_target_plan_required')
                 accepted=read(args.accepted_plan)
@@ -162,7 +164,7 @@ def main():
                     or accepted.get('semantic_input_identity')!=receipt.get('semantic_input_identity')):
                     raise RuntimeError('accepted_plan_target_mismatch')
                 receipt['result']=compact_result(replace_production_projection(session,run,scope=scope,apply=True,
-                    accepted_plan=accepted['result']))
+                    accepted_plan=accepted['result'],**partial))
         receipt['after']=database_state(session)
         receipt['seconds']=time.monotonic()-started
         receipt['finished_at']=datetime.now(timezone.utc).isoformat()

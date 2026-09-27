@@ -202,23 +202,27 @@ def derive_result(private,repo=ROOT):
     quality=read(private,manifest['quality']);workload=read(private,manifest['workload'])
     require(quality['candidate_head']==workload['candidate_head']==head,'quality_candidate')
     from scripts.production_pixiv_precision_evidence import recompute_precision,load_precision_controls
-    precision_actual=recompute_precision(quality,load_precision_controls())
-    from scripts.production_pixiv_a2_evidence import recompute_quality,recompute_workload,collect_creator_projection
+    from scripts.production_pixiv_a2_evidence import recompute_quality,recompute_workload,collect_creator_projection,collect_identity_projection,verify_identity_projection
     import psycopg2
     cfg=json.loads((repo/'.local_manifests/production_launcher/production-profile.json').read_text(encoding='utf-8'))['db']
     require(cfg['name']==backup['database'],'creator_live_database')
     with psycopg2.connect(host=cfg['host'],port=cfg['port'],user=cfg['user'],password=cfg['password'],dbname=cfg['name'],
         options='-c default_transaction_read_only=on -c statement_timeout=30000 -c lock_timeout=3000') as conn:
+        conn.set_session(readonly=True,isolation_level='REPEATABLE READ')
         with conn.cursor() as cursor:
             cursor.execute('select current_database(),system_identifier::text from pg_control_system()')
             require(cursor.fetchone()==(backup['database'],backup['system_identifier']),'creator_live_database_identity')
             creator_projection=collect_creator_projection(cursor)
+            identity_projection=collect_identity_projection(cursor)
+    verify_identity_projection(quality,identity_projection)
+    precision_actual=recompute_precision({**quality,'projection_rows':identity_projection},load_precision_controls(),
+        private_root=private,database=backup['database'],system_identifier=backup['system_identifier'])
     quality_actual=recompute_quality(quality,read(private,quality['oracle_input']),
         suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'),
         creator_oracle=read(private,'independent-creator-homonym-oracle-private.json'),
         baseline=read(private,'full-production-final-1-combined-quality-private.json'),
         recall_baseline=read(private,'closeout43-copy-surfaces-1-combined-quality-private.json'),launch=launch,
-        creator_projection=creator_projection)
+        creator_projection=creator_projection,identity_projection=identity_projection)
     require(quality['independent_answer_sources'] and quality_actual['case_count']>=80
         and quality_actual['failed_cases']==0,'independent_quality')
     require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
