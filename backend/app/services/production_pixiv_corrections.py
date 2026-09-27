@@ -45,7 +45,10 @@ def correction_units(consumer,facts,requests):
     units=[];links={};seen=set()
     for request in requests:
         aggregate=request['aggregate_fingerprint'];raws=request['raw_targets']
-        rows=by_aggregate.get(aggregate,[]);by_raw={s.raw_value:s for s in rows}
+        rows=by_aggregate.get(aggregate,[])
+        if any(sum(s.raw_value==raw for s in rows)>1 for raw in raws):
+            raise ValueError('semantic_correction_duplicate_raw_target')
+        by_raw={s.raw_value:s for s in rows}
         if (aggregate in seen or not raws or len(set(raws))!=len(raws) or not set(raws)<=by_raw.keys()
             or not request.get('conflict_evidence') or not request.get('authorization')):
             raise ValueError('semantic_correction_scope_or_evidence_invalid')

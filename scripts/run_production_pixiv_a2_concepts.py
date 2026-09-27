@@ -105,11 +105,8 @@ def main():
     # The explicit atomic amendment is performed separately on the existing
     # ledger. This runner never resets spending or silently increases a cap.
     ledger=read(out/'llm-budget-private.json')
-    cap=ledger['cap_microusd']/1000000
-    if cap not in (10,30) or (cap==30 and not any(
-        row['previous_cap_microusd']==10000000 and row['cap_microusd']==30000000
-        for row in ledger.get('cap_amendments',[]))):
-        raise RuntimeError('authorized_task_budget_amendment_required')
+    from scripts.production_pixiv_budget_authority import authorized_task_cap
+    cap=authorized_task_cap(out,ledger)
     budget=AdjudicationBudget(out/'llm-budget-private.json',model=llm['model'],cap_usd=cap,input_per_million=0.4,output_per_million=1.6)
     started=time.monotonic()
     with (exclusive(out/'llm-task.lock') if args.action!='cluster' else nullcontext()):

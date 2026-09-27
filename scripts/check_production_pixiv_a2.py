@@ -104,6 +104,61 @@ def validation_evidence(private,record,candidate):
     return summary
 
 
+def verify_recovery_lifecycle(private,recovery,*,candidate,database,system_identifier,scope_fingerprint):
+    """Five distinct ordered invocations with a continuous observed state chain."""
+    from datetime import datetime
+    keys=('copy_apply','copy_replay','copy_rollback','copy_repeated_rollback','copy_reapply')
+    paths=[evidence_path(private,recovery[key]) for key in keys]
+    require(len(set(paths))==5,'recovery_distinct_paths')
+    payloads=[path.read_bytes() for path in paths]
+    digests=[hashlib.sha256(raw).hexdigest() for raw in payloads]
+    require(len(set(digests))==5,'recovery_distinct_receipts')
+    rows=[json.loads(raw) for raw in payloads];previous=None;run_key=None;operation_ids=[]
+    def state(value):
+        fields=('active_runs','run_keys','bindings','bound_media_ids','source_record_ids','duplicate_support_count')
+        require(all(k in value for k in fields),'recovery_state_fields')
+        require(value['active_runs']==len(set(value['run_keys']))==len(value['run_keys'])
+            and value['duplicate_support_count']==0 and value['bindings']>=len(value['bound_media_ids']),
+            'recovery_state_counts')
+        return {k:sorted(value[k]) if isinstance(value[k],list) else value[k] for k in fields}
+    for i,(key,row) in enumerate(zip(keys,rows)):
+        require(row.get('source_head')==candidate and row.get('database')==database
+            and row.get('system_identifier')==system_identifier and row.get('production') is False
+            and row.get('scope_fingerprint')==scope_fingerprint,'recovery_identity')
+        start=datetime.fromisoformat(row['started_at']);end=datetime.fromisoformat(row['finished_at'])
+        require(start.tzinfo is not None and end.tzinfo is not None and end>start
+            and (previous is None or start>=previous),'recovery_time_order')
+        previous=end
+        # Older runner receipts have no UUID; their distinct bytes and actual
+        # non-overlapping invocation intervals still identify real operations.
+        operation_ids.append(row.get('operation_id') or digests[i])
+        result=row['result']; current=result.get('run_key')
+        require(isinstance(current,str) and current and (run_key is None or current==run_key),'recovery_run_key')
+        run_key=current
+        before=state(row['before']);after=state(row['after'])
+        if i:require(state(rows[i-1]['after'])==before,'recovery_state_continuity')
+        rollback=key in {'copy_rollback','copy_repeated_rollback'}
+        require(row.get('action')==('rollback' if rollback else 'apply'),'recovery_action')
+        require(result.get('rolled_back' if rollback else 'applied') is True,'recovery_outcome')
+        if key in {'copy_replay','copy_repeated_rollback'}:
+            require(result.get('idempotent_replay') is True and before==after,'recovery_replay')
+        if rollback:
+            require(run_key not in after['run_keys'],'recovery_withdrawn_run')
+        else:
+            require(run_key in after['run_keys'] and after['bindings']>0,'recovery_applied_run')
+        if key=='copy_rollback':
+            require(run_key in before['run_keys'] and result.get('idempotent_replay') is False
+                and set(after['run_keys'])==set(before['run_keys'])-{run_key}
+                and after['bindings']<before['bindings']
+                and set(after['bound_media_ids'])<=set(before['bound_media_ids'])
+                and set(after['source_record_ids'])<=set(before['source_record_ids']),'recovery_withdrawal_transition')
+        if key=='copy_reapply':
+            require(run_key not in before['run_keys'] and result.get('idempotent_replay') is False
+                and after==state(rows[0]['after']),'recovery_actual_reapply')
+    require(len(set(operation_ids))==5,'recovery_distinct_operations')
+    return {'operation_count':5,'run_key':run_key,'receipt_sha256':digests}
+
+
 def derive_result(private,repo=ROOT):
     # This callable is also used by the documentation-state entry point.
     import sys
@@ -140,7 +195,8 @@ def derive_result(private,repo=ROOT):
     forward_spacing=verify_forward_metadata_spacing(journal,timing)
     from app.services.source_concept_budget import AdjudicationBudget
     ledger=read(private,'llm-budget-private.json')
-    cap=ledger['cap_microusd']/1000000
+    from scripts.production_pixiv_budget_authority import authorized_task_cap
+    cap=authorized_task_cap(private,ledger)
     if cap==30:
         amendment=next((r for r in ledger.get('cap_amendments',[]) if r['previous_cap_microusd']==10000000
             and r['cap_microusd']==30000000),None)
@@ -160,12 +216,8 @@ def derive_result(private,repo=ROOT):
     bound={row['media_id'] for row in coverage['items'] if row['disposition']=='metadata_complete'}
     require(bound==set(final['after']['bound_media_ids']),'actual_full_media_bindings')
     recovery=read(private,manifest['recovery'])
-    for key in ('copy_apply','copy_replay','copy_rollback','copy_repeated_rollback','copy_reapply'):
-        operation=read(private,recovery[key])
-        require(operation['source_head']==head and operation['database']==restore['target'],'recovery_identity')
-        if key in {'copy_apply','copy_reapply'}:require(operation['result']['applied'],'recovery_apply')
-        if key in {'copy_replay','copy_repeated_rollback'}:require(operation['result']['idempotent_replay'],'recovery_replay')
-        if key=='copy_rollback':require(operation['result']['rolled_back'],'recovery_rollback')
+    verify_recovery_lifecycle(private,recovery,candidate=head,database=restore['target'],
+        system_identifier=backup['system_identifier'],scope_fingerprint=scope['canonical_fingerprint'])
     require(recovery['independent_support_preserved'] and recovery['batch_business_equivalent']
         and recovery['source_update_delete_verified'],'recovery_seams')
     protected=[read(private,name) for name in recovery['preservation_evidence']]

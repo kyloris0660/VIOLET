@@ -143,6 +143,12 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
                 if call['status']!='reserved' and (not call.get('usage_known') or
                     call['usage']=={k:saved.get('usage',{}).get(k) for k in ('prompt_tokens','completion_tokens')})]
             if not source_attempts:raise ValueError('semantic_legacy_role_source_attempt_missing')
+        expected_logical_keys=roles.BudgetedExtractionProvider.logical_keys(groups)
+        for attempt in source_attempts:
+            keys=calls[attempt].get('logical_keys')
+            if (not isinstance(keys,list) or any(not isinstance(k,str) for k in keys)
+                or sorted(keys)!=expected_logical_keys):
+                raise ValueError('semantic_role_source_logical_keys_changed')
         rows_by_key={r['group_key']:r for r in rows if isinstance(r,dict) and 'group_key' in r}
         for group in groups:
             raw=rows_by_key.get(group.group_key)

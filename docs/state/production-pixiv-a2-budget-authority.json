@@ -1,0 +1,10 @@
+{
+  "previous_cap_microusd": 10000000,
+  "cap_microusd": 30000000,
+  "authorization_source": "43-CODEX-A2-QUALITY-CLOSEOUT.zh-CN.md",
+  "authorization_id": "7da76a75f8b2cf2468e7feaab3042730cf3c1b1534f1d3cde3071849e49f4f70",
+  "charged_before_microusd": 9998387,
+  "call_count_before": 6110,
+  "ledger_before_sha256": "928743874e4e658f30fab590723aac40065f383bb1df40c82de4af2cc3c9c81b",
+  "recorded_at": "2026-09-12T11:55:13.088089+00:00"
+}
