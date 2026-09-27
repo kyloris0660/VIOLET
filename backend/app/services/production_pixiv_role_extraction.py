@@ -155,6 +155,38 @@ def _adapt_response_record(row,unit):
     # request proves source/action provenance; missing confidence stays missing
     # so F7a retains its existing zero-confidence review downgrade.
     dispositions=row.get('target_dispositions')
+    if getattr(unit.unit_group, 'data_origin', None) == CORRECTION_ORIGIN and isinstance(dispositions, list):
+        # The prompt requests parenthetical base candidates while accounting
+        # for the complete observed spelling. Bind a reported base back to its
+        # unique literal target; retain the provider's span and role verbatim.
+        # This is response provenance, never an identity or role inference.
+        targets = defaultdict(list)
+        literal_keys = {canonical_source_key(t.get('raw_tag')) for t in unit.unit_group.tags}
+        for tag in unit.unit_group.tags:
+            raw = tag.get('raw_tag') or ''
+            parsed = parse_parenthetical_name(raw)
+            if parsed:
+                targets[canonical_source_key(parsed[0])].append((raw, parsed))
+        for candidate in row.get('candidates') or []:
+            if not isinstance(candidate, dict):
+                continue
+            matches = targets.get(canonical_source_key(candidate.get('raw_value')), [])
+            if len(matches) != 1 or canonical_source_key(candidate.get('raw_value')) in literal_keys:
+                continue
+            raw, (base, context) = matches[0]
+            answers = [a for a in dispositions if isinstance(a, dict) and a.get('raw_value') == raw]
+            if len(answers) != 1:
+                continue
+            if (candidate.get('extraction_action') != 'parenthetical_split'
+                    and answers[0].get('candidate') != candidate):
+                continue
+            reported_context = candidate.get('work_context') or candidate.get('parenthetical_context')
+            if reported_context and canonical_source_key(reported_context) != canonical_source_key(context):
+                continue
+            candidate['production_original_extracted_span'] = candidate['raw_value']
+            candidate.setdefault('display_name', base)
+            candidate.setdefault('normalized_value', base)
+            candidate['raw_value'] = raw
     if isinstance(dispositions,list) and isinstance(row.get('candidates'),list):
         literal={canonical_source_key(t.get('raw_tag')) for t in unit.unit_group.tags}
         grouped=defaultdict(list)

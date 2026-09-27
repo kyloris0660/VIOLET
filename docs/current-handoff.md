@@ -12,7 +12,7 @@
 
 ## 已完成检查点
 
-- 20260927续做开场：任务书已批准两个括号上下文目标进入有界角色纠正及三项发布准入修复；本地/远端9676dff一致、PR153仍开放71线程；旧44投影66572支持/8623Media及38114范围保持，无新增/缺失固定Media，现场服务已停止无活动工作。保留旧原始材料，先免费反例和集中实现，再按整体估算2–3倍任务额度正常执行有界模型与条件性生产。
+- 20260927：三项准入及两目标边界已实现；4faa9a6通过443 focused/1 skip和93真实PG/API，旧44正常EXE启动及117全分页查询一致。六次原始回答曾因base/括号字面覆盖漏接失败，零调用恢复后两个目标分别实际为work与character，仍未形成有效泛称纠正；原失败、费用和每目标三次寿命保留。继续来源依赖审计、适配回归和单包交付，新生产未apply。
 - 本轮纠偏完整收口验证：a3候选388 focused通过/1权限跳过、22 PostgreSQL/API、88历史节点通过；六次完整产品入口、owned撤回/重放/重新应用、三批逆序等价、source事务恢复及17表保护通过。当前副本77/80、附加3/3，残留784/5147；真实Edge和性能通过，完整契约13项独立门通过、质量及新原生产相关4项失败。原生产保持44db0da，target/safe/route均false，等待Lead具体剩余证据裁决；未合并、未A3。
 - a3当前final-3完整副本质量已实际汇总77/80，3个附加保留样本全过；残留为nahida/纳西妲缺784、nahida/草神缺784、ナヒーダ/纳西妲缺784与5147。作者与suggestion对照通过，旧75/80和修订718裁决分别保留。当前性能/真实Edge及因果、完整契约、交付继续；真实质量仍阻止新版原生产部署，不降低其余预期。
 - a3c46ca本次final-3完整副本恢复实际完成：apply/replay/rollback/重复rollback/reapply、逆序分批等价、source更新删除恢复及17表保护通过。继续当前候选80例、保留样本、240 workload与真实Edge；旧生产44db0da保持，尚未新版发布。
@@ -103,7 +103,7 @@
 - 不合并、不推main、不触发额外reviewer、不进入A3。
 - 自动验证、负责人接受及产品用户体验分别记账。
 
-下一检查点：Finish current free regressions, actual baseline/source verification, 71-thread accounting and independently extracted single ZIP. Two authorized logical targets exhausted without valid role correction; no new production apply.
+下一检查点：Freeze response-provenance repair, finish dependency diagnostics, baseline Edge, 71-thread accounting and extracted single ZIP. Actual role answers remain semantically insufficient; no new production apply.
 
 ## 持久入口
 

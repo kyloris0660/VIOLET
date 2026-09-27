@@ -145,3 +145,60 @@ def test_negative_target_cannot_be_promoted_by_recovered_candidate_or_hide_model
     coverage=role_target_coverage(unit,record)
     if explicit:assert coverage['missing_raw_tags']==unit.raw_values
     else:assert coverage['outcomes']['Class(World)']['disposition']=='non_name'
+
+
+@pytest.mark.parametrize('role', ['character', 'work_title'])
+def test_parenthetical_reported_base_reaches_actual_correction_without_inventing_role(tmp_path, role):
+    from app.services.production_pixiv_corrections import correction_units, signal_semantics
+    from app.services.production_pixiv_role_extraction import ROLE_SCHEMA, extract_production_roles
+    from app.services.production_pixiv_semantics import adapt_production_semantics, build_semantic_vocabulary
+    from test_production_pixiv_role_coverage import context, Responses
+    from test_production_pixiv_role_extraction import task_budget
+    value = context(['Deity(World)'])
+    vocabulary = build_semantic_vocabulary([])
+    base = adapt_production_semantics(value, vocabulary, {'schema_version': ROLE_SCHEMA, 'records': {}})
+    signal = base.signals[0]
+    target = {'aggregate_fingerprint': signal.evidence_payload['aggregate_fingerprint'],
+        'signal_key': signal.signal_key, 'raw_value': signal.raw_value,
+        'parenthetical_base': signal.parenthetical_base, 'parenthetical_context': signal.parenthetical_context,
+        'supersedes': signal_semantics(signal)}
+    request = {'aggregate_fingerprint': target['aggregate_fingerprint'], 'raw_targets': [signal.raw_value],
+        'supersedes': {signal.raw_value: signal_semantics(signal)}, 'conflict_evidence': ['observed conflict'],
+        'authorization': 'bounded owner task', 'parenthetical_role_correction': {
+            'authorization': 'bounded owner task', 'retain_context_source': True, 'targets': [target]}}
+    units, _ = correction_units(base, {}, [request])
+    candidate = {'raw_value': 'Deity', 'role': role, 'status': 'active_candidate', 'confidence': .8,
+                 'source_field': 'normal_tag', 'extraction_action': 'parenthetical_split'}
+    provider = Responses(lambda group: ([candidate], [{'raw_value': signal.raw_value,
+        'disposition': 'candidate', 'reason_code': 'parenthetical_split'}]))
+    budget = task_budget(tmp_path, provider)
+    result = extract_production_roles(units, provider=provider, budget=budget, cache_dir=tmp_path/'roles')
+    facts = {'schema_version': ROLE_SCHEMA, 'records': {}, 'semantic_corrections': [request],
+             'correction_records': result['records']}
+    corrected = adapt_production_semantics(value, vocabulary, facts).signals[0]
+    assert corrected.role_hint == ('work' if role == 'work_title' else role)
+    assert corrected.parenthetical_context == signal.parenthetical_context
+    record = result['records'][units[0].extraction_key]
+    answer = record['validated_response']['candidates'][0]
+    assert answer['raw_value'] == signal.raw_value
+    assert answer['production_original_extracted_span'] == 'Deity'
+    assert len(provider.calls) == 1
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    import json
+    assert verify_role_response_sources(value, vocabulary, facts, tmp_path/'roles',
+        json.loads((tmp_path/'budget.json').read_text()))['record_count'] == 1
+
+
+@pytest.mark.parametrize('defect', ['other_origin', 'bare_also_observed', 'two_contexts', 'wrong_context', 'no_disposition'])
+def test_parenthetical_response_binding_does_not_guess_ambiguous_or_unrequested_source(defect):
+    from types import SimpleNamespace
+    from app.services.production_pixiv_role_extraction import _adapt_response_record, CORRECTION_ORIGIN
+    tags = [{'raw_tag': 'Deity(World)'}]
+    if defect == 'bare_also_observed': tags.append({'raw_tag': 'Deity'})
+    if defect == 'two_contexts': tags.append({'raw_tag': 'Deity(Other)'})
+    group = SimpleNamespace(tags=tags, data_origin='other' if defect == 'other_origin' else CORRECTION_ORIGIN)
+    candidate = {'raw_value': 'Deity', 'role': 'character', 'extraction_action': 'parenthetical_split'}
+    if defect == 'wrong_context': candidate['work_context'] = 'Other'
+    row = {'candidates': [candidate], 'target_dispositions': [] if defect == 'no_disposition' else [
+        {'raw_value': 'Deity(World)', 'disposition': 'candidate', 'reason_code': 'split'}]}
+    assert _adapt_response_record(row, SimpleNamespace(unit_group=group))['candidates'][0]['raw_value'] == 'Deity'
