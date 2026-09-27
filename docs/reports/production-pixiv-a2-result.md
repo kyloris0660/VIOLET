@@ -73,7 +73,7 @@ Owner要求暂退Computer Use后，已重置控制会话并停止桌面操作。
 
 ## 精确验证与现状
 
-业务HEAD的focused为591 passed、1 skipped（Windows权限节点），真实PostgreSQL/API为97 passed、0 failed。准确argv、环境身份、退出码和JUnit在 `correction27-review92-final-*-command-private.json` 与同名前缀XML/log。此前4faa9a6的443/1和93、开发失败及修前9 failed/1 passed均留存。未重跑全套non-E2E；原历史AI证据例外不扩展。
+业务HEAD的focused为591 passed、1 skipped（Windows权限节点），真实PostgreSQL/API为101 passed、0 failed。准确argv、环境身份、退出码和JUnit在 `correction27-review92-final-*-command-private.json` 与同名前缀XML/log。此前4faa9a6的443/1和93、开发失败及修前9 failed/1 passed均留存。未重跑全套non-E2E；原历史AI证据例外不扩展。
 
 开工旧服务已停止、投影完整；通过原无参数EXE点击Start恢复可用，profile未改。当前PID52900、8012、旧44、read ON/apply OFF，66572支持/8623绑定Media，38114总Media，无尾部新增/固定缺失/活动工作。实际117全分页查询与旧基线一致，nahida不含1737。系统Edge完成三图原图/缩略图/来源chip、标签/suggestion、搜索及恢复页，0页面错误；截图已实际查看。完整原启动EXE祖先因便携进程退出未留齐，不声称新候选正式正常入口验收。
 
