@@ -12,13 +12,15 @@ def test_live_identity_projection_rejects_attachment_invented_shared_concept():
             identity_projection=actual)
 
 
-@pytest.mark.parametrize('defect',['missing','changed','case_digest','identity','outside','missing_media'])
+@pytest.mark.parametrize('defect',['missing','changed','case_digest','identity','outside','missing_media','raw_identity','raw_incomplete'])
 def test_precision_source_requires_actual_bounded_file_digest_and_identity(tmp_path,defect):
     from scripts.production_pixiv_precision_evidence import verify_precision_sources
     from test_production_pixiv_precision_evidence import fixture
     controls=fixture()[1]
     source={'identity':{'current_database':'prod','system_identifier':'system'},
-        'metadata':[{'media_id':i,'provider':'pixiv','status':'metadata_complete'} for i in (1,2,3)]}
+        'metadata':[{'media_id':i,'provider':'pixiv','status':'observed','source_work_id':str(100+i),
+            'source_page_index':0,'raw_metadata_json':{'id':100+i,'page_count':1,'tags':['Name'],
+                'user':{'id':7},'title':'Original title'}} for i in (1,2,3)]}
     path=tmp_path/'source.json';path.write_text(json.dumps(source),encoding='utf-8')
     digest=hashlib.sha256(path.read_bytes()).hexdigest()
     controls.update(independent_source='source.json',source_evidence_sha256=digest)
@@ -30,7 +32,9 @@ def test_precision_source_requires_actual_bounded_file_digest_and_identity(tmp_p
     elif defect=='outside':controls['independent_source']='../outside.json'
     else:
         if defect=='identity':source['identity']['current_database']='other'
-        else:source['metadata']=source['metadata'][:1]
+        elif defect=='missing_media':source['metadata']=source['metadata'][:1]
+        elif defect=='raw_identity':source['metadata'][0]['raw_metadata_json']['id']=999
+        else:source['metadata'][0]['raw_metadata_json'].pop('tags')
         path.write_text(json.dumps(source),encoding='utf-8')
         digest=hashlib.sha256(path.read_bytes()).hexdigest();controls['source_evidence_sha256']=digest
         for case in controls['identity_separations']+controls['cooccurrence_controls']:case['source_evidence_sha256']=digest

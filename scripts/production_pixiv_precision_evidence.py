@@ -24,8 +24,20 @@ def verify_precision_sources(controls, private_root, *, database, system_identif
         or any(c.get('source_evidence_sha256')!=digest for c in cases)
         or source.get('identity')!={'current_database':database,'system_identifier':system_identifier}):
         raise ValueError('a2_precision_source_digest_or_identity_changed')
-    observed={r['media_id'] for r in source.get('metadata',[]) if r.get('provider')=='pixiv'
-        and r.get('status')=='metadata_complete'}
+    def complete_original(row):
+        raw=row.get('raw_metadata_json')
+        # Historical local Pixiv observations can retain the complete original
+        # response before A2 normalization. Verify that response's own work/page
+        # identity; do not confuse its DB workflow status with source content.
+        return (row.get('provider')=='pixiv' and isinstance(raw,dict)
+            and str(raw.get('id'))==row.get('source_work_id')
+            and type(raw.get('page_count')) is int and raw['page_count']>0
+            and type(row.get('source_page_index')) is int
+            and 0<=row['source_page_index']<raw['page_count']
+            and isinstance(raw.get('tags'),list) and bool(raw['tags'])
+            and isinstance(raw.get('user'),dict) and bool(raw['user'].get('id'))
+            and isinstance(raw.get('title'),str) and bool(raw['title']))
+    observed={r['media_id'] for r in source.get('metadata',[]) if complete_original(r)}
     required={mid for c in controls['identity_separations'] for s in c['sides'] for mid in s['exclusive_media_ids']}
     required.update(mid for c in controls.get('cooccurrence_controls',[]) for mid in c['media_ids'])
     if not required or not required<=observed:
