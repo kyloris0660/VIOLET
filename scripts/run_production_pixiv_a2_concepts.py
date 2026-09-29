@@ -244,6 +244,21 @@ def main():
             run=build_production_clustering(consumer,vocabulary=vocabulary,role_facts=facts,judgments=judgments)
             trace('final',run)
             from app.services.production_pixiv_release_inputs import semantic_input_identity
+            from app.services.production_pixiv_service import scope_selection
+            from app.services.pixiv_product_integration_service import build_pixiv_product_plan
+            from app.services.source_concept_resolver_service import RESOLVER_VERSION
+            scope=read(out/'fixed-scope-private.json')
+            selection=scope_selection(scope,run)
+            plan=build_pixiv_product_plan(run,scope_key='pixiv:production:'+scope['canonical_fingerprint'][:32],
+                source_mode='production_scope',input_selection=selection)
+            write(out/f'{args.label}-approved-run-input-private.json',{
+                'scope_fingerprint':scope['canonical_fingerprint'],
+                'semantic_input_identity':semantic_input_identity(aggregates,vocabulary,facts,judgments),
+                'selection_fingerprint':selection['canonical_fingerprint'],
+                'run':{'run_key':plan['run_key'],'scope_key':plan['scope_key'],'source_mode':'production_scope',
+                    'policy_version':plan['product_policy_version'],'result_fingerprint':plan['product_result_fingerprint'],
+                    'input_fingerprint':run.consumer.input_fingerprint,'business_fingerprint':run.business_projection_fingerprint,
+                    'resolver_run_id':run.resolution.run_id,'resolver_version':RESOLVER_VERSION}})
             import subprocess
             write(out/f'{args.label}-semantic-manifest-private.json',{
                 'input_identity':semantic_input_identity(aggregates,vocabulary,facts,judgments),

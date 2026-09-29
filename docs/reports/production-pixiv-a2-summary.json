@@ -1,48 +1,120 @@
 {
-  "schema_version": "violet.production-pixiv-a2.precision-closeout.v1",
-  "candidate_head": "18300627ad552b1b52038d4429a2acc632fcb06c",
+  "schema_version": "violet.production-pixiv-a2.correction29-progress.v1",
+  "status": "PRODUCTION_PIXIV_A2_CORRECTION29_IMPLEMENTING",
+  "opening_head": "8a2b0e8378726b98382ec05220b9e5a14b6de381",
+  "candidate_frozen": false,
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
-  "status": "PRODUCTION_PIXIV_A2_CORRECTION27_SEMANTIC_BLOCKED_BASELINE_AVAILABLE",
   "full_contract_completed": false,
   "new_production_apply": false,
-  "validation": {
+  "new_provider_calls": 0,
+  "new_metadata_dispatches": 0,
+  "new_charge_usd": 0,
+  "cumulative_charge_usd": 13.589429,
+  "opening_review_threads": 96,
+  "current_validation": "development checks only; frozen candidate validation pending",
+  "historical_correction27": {
+    "schema_version": "violet.production-pixiv-a2.precision-closeout.v1",
+    "candidate_head": "18300627ad552b1b52038d4429a2acc632fcb06c",
+    "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false,
+    "status": "PRODUCTION_PIXIV_A2_CORRECTION27_SEMANTIC_BLOCKED_BASELINE_AVAILABLE",
+    "full_contract_completed": false,
+    "new_production_apply": false,
+    "validation": {
+      "focused": {
+        "passed": 591,
+        "skipped": 1,
+        "failed": 0
+      },
+      "postgresql_api": {
+        "passed": 101,
+        "failed": 0
+      }
+    },
+    "new_provider_calls": 6,
+    "recovery_provider_calls": 0,
+    "new_charge_usd": 0.006785,
+    "cumulative_charge_usd": 13.589429,
+    "role_answer_status": "structurally recovered; semantic repair not established",
+    "historical_80_candidate": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
+    "baseline_queries_verified": 117,
+    "review_threads": 93,
+    "review_package": "correction27-final-review-EVIDENCE.zip",
+    "review_package_receipt": "correction27-final-review-package-private.json",
+    "engineering_goal_complete": false,
+    "review75_actual_gates": "correction27-review75-live-gates-private.json",
+    "package_verification": "Exact final receipt is external to the ZIP and bound to delivery HEAD.",
+    "current_copy_browser_passed": false,
+    "current_copy_browser": "correction27-review75-copy-browser-private.json",
+    "current_copy_browser_scope": "UI/runtime over historical existing copy projection; not fresh full-copy acceptance",
+    "prior_copy_browser_passed": true,
+    "prior_copy_browser_business_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0",
+    "review79_actual_gates": "correction27-review79-local-validation-private.json",
+    "review84_actual_gates": "correction27-review84-local-validation-private.json",
+    "computer_use_released": true,
+    "review86_actual_gates": "correction27-review86-local-validation-private.json",
+    "review89_actual_gates": "correction27-review89-local-validation-private.json",
+    "review92_actual_gates": "correction27-review92-local-validation-private.json",
+    "historical_non_e2e_current_acceptance": false,
+    "review93_ancestry_proof": "correction27-review93-ancestry-proof-private.json"
+  },
+  "development_validation": {
     "focused": {
-      "passed": 591,
-      "skipped": 1,
-      "failed": 0
+      "passed": 671,
+      "failed": 0,
+      "skipped": 2
     },
     "postgresql_api": {
-      "passed": 101,
+      "passed": 104,
+      "failed": 0
+    },
+    "authority_and_admission": {
+      "passed": 163,
       "failed": 0
     }
   },
-  "new_provider_calls": 6,
-  "recovery_provider_calls": 0,
-  "new_charge_usd": 0.006785,
-  "cumulative_charge_usd": 13.589429,
-  "role_answer_status": "structurally recovered; semantic repair not established",
-  "historical_80_candidate": "84f999274e0acd04b34ccd1afa1d476a54dc7fce",
-  "baseline_queries_verified": 117,
-  "review_threads": 93,
-  "review_package": "correction27-final-review-EVIDENCE.zip",
-  "review_package_receipt": "correction27-final-review-package-private.json",
-  "engineering_goal_complete": false,
-  "review75_actual_gates": "correction27-review75-live-gates-private.json",
-  "package_verification": "Exact final receipt is external to the ZIP and bound to delivery HEAD.",
-  "current_copy_browser_passed": false,
-  "current_copy_browser": "correction27-review75-copy-browser-private.json",
-  "current_copy_browser_scope": "UI/runtime over historical existing copy projection; not fresh full-copy acceptance",
-  "prior_copy_browser_passed": true,
-  "prior_copy_browser_business_head": "6d520d88f690b96bb6c93046fa268bd7dfc28ee0",
-  "review79_actual_gates": "correction27-review79-local-validation-private.json",
-  "review84_actual_gates": "correction27-review84-local-validation-private.json",
-  "computer_use_released": true,
-  "review86_actual_gates": "correction27-review86-local-validation-private.json",
-  "review89_actual_gates": "correction27-review89-local-validation-private.json",
-  "review92_actual_gates": "correction27-review92-local-validation-private.json",
-  "historical_non_e2e_current_acceptance": false,
-  "review93_ancestry_proof": "correction27-review93-ancestry-proof-private.json"
+  "counterfactual": {
+    "denominator": 100285,
+    "suspended": 2,
+    "suspended_identity_edges_or_links": 0,
+    "positive_source_counts": [
+      125,
+      67
+    ],
+    "components_distinct": true,
+    "final_selection_verified": false
+  },
+  "current_staged_cache": {
+    "work_completed": 9070,
+    "remaining_selected": 22538,
+    "remaining_compatible": 22538,
+    "remaining_missing": 0,
+    "all_selected": 31608,
+    "provider_calls": 0,
+    "final_graph_complete": true,
+    "remaining_completed": 22538,
+    "valid_judgments": 31608,
+    "source_proofs": 31608,
+    "missing": 0,
+    "errors": 0,
+    "frozen_evidence": false
+  },
+  "candidate_head": "8a2b0e8378726b98382ec05220b9e5a14b6de381",
+  "working_tree_changes_not_frozen": true,
+  "approved_run": {
+    "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
+    "scope_key": "pixiv:production:7e3db56668de893bfdde03dc979f1693",
+    "source_mode": "production_scope",
+    "policy_version": "production_pixiv_fixed_scope_adjudication_v8",
+    "result_fingerprint": "8e0662f9ffd37d5a153e5734545a693bd9aed601eade02e951c3054a1f097b08",
+    "input_fingerprint": "c4c3aa3ead617b00af87a74e4171b38fb9d903f9330134bf5499dea7674fddce",
+    "business_fingerprint": "fcd3d7670859a63e00180581c3cbf8c496d1f63802cbf560f7d215ff0a923f30",
+    "resolver_run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda",
+    "resolver_version": "source_concept_resolver_core_v7_alias_union_approval"
+  }
 }

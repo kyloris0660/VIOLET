@@ -70,8 +70,12 @@ outside the automated contract.
 `scripts/check_production_pixiv_a2.py`，统一检查器使用 `--a2-evidence`。
 它核对固定T0全量Media/work/page归宿、真实原库物化、43号授权的共享累计USD30预算（保留原USD10历史）、
 独立恢复和owned rollback/replay、独立多语言答案、240-query工作量、
-正常launcher和新浏览器实际媒体证据，以及同候选focused/PostgreSQL和
-一次完整non-E2E的精确失败对账。公开结果仅表示工程交付，负责人接受、
+正常launcher和新浏览器实际媒体证据，以及同候选focused/PostgreSQL、历史首次
+完整non-E2E与2026-09-29单独授权新增一次完整运行的精确失败对账。新增基线
+核验实际冻结源码、完整收集节点、命令、时间、日志和JUnit；历史AI原始证据例外
+不得覆盖新失败。完成门禁还核对实时active run语义元数据、受保护批准运行身份
+和ignored行为输入；本轮metadata仅回放，真实dispatch前必须关闭已登记入口依赖债。
+公开结果仅表示工程交付，负责人接受、
 合并和A3授权均独立。本任务23号授权允许全量原库落地，不要求重复逐步审批。
 
 ### 上一已接受阶段：PR #152 / 导入恢复

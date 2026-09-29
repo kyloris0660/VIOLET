@@ -799,6 +799,9 @@ def _original_completion_questions(consumer,vocabulary,role_facts,*,require_comp
     # targets. Legacy caches remain immutable and their answered names survive.
     baseline={**role_facts,'completion_records':{},'completion_by_aggregate':{},
         'coverage_repair_records':{},'coverage_repair_by_aggregate':{},'semantic_corrections':[]}
+    # Replaying the original question precedes the owner's later eligibility
+    # decision. Never let that decision rewrite a question or reset its life.
+    baseline.pop('identity_qualification',None)
     units,mapping,_=plan_contextual_role_completion(consumer,vocabulary,baseline)
     if require_complete and set(mapping)-set(role_facts.get('completion_by_aggregate',{})):
         raise ValueError('expected_role_completion_mapping_missing')

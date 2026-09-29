@@ -8,6 +8,8 @@ def test_final_projection_requires_current_full_state(change):
     from scripts.production_pixiv_a2_evidence import verify_final_projection
     before={'active_runs':1,'run_keys':['run'],'bindings':2,'binding_rows':[[1,1,2,3,4,1],[2,1,3,4,5,1]],
         'bound_media_ids':[4,5],'source_record_ids':[3,4],'duplicate_support_count':0}
+    from test_production_pixiv_correction29 import projection
+    before['run_metadata']=projection()['run_metadata']
     live=copy.deepcopy(before)
     assert verify_final_projection(before,live)==live
     if change=='removed':live.update(active_runs=0,run_keys=[],bindings=0,binding_rows=[])

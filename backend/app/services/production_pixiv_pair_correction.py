@@ -132,7 +132,10 @@ def bind_correction_prior(aggregates,vocabulary,facts,prior,private_root,*,seman
     if any(manifest['input_identity'].get(name)!=digest for name,digest in expected.items()):
         raise ValueError('correction_prior_semantic_input_changed')
     mutable={'semantic_corrections','correction_records','correction_equivalent_sources','correction_provenance',
-        'incremental_correction_provenance','correction_execution','previous_execution_receipts'}
+        'incremental_correction_provenance','correction_execution','previous_execution_receipts','identity_qualification'}
+    if previous.get('identity_qualification')!=facts.get('identity_qualification'):
+        from .production_pixiv_qualification import verify_release_qualification
+        verify_release_qualification(facts)
     if any(previous.get(key)!=facts.get(key) for key in previous.keys()|facts.keys() if key not in mutable):
         raise ValueError('correction_prior_unrelated_role_fact_changed')
     before_requests={r['aggregate_fingerprint']:r for r in previous.get('semantic_corrections',[])}

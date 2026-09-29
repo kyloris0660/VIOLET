@@ -30,6 +30,24 @@ def replay_role_request_messages(groups):
         {**messages[1],'content':json.dumps(payload,ensure_ascii=False,sort_keys=True)}]
 
 
+def _anchored_legacy_role_calls(cache_dir,*,authority=None):
+    """Read the immutable pre-amendment ledger; never repair the live ledger."""
+    import hashlib
+    private=Path(cache_dir).resolve().parent
+    path=checked_cache_path(private,private/'closeout43-budget-before-private.json')
+    if not path.is_file():return {}
+    authority_path=Path(__file__).resolve().parents[3]/'docs/state/production-pixiv-a2-budget-authority.json'
+    authority=authority or json.loads(authority_path.read_text(encoding='utf-8'))
+    raw=path.read_bytes()
+    if hashlib.sha256(raw).hexdigest()!=authority['ledger_before_sha256']:
+        raise ValueError('semantic_legacy_role_ledger_anchor_changed')
+    old=json.loads(raw)
+    if len(old['calls'])!=authority['call_count_before']:
+        raise ValueError('semantic_legacy_role_ledger_count_changed')
+    return {row['id']:row for row in old['calls'] if row['key'].startswith('role-extraction:')
+        and 'logical_keys' not in row}
+
+
 def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
     """Reparse saved original questions and answers, including partial batches."""
     from collections import defaultdict
@@ -41,6 +59,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         deterministic_bundle_for_unit,SourceNameCandidateExtractionError,build_extraction_units)
     from .source_metadata_registry_service import canonical_source_key
     cache_dir=Path(cache_dir).resolve();calls={r['id']:r for r in ledger['calls']}
+    legacy_calls=None;legacy_logical_replay={}
     calls_by_key=defaultdict(list)
     for call in calls.values():calls_by_key[call['key']].append(call)
     required_questions={r.get('input_fingerprint') for kind in
@@ -55,6 +74,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
     historical=[replace(u,unit_group=replace(u.unit_group,group_key='a2-role:'+canonical_fingerprint(u.extraction_key)[:24])) for u in historical]
     initial={**facts,'context_records':{},'context_by_aggregate':{},'completion_records':{},'completion_by_aggregate':{},
         'coverage_repair_records':{},'coverage_repair_by_aggregate':{},'semantic_corrections':[]}
+    initial.pop('identity_qualification',None)
     contextual,_,_=roles.plan_contextual_role_extraction(consumer,vocabulary,initial)
     original,_=roles._original_completion_questions(consumer,vocabulary,facts)
     unit_by_key={u.extraction_key:u for u in [*units,*historical,*contextual,*original.values()]}
@@ -146,6 +166,16 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         expected_logical_keys=roles.BudgetedExtractionProvider.logical_keys(groups)
         for attempt in source_attempts:
             keys=calls[attempt].get('logical_keys')
+            if 'logical_keys' not in calls[attempt]:
+                if legacy_calls is None:legacy_calls=_anchored_legacy_role_calls(cache_dir)
+                if legacy_calls.get(attempt)!=calls[attempt]:
+                    raise ValueError('semantic_role_source_logical_keys_changed')
+                # Exact original request fingerprint and usage were checked
+                # above. This is retrospective evidence for a call predating
+                # logical-key storage, never permission for another request.
+                legacy_logical_replay[attempt]={'request_fingerprint':fingerprint,
+                    'derived_logical_keys':expected_logical_keys,'original_ledger_unchanged':True}
+                continue
             if (not isinstance(keys,list) or any(not isinstance(k,str) for k in keys)
                 or sorted(keys)!=expected_logical_keys):
                 raise ValueError('semantic_role_source_logical_keys_changed')
@@ -292,7 +322,8 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         # Rebuild scoped supersession and equivalent-question reuse from the
         # actual source tags, then validate all correction answers again.
         adapt_production_semantics(consumer,vocabulary,facts)
-    return {'record_count':len(proofs),'validated_raw_count':source_count,'records':proofs,'new_provider_calls':0}
+    return {'record_count':len(proofs),'validated_raw_count':source_count,'records':proofs,'new_provider_calls':0,
+        'anchored_legacy_logical_replay':legacy_logical_replay}
 
 
 def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):

@@ -222,6 +222,9 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
     if role_facts and role_facts.get('semantic_corrections'):
         from .production_pixiv_corrections import apply_semantic_corrections
         adapted=validate_contexts(apply_semantic_corrections(replace(consumer,signals=tuple(adapted)),role_facts).signals)
+    if role_facts and 'identity_qualification' in role_facts:
+        from .production_pixiv_qualification import apply_identity_qualification
+        adapted=validate_contexts(apply_identity_qualification(adapted,consumer.signals,role_facts['identity_qualification']))
     identity=[{'key':s.signal_key,'role':s.role_hint,'context':s.work_context_key,'trust':s.trust_tier,
                'status':s.status,'evidence':s.evidence_payload} for s in adapted]
     return replace(consumer,signals=tuple(adapted),input_fingerprint=canonical_fingerprint({

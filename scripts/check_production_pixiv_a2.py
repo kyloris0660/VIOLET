@@ -124,8 +124,15 @@ def validation_evidence(private,record,candidate):
         require(set(mapped['nodes'])<=remediated and mapped['nodes'],'unresolved_full_suite_failure')
     summary['non_e2e']['known_historical_failures']=len(known)
     summary['non_e2e']['resolved_initial_failures']=len(all_failures-known)
-    require(record.get('full_non_e2e_invocations')==1,'one_full_suite')
-    verify_historical_suite_carry_forward(summary['non_e2e']['source_head'],candidate)
+    if record.get('current_non_e2e'):
+        from scripts.production_pixiv_a2_full_suite import verify_current_full_suite,verify_full_suite_history
+        verify_full_suite_history(private,record)
+        current=verify_current_full_suite(private,record['current_non_e2e'],candidate=candidate,root=ROOT)
+        verify_historical_suite_carry_forward(current['source_head'],candidate)
+        summary['historical_non_e2e']=summary['non_e2e'];summary['non_e2e']=current
+    else:
+        require(record.get('full_non_e2e_invocations')==1,'one_full_suite')
+        verify_historical_suite_carry_forward(summary['non_e2e']['source_head'],candidate)
     return summary
 
 
@@ -293,7 +300,15 @@ def derive_result(private,repo=ROOT):
             creator_projection=collect_creator_projection(cursor)
             identity_projection=collect_identity_projection(cursor)
             from scripts.production_pixiv_a2_evidence import collect_final_projection,verify_final_projection
-            verify_final_projection(final['after'],collect_final_projection(cursor))
+            approval_path='docs/state/production-pixiv-a2-approved-run.json'
+            approval_raw=(repo/approval_path).read_bytes()
+            committed_approval=subprocess.check_output(['git','show',head+':'+approval_path],cwd=repo)
+            require(approval_raw.replace(b'\r\n',b'\n')==committed_approval.replace(b'\r\n',b'\n'),'approved_run_frozen_in_candidate')
+            approval=json.loads(approval_raw)
+            require(approval['scope_fingerprint']==scope['canonical_fingerprint']
+                and approval['semantic_input_identity']==final.get('semantic_input_identity'),
+                'approved_run_candidate')
+            verify_final_projection(final['after'],collect_final_projection(cursor),approved_run=approval['run'])
     verify_identity_projection(quality,identity_projection)
     precision_actual=recompute_precision({**quality,'projection_rows':identity_projection},load_precision_controls(),
         private_root=private,database=backup['database'],system_identifier=backup['system_identifier'])

@@ -14,6 +14,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -972,6 +973,19 @@ def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
                             'docs/reports/production-import-recovery-summary.json',
                             'docs/reports/production-pixiv-a2-summary.json'}:
                 return False
+        # Completion checks see ignored input too. Phase-specific evidence
+        # directories/config baselines are protected tracked inputs: changing
+        # the registry itself invalidates the candidate comparison above.
+        registry_path=repo_root/'docs/state/production-pixiv-a2-ignored-inputs.json'
+        registry=json.loads(registry_path.read_text(encoding='utf-8')) if registry_path.is_file() else {}
+        runtime=None
+        if _lexically_within(Path(sys.executable),repo_root):
+            runtime=verify_approved_python_runtime(Path(sys.executable),repo_root=repo_root)
+        drift=inspect_worktree_drift(resolve_trusted_git_executable(repo_root=repo_root),repo_root,
+            approved_python_runtime=runtime,approved_artifacts=registry,approved_candidate=candidate)
+        if any((drift.behavior_untracked_count,drift.uncertain_untracked_count,
+                drift.behavior_ignored_count,drift.uncertain_ignored_count)):
+            return False
         for path in filter(None, git('ls-files','--others','--exclude-standard','-z').split('\0')):
             if _classify_untracked(repo_root, path) != 'ordinary':
                 return False
@@ -982,8 +996,46 @@ def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
             if referenced.returncode != 1:
                 return False
         return True
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, KeyError, TrustedGitError, subprocess.SubprocessError):
         return False
+
+
+def _verified_generated_bytecode(root: Path,path: str) -> bool:
+    """An ignored cache is ordinary only when it is the actual source compile."""
+    import importlib.util
+    import marshal
+    import struct
+    import types
+    match=re.fullmatch(r'(.*/)?__pycache__/([^/]+)\.cpython-(\d+)(?:-pytest-([0-9.]+))?(?:\.opt-([12]))?\.pyc',path)
+    if not match or match[3]!=f'{sys.version_info.major}{sys.version_info.minor}':return False
+    source=root/(match[1] or '')/(match[2]+'.py')
+    try:
+        _assert_no_alias_components(source);_assert_no_alias_components(root/path)
+        if (root/path).stat().st_size>8*1024*1024:return False
+        raw=(root/path).read_bytes()
+        if raw[:4]!=importlib.util.MAGIC_NUMBER:return False
+        flags=int.from_bytes(raw[4:8],'little')
+        if flags not in (0,1,3):return False
+        if flags==0:
+            mtime,size=struct.unpack('<II',raw[8:16]);source_stat=source.stat()
+            if mtime!=(int(source_stat.st_mtime)&0xffffffff) or size!=(source_stat.st_size&0xffffffff):
+                # Stock import (and pytest's timestamp cache) cannot execute
+                # this stale cache when its source is present. Preserve it.
+                return True
+        code=marshal.loads(raw[16:])
+        if not isinstance(code,types.CodeType) or Path(code.co_filename).resolve()!=source.resolve():return False
+        if match[4]:
+            import ast
+            import pytest
+            from _pytest.assertion.rewrite import rewrite_asserts
+            if match[4]!=pytest.__version__:return False
+            source_bytes=source.read_bytes();tree=ast.parse(source_bytes,filename=code.co_filename)
+            rewrite_asserts(tree,source_bytes,code.co_filename,config=None)
+            expected=compile(tree,code.co_filename,'exec',dont_inherit=True,optimize=int(match[5] or 0))
+        else:
+            expected=compile(source.read_bytes(),code.co_filename,'exec',dont_inherit=True,optimize=int(match[5] or 0))
+        return code==expected
+    except (OSError,ValueError,TypeError,EOFError,SyntaxError,TrustedGitError):return False
 
 
 def inspect_worktree_drift(
@@ -991,6 +1043,8 @@ def inspect_worktree_drift(
     repo_root: Path,
     *,
     approved_python_runtime: ApprovedPythonRuntime | None = None,
+    approved_artifacts: Mapping[str,Any] | None = None,
+    approved_candidate: str | None = None,
 ) -> WorktreeDriftSummary:
     root = _canonical_root(repo_root)
     completed = run_trusted_git_bytes(
@@ -1009,6 +1063,38 @@ def inspect_worktree_drift(
         "--",
         ".",
     ]
+    approved_artifacts=approved_artifacts or {}
+    immutable_files={**approved_artifacts.get('repository_files',{}),
+        **{'.local_manifests/'+key:value for key,value in approved_artifacts.get('private_files',{}).items()}}
+    profile=approved_artifacts.get('candidate_profile')
+    if profile:
+        relative='.local_manifests/'+profile['private_file'];validate_git_path(relative)
+        _assert_no_alias_components(root/relative)
+        raw=(root/relative).read_bytes();digest=hashlib.sha256(raw).hexdigest()
+        if digest!=profile['previous_full_sha256']:
+            payload=json.loads(raw);pin=payload.pop('candidate_head',None)
+            stable=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            if (not approved_candidate or pin!=approved_candidate or stable!=profile['stable_fields_sha256']):
+                raise TrustedGitError('candidate_ignored_profile_changed')
+        immutable_files[relative]=digest
+    for relative,digest in immutable_files.items():
+        validate_git_path(relative)
+        _assert_no_alias_components(root/relative)
+        if hashlib.sha256((root/relative).read_bytes()).hexdigest()!=digest:
+            raise TrustedGitError('candidate_ignored_input_changed')
+    for directory_name in approved_artifacts.get('evidence_directories',[]):
+        # Only private, explicitly selected evidence roots; application/module
+        # roots and the launcher configuration directory cannot be exempted.
+        if (not isinstance(directory_name,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]+',directory_name)
+            or directory_name in {'.','..','production_launcher'}):
+            raise TrustedGitError('candidate_artifact_root_invalid')
+        relative='.local_manifests/'+directory_name
+        validate_git_path(relative)
+        directory=root/relative
+        if directory.exists():
+            _assert_no_alias_components(directory)
+            if not directory.is_dir():raise TrustedGitError('candidate_artifact_root_invalid')
+        ignored_arguments.extend((f':(exclude,top){relative}',f':(exclude,top){relative}/**'))
     if approved_python_runtime is not None and _lexically_within(
         approved_python_runtime.venv_root, root
     ):
@@ -1050,6 +1136,18 @@ def inspect_worktree_drift(
             uncertain += 1
     for path in ignored_paths:
         classification = _classify_untracked(root, path, ignored=True)
+        approved_digest=immutable_files.get(path)
+        if approved_digest is not None:
+            _assert_no_alias_components(root/path)
+            if hashlib.sha256((root/path).read_bytes()).hexdigest()!=approved_digest:
+                raise TrustedGitError('candidate_ignored_input_changed')
+            classification='ordinary'
+        elif classification=='behavior' and _verified_generated_bytecode(root,path):
+            classification='ordinary'
+        elif path in {'.pytest_cache/.gitignore','.pytest_cache/CACHEDIR.TAG',
+                      '.pytest_cache/v/cache/nodeids','.pytest_cache/v/cache/lastfailed',
+                      '.pytest_cache/v/cache/stepwise'}:
+            classification='ordinary' if stat.S_ISREG(os.lstat(root/path).st_mode) else classification
         if classification == "ordinary":
             ordinary_ignored += 1
         elif classification == "behavior":

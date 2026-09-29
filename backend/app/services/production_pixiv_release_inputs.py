@@ -128,6 +128,8 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
 
 
 def verify_semantic_manifest(manifest, aggregates, vocabulary, facts, judgments, candidate_head,*,private_root=None,semantic_cache_dirs=()):
+    from .production_pixiv_qualification import verify_release_qualification
+    verify_release_qualification(facts)
     expected = semantic_input_identity(aggregates, vocabulary, facts, judgments)
     if manifest.get('input_identity') != expected or manifest.get('candidate_head') != candidate_head:
         raise ValueError('semantic_artifact_input_version_or_candidate_changed')

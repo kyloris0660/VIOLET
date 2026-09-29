@@ -27,7 +27,7 @@ def validate(state, root):
     for key in ('merge', 'push_main', 'additional_reviewer', 'original_file_mutation', 'confirmed_entity_write'):
         require(state['authorities'].get(key) is False, 'forbidden_' + key)
     require(state['authorities']=={
-        'production':True,'additive_migration':True,'metadata_only_provider':True,
+        'production':True,'additive_migration':True,'metadata_only_provider':False,
         'bounded_llm_adjudication':True,'pixiv_apply':True,'merge':False,'push_main':False,
         'additional_reviewer':False,'original_file_mutation':False,'confirmed_entity_write':False},'authority_map')
     require(not any(p.search(json.dumps(state, ensure_ascii=False)) for p in PUBLIC_FORBIDDEN), 'redaction')
@@ -64,7 +64,7 @@ def render(state):
     lines += ['- ' + item for item in state['completed_checkpoints']]
     lines += ['', '## 后续执行', '',
               '1. 固定T0、兼容输入和累计所有权。',
-              '2. metadata获取、缓存复用和完整概念裁决。',
+              '2. metadata仅回放、缓存复用和完整概念裁决；真实dispatch保持禁止。',
               '3. 全量原生产落地、搜索/详情、质量与恢复验收。', '',
               '## 范围和复用', '',
               '- T0固定Media/work/page对应关系，T0后新增单独记账。',
@@ -73,12 +73,12 @@ def render(state):
               '- 作者稳定ID保留，角色/作品所需context保留。', '',
               '## 验证', '',
               '- focused与隔离PostgreSQL覆盖实际变化。',
-              '- 一次完整non-E2E；历史缺失AI证据单列。',
+              '- 保留历史首次完整non-E2E；2026-09-29授权冻结后新增一次，绑定实际节点与原始日志。',
               '- 备份恢复、原子replacement、owned rollback及分批等价。',
               '- 真实搜索/详情和正常launcher，记录当前全量性能。',
               '- 工程完成由A2可执行结果契约检查。', '',
               '## 操作边界', '',
-              '- 原生产在长时间获取和计算期间继续可用。',
+              '- 原生产在长时间回放和计算期间继续可用。',
               '- 不重复导入、分类、WD标签和本地化基础工作。',
               '- 不修改人工标签、相册、确认Entity或原文件。',
               '- 不合并、不推main、不触发额外reviewer、不进入A3。',

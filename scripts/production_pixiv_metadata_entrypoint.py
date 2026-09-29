@@ -7,6 +7,15 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 
+def assert_metadata_dispatch_authorized():
+    policy=json.loads((ROOT/'docs/state/production-pixiv-a2-metadata-dispatch-policy.json').read_text(encoding='utf-8'))
+    if policy.get('mode')=='replay_only' or policy.get('real_dispatch_authorized') is not True:
+        raise ValueError('a2_metadata_replay_only_dispatch_forbidden')
+    # A future dispatch requires an implemented, reviewed dependency check;
+    # changing a private receipt or the policy boolean does not satisfy it.
+    raise ValueError('a2_metadata_dependency_closure_due_before_dispatch')
+
+
 def verify_metadata_entrypoint(auth, *, command=None):
     public=json.loads((ROOT/'docs/state/production-pixiv-a2-metadata-entrypoint.json').read_text(encoding='utf-8'))
     private_root=(ROOT/'.local_manifests/pixiv-a2').resolve(strict=True)

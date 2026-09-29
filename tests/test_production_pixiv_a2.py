@@ -185,6 +185,28 @@ def test_projection_epoch_survives_redis_invalidation_outage(database,monkeypatc
     assert len(retained.values)==3
 
 
+@pytest.mark.parametrize('field',['scope_key','policy_version','result_fingerprint'])
+def test_live_active_run_metadata_drift_is_rejected_with_unchanged_bindings(database,field):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real active-run projection collector')
+    from scripts.run_production_pixiv_a2_product import database_state
+    from scripts.production_pixiv_a2_evidence import collect_final_projection,verify_final_projection
+    apply(database,build(database),scope_for(database))
+    receipt=database_state(database)
+    approved={k:v for k,v in receipt['run_metadata'][0].items() if k!='id'}
+    row=database.query(SourceConceptProductRun).filter_by(status='active').one()
+    setattr(row,field,'fixture-drift');database.flush()
+    cursor=database.connection().connection.cursor()
+    try:
+        actual=collect_final_projection(cursor)
+        assert actual['binding_rows']==receipt['binding_rows']
+        with pytest.raises(ValueError,match='live_final_projection_changed'):
+            verify_final_projection(receipt,actual,approved_run=approved)
+        with pytest.raises(ValueError,match='not_approved_candidate'):
+            verify_final_projection(actual,actual,approved_run=approved)
+    finally:
+        cursor.close();database.rollback()
+
+
 def test_cumulative_atomic_replacement_keeps_audit(database,monkeypatch):
     scope=scope_for(database)
     partial=build(database,['910000001'])

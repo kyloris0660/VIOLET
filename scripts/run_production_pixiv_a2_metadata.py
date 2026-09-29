@@ -311,7 +311,8 @@ def main():
         started=time.monotonic();results_count=Counter();new_calls=0
         def capture(command,**kwargs):
             nonlocal new_calls
-            from scripts.production_pixiv_metadata_entrypoint import verify_metadata_entrypoint
+            from scripts.production_pixiv_metadata_entrypoint import verify_metadata_entrypoint,assert_metadata_dispatch_authorized
+            assert_metadata_dispatch_authorized()
             verify_metadata_entrypoint(auth,command=command)
             if kwargs.get('shell'):
                 raise RuntimeError('metadata_shell_execution_forbidden')

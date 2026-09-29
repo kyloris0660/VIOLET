@@ -130,6 +130,8 @@ def test_semantic_release_binds_current_sources_roles_context_versions_and_judgm
         'schema_version':versions['role_schema'],'extractor_version':versions['extractor'],
         'prompt_version':versions['prompt'],'decision_schema':versions['extraction_schema'],'model':versions['model']}}}
     judgments=[{'decision':'needs_review','error_state':None}]
+    from app.services.production_pixiv_qualification import load_qualification_authority
+    facts['identity_qualification']=load_qualification_authority()
     manifest={'input_identity':semantic_input_identity(aggregates,vocabulary,facts,judgments),'candidate_head':'a'*40,
         'processing':{'remaining_missing_pair_count':0,'error_count':0,'selected_pair_count':1,'judgment_count':1}}
     # Compatible inherited results require a current completed processing
