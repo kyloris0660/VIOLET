@@ -8,6 +8,12 @@ from xml.etree import ElementTree
 
 
 def verify_current_full_suite(private,gate,*,candidate,root):
+    if gate.get('post_full_fix'):
+        from scripts.production_pixiv_a2_post_full_fix import BASELINE, verify_post_full_fix
+        baseline_gate = {key: value for key, value in gate.items() if key != 'post_full_fix'}
+        baseline = verify_current_full_suite(private,baseline_gate,candidate=BASELINE,root=root)
+        affected = verify_post_full_fix(private,gate,candidate=candidate,root=root,baseline_result=baseline)
+        return {**baseline,'validation_candidate_head':candidate,'post_full_fix':affected}
     from scripts.check_production_pixiv_a2 import read,evidence_path,require,HISTORICAL_NODE
     from scripts.production_pixiv_a2_evidence import pytest_outcome
     import sys

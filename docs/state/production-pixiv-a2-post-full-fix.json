@@ -1,0 +1,36 @@
+{
+  "schema_version": "violet.production-pixiv-a2.post-full-fix.v1",
+  "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+  "authorization": "owner-20260929-section-2.2-impact-verification",
+  "scope": "verified-launcher-runtime-metadata",
+  "files": {
+    "docs/state/production-pixiv-a2-required-tests.json": {
+      "before_sha256": "2340d627b0f16cd124f539a340816cfa84255f68d38d1ccd195606135d13e238",
+      "after_sha256": "a7a4540a90c83f892ed80b4a817cdd997923a53a9872a1958169d44ad2000a98"
+    },
+    "scripts/check_production_pixiv_a2.py": {
+      "before_sha256": "0e580d2dc3e4d34b7eaee020aad879bffb15e8f175c57a48ba2e80c3afc490b2",
+      "after_sha256": "e14cc41b41e8c267fe085ccc5ec2cfda014c93b2711ca57a0ec05895b01aa5fe"
+    },
+    "scripts/production_pixiv_a2_full_suite.py": {
+      "before_sha256": "29c109fff9fe3149a7ac70003ecae7be22c19c2087905680da7026f526a0d65d",
+      "after_sha256": "8c8e4e3b7d034c13da185dcef38abd482b20b98c66f061e6bf68924afa601e40"
+    },
+    "scripts/production_pixiv_a2_post_full_fix.py": {
+      "before_sha256": null,
+      "after_sha256": "05df36e2442f922e12f2faa64845b8ecdf67f7c05bad5706a7eb488a6af70d7a"
+    },
+    "scripts/trusted_git.py": {
+      "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
+      "after_sha256": "3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1"
+    },
+    "tests/test_production_pixiv_a2_post_full_fix.py": {
+      "before_sha256": null,
+      "after_sha256": "4e52ee005bc7e62d03cddaf884f3e32a2766ce15117ca83aadf2e4563620b5dc"
+    },
+    "tests/test_trusted_git.py": {
+      "before_sha256": "ba1d17d23ba2c1cc68b652c7f01fa0e2114337913388914f19ef27223cd43078",
+      "after_sha256": "541d481cb98e2f69c843563ee01061add2579aeddf6decb6d9aaf5e4ae760da0"
+    }
+  }
+}

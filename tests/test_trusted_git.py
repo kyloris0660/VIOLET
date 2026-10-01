@@ -459,3 +459,114 @@ def test_frozen_projection_history_detects_forbidden_merge_side_history(
         match="fl1_i2_governance_projection_path_invalid",
     ):
         documentation_state._validate_fl1_i2_projection_history(root=repo)
+
+
+
+def _launcher_metadata_fixture(tmp_path, monkeypatch):
+    import json
+    from scripts import trusted_git as boundary
+    from scripts import violet_production_control as real_control
+    import scripts
+    repo = _new_repo(tmp_path)
+    (repo / 'scripts').mkdir()
+    controller = repo / 'scripts/violet_production_control.py'
+    controller.write_text('# Source-bound controller fixture\n', encoding='utf-8')
+    (repo / 'run.py').write_text('# Source-bound command fixture\n', encoding='utf-8')
+    (repo / '.gitignore').write_text('.local_manifests/\n', encoding='utf-8')
+    candidate = _commit(repo, 'launcher fixture', 'scripts/violet_production_control.py', 'run.py', '.gitignore')
+    directory = repo / '.local_manifests/production_launcher'
+    directory.mkdir(parents=True)
+    profile = directory / 'production-profile.json'
+    profile.write_text(json.dumps({'profile_id': 'production-default', 'candidate_head': candidate}), encoding='utf-8')
+    config = SimpleNamespace(config_source='production_profile', profile_exists=True, profile_errors=[], repo_root=repo,
+                             expected_python=Path(sys.executable), env={'VIOLET_ENV': 'production'}, port=8123, url='http://127.0.0.1:8123')
+    command = [sys.executable, str(repo / 'run.py')]
+    verified = {'value': True, 'calls': 0}
+    def verify(state, observed):
+        verified['calls'] += 1
+        assert observed is config
+        return verified['value'], ([] if verified['value'] else ['pid_identity_mismatch'])
+    fake = SimpleNamespace(__file__=str(controller), resolve_config=lambda **kwargs: config,
+                           START_LOCK_TTL_SECONDS=real_control.START_LOCK_TTL_SECONDS,
+                           production_command=lambda observed: command, verify_managed_process=verify)
+    monkeypatch.setattr(scripts, 'violet_production_control', fake)
+    monkeypatch.setitem(sys.modules, 'scripts.violet_production_control', fake)
+    monkeypatch.setattr(sys, 'argv', [str(controller), 'start', '--profile', 'production-default', '--json'])
+    spec = {'private_file': 'production_launcher/production-profile.json',
+            'previous_full_sha256': __import__('hashlib').sha256(profile.read_bytes()).hexdigest()}
+    return SimpleNamespace(repo=repo, directory=directory, candidate=candidate, boundary=boundary,
+                           real_control=real_control, config=config, command=command, verified=verified,
+                           registry={'candidate_profile': spec}, spec=spec, controller=controller)
+
+
+def test_candidate_drift_accepts_real_own_start_lock_and_keeps_unknown_ignored_files_closed(tmp_path, monkeypatch):
+    fixture = _launcher_metadata_fixture(tmp_path, monkeypatch)
+    lock = fixture.directory / 'violet-production-launcher-start.lock'
+    status = fixture.real_control._acquire_start_lock(lock)
+    assert status.acquired
+    try:
+        git = resolve_trusted_git_executable(repo_root=fixture.repo)
+        summary = inspect_worktree_drift(git, fixture.repo, approved_artifacts=fixture.registry, approved_candidate=fixture.candidate)
+        assert summary.ordinary_ignored_count == 2
+        assert summary.behavior_ignored_count == summary.uncertain_ignored_count == 0
+        (fixture.directory / 'hook.py').write_text('raise RuntimeError("must never execute")\n', encoding='utf-8')
+        (fixture.directory / 'unknown.json').write_text('{}', encoding='utf-8')
+        (fixture.directory / '.violet-production-launcher-state.json.123.456.tmp').write_text('{}', encoding='utf-8')
+        summary = inspect_worktree_drift(git, fixture.repo, approved_artifacts=fixture.registry, approved_candidate=fixture.candidate)
+        assert summary.behavior_ignored_count == 1 and summary.uncertain_ignored_count == 2
+    finally:
+        fixture.real_control._release_start_lock(lock)
+
+
+@pytest.mark.parametrize('counterexample', ['other_pid', 'readonly_caller', 'stale', 'future', 'duplicate_key', 'unapproved_profile'])
+def test_candidate_launcher_lock_cannot_authorize_other_process_or_untrusted_metadata(tmp_path, monkeypatch, counterexample):
+    import json
+    from datetime import datetime, timedelta, timezone
+    fixture = _launcher_metadata_fixture(tmp_path, monkeypatch)
+    lock = fixture.directory / 'violet-production-launcher-start.lock'
+    assert fixture.real_control._acquire_start_lock(lock).acquired
+    try:
+        payload = json.loads(lock.read_bytes())
+        if counterexample == 'other_pid': payload['pid'] += 1
+        if counterexample == 'readonly_caller': monkeypatch.setattr(sys, 'argv', [str(fixture.controller), 'preflight'])
+        if counterexample == 'stale': payload['created_at'] = (datetime.now(timezone.utc) - timedelta(seconds=fixture.real_control.START_LOCK_TTL_SECONDS+10)).isoformat()
+        if counterexample == 'future': payload['created_at'] = (datetime.now(timezone.utc)+timedelta(seconds=30)).isoformat()
+        if counterexample == 'unapproved_profile': (fixture.directory / 'production-profile.json').write_text(json.dumps({'profile_id':'production-default','candidate_head':'0'*40}), encoding='utf-8')
+        lock.write_text(json.dumps(payload), encoding='utf-8')
+        if counterexample == 'duplicate_key': lock.write_text(json.dumps(payload)[:-1]+',"pid":'+str(os.getpid())+'}', encoding='utf-8')
+        assert not fixture.boundary._verified_launcher_runtime_file(fixture.repo, str(lock.relative_to(fixture.repo)).replace('\\','/'), fixture.spec, fixture.candidate)
+    finally:
+        fixture.real_control._release_start_lock(lock)
+
+
+@pytest.mark.parametrize('counterexample', [None, 'foreign_command', 'dead_or_reused_pid', 'unsafe_mode', 'extra_key', 'invalid_creation_time'])
+def test_candidate_launcher_state_requires_exact_command_and_verified_live_identity(tmp_path, monkeypatch, counterexample):
+    import json, time
+    from datetime import datetime, timezone
+    fixture = _launcher_metadata_fixture(tmp_path, monkeypatch)
+    state = fixture.directory / 'violet-production-launcher-state.json'
+    payload = {'state_version':fixture.real_control.STATE_VERSION, 'app_name':fixture.real_control.APP_NAME,
+               'started_by':'violet_production_launcher', 'pid':os.getpid(), 'pid_create_time':time.time(),
+               'start_time':datetime.now(timezone.utc).isoformat(), 'command':fixture.command,
+               'repo_root':str(fixture.repo), 'port':8123, 'url':fixture.config.url, 'env':'production', 'debug':False, 'startup_safe_mode':True}
+    if counterexample == 'foreign_command': payload['command'] = [sys.executable, str(fixture.repo/'foreign.py')]
+    if counterexample == 'dead_or_reused_pid': fixture.verified['value'] = False
+    if counterexample == 'unsafe_mode': payload['startup_safe_mode'] = False
+    if counterexample == 'extra_key': payload['extra'] = 'unexpected control'
+    if counterexample == 'invalid_creation_time': payload['pid_create_time'] = None
+    fixture.real_control._write_state(payload, state)
+    observed = fixture.boundary._verified_launcher_runtime_file(fixture.repo, str(state.relative_to(fixture.repo)).replace('\\','/'), fixture.spec, fixture.candidate)
+    assert observed is (counterexample is None)
+    if counterexample in {None, 'dead_or_reused_pid'}: assert fixture.verified['calls'] == 1
+
+
+def test_candidate_launcher_runtime_metadata_cannot_follow_a_link(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timezone
+    fixture = _launcher_metadata_fixture(tmp_path, monkeypatch)
+    outside = tmp_path / 'outside-lock.json'
+    outside.write_text(json.dumps({'pid':os.getpid(),'created_at':datetime.now(timezone.utc).isoformat()}), encoding='utf-8')
+    lock = fixture.directory / 'violet-production-launcher-start.lock'
+    try: lock.symlink_to(outside)
+    except (OSError, NotImplementedError): pytest.skip('Symlink creation unavailable on this host')
+    assert not fixture.boundary._verified_launcher_runtime_file(fixture.repo, str(lock.relative_to(fixture.repo)).replace('\\','/'), fixture.spec, fixture.candidate)

@@ -1038,6 +1038,91 @@ def _verified_generated_bytecode(root: Path,path: str) -> bool:
     except (OSError,ValueError,TypeError,EOFError,SyntaxError,TrustedGitError):return False
 
 
+def _verified_launcher_runtime_file(root: Path, path: str, profile_spec, candidate: str) -> bool:
+    """Recognize only source-bound, live launcher metadata in an approved profile.
+
+    A lock is accepted only by the controller that owns this Start/Restart.
+    A state record must match the exact production command and a live managed
+    process. This never exempts a directory, configuration, or arbitrary JSON.
+    """
+    from datetime import datetime, timezone
+    import math
+
+    lock = '.local_manifests/production_launcher/violet-production-launcher-start.lock'
+    state = '.local_manifests/production_launcher/violet-production-launcher-state.json'
+    if path not in {lock, state} or not isinstance(profile_spec, Mapping):
+        return False
+    if profile_spec.get('private_file') != 'production_launcher/production-profile.json':
+        return False
+
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError('duplicate_launcher_metadata_key')
+        return value
+
+    try:
+        target = root / path
+        _assert_no_alias_components(target)
+        metadata = os.lstat(target)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size > 4096:
+            return False
+        raw = target.read_bytes()
+        if len(raw) != metadata.st_size or not raw:
+            return False
+        payload = json.loads(raw, object_pairs_hook=unique_object)
+        if not isinstance(payload, dict):
+            return False
+        profile_path = root / '.local_manifests/production_launcher/production-profile.json'
+        _assert_no_alias_components(profile_path)
+        profile = json.loads(profile_path.read_bytes(), object_pairs_hook=unique_object)
+        if profile.get('candidate_head') != candidate or profile.get('profile_id') != 'production-default':
+            return False
+        from scripts import violet_production_control as control
+        controller = root / 'scripts/violet_production_control.py'
+        if Path(control.__file__).resolve(strict=True) != controller.resolve(strict=True):
+            return False
+        config = control.resolve_config(repo_root=root, profile_id='production-default', profile_path=profile_path)
+        if (config.config_source != 'production_profile' or not config.profile_exists or config.profile_errors
+            or Path(config.repo_root).resolve() != root.resolve()
+            or Path(config.expected_python).resolve() != Path(sys.executable).resolve()
+            or config.env.get('VIOLET_ENV') != 'production'):
+            return False
+        now = datetime.now(timezone.utc)
+        if path == lock:
+            if set(payload) != {'pid', 'created_at'} or type(payload['pid']) is not int:
+                return False
+            if payload['pid'] != os.getpid() or len(sys.argv) < 2 or sys.argv[1] not in {'start', 'restart'}:
+                return False
+            if Path(sys.argv[0]).resolve(strict=True) != controller.resolve(strict=True):
+                return False
+            created = datetime.fromisoformat(payload['created_at'])
+            if not created.tzinfo or not -2 <= (now - created).total_seconds() <= control.START_LOCK_TTL_SECONDS:
+                return False
+        else:
+            expected = {'state_version', 'app_name', 'started_by', 'pid', 'pid_create_time', 'start_time',
+                        'command', 'repo_root', 'port', 'url', 'env', 'debug', 'startup_safe_mode'}
+            if (set(payload) != expected or type(payload['pid']) is not int or payload['pid'] <= 0
+                or type(payload['port']) is not int or payload['port'] != config.port
+                or payload['env'] != 'production' or payload['debug'] is not False
+                or payload['startup_safe_mode'] is not True or payload['url'] != config.url
+                or payload['command'] != control.production_command(config)):
+                return False
+            created = payload['pid_create_time']
+            started = datetime.fromisoformat(payload['start_time'])
+            if (type(created) not in (int, float) or not math.isfinite(created) or created <= 0
+                or not started.tzinfo or (started - now).total_seconds() > 2
+                or abs(started.timestamp() - created) > 5):
+                return False
+            verified, _ = control.verify_managed_process(payload, config)
+            if not verified:
+                return False
+        _assert_no_alias_components(target)
+        return target.read_bytes() == raw
+    except (OSError, ValueError, KeyError, TypeError, ImportError, TrustedGitError, subprocess.SubprocessError):
+        return False
+
+
 def inspect_worktree_drift(
     git: TrustedGitExecutable,
     repo_root: Path,
@@ -1141,6 +1226,9 @@ def inspect_worktree_drift(
             _assert_no_alias_components(root/path)
             if hashlib.sha256((root/path).read_bytes()).hexdigest()!=approved_digest:
                 raise TrustedGitError('candidate_ignored_input_changed')
+            classification='ordinary'
+        elif (classification=='uncertain' and approved_candidate and profile
+              and _verified_launcher_runtime_file(root,path,profile,approved_candidate)):
             classification='ordinary'
         elif classification=='behavior' and _verified_generated_bytecode(root,path):
             classification='ordinary'

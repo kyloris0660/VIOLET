@@ -23,6 +23,8 @@
     "tests/test_production_pixiv_review92.py",
     "tests/test_production_pixiv_correction29.py",
     "tests/test_trusted_git.py",
+    "tests/test_production_launcher_control.py",
+    "tests/test_production_pixiv_a2_post_full_fix.py",
     "tests/test_production_pixiv_a1_contract.py"
   ],
   "postgresql": [

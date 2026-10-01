@@ -128,7 +128,10 @@ def validation_evidence(private,record,candidate):
         from scripts.production_pixiv_a2_full_suite import verify_current_full_suite,verify_full_suite_history
         verify_full_suite_history(private,record)
         current=verify_current_full_suite(private,record['current_non_e2e'],candidate=candidate,root=ROOT)
-        verify_historical_suite_carry_forward(current['source_head'],candidate)
+        if current.get('post_full_fix'):
+            require(current.get('validation_candidate_head')==candidate,'post_full_validation_candidate')
+        else:
+            verify_historical_suite_carry_forward(current['source_head'],candidate)
         summary['historical_non_e2e']=summary['non_e2e'];summary['non_e2e']=current
     else:
         require(record.get('full_non_e2e_invocations')==1,'one_full_suite')

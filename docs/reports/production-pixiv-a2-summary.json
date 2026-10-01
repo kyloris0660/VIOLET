@@ -2,7 +2,7 @@
   "schema_version": "violet.production-pixiv-a2.correction29-progress.v1",
   "status": "PRODUCTION_PIXIV_A2_CORRECTION29_IMPLEMENTING",
   "opening_head": "8a2b0e8378726b98382ec05220b9e5a14b6de381",
-  "candidate_frozen": false,
+  "candidate_frozen": true,
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "target_met": false,
   "safe_to_merge": false,
@@ -14,7 +14,7 @@
   "new_charge_usd": 0,
   "cumulative_charge_usd": 13.589429,
   "opening_review_threads": 96,
-  "current_validation": "development checks only; frozen candidate validation pending",
+  "current_validation": "frozen d26bd0c: 679 focused passed / 2 skipped; 104 PostgreSQL passed; 88 historical nodes passed; full 5268 passed / 1 original AI-evidence failure / 22 skipped / 15 warnings, 0 new failures; registered validation recomputation passed",
   "historical_correction27": {
     "schema_version": "violet.production-pixiv-a2.precision-closeout.v1",
     "candidate_head": "18300627ad552b1b52038d4429a2acc632fcb06c",
@@ -104,8 +104,8 @@
     "errors": 0,
     "frozen_evidence": false
   },
-  "candidate_head": "8a2b0e8378726b98382ec05220b9e5a14b6de381",
-  "working_tree_changes_not_frozen": true,
+  "candidate_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+  "working_tree_changes_not_frozen": false,
   "approved_run": {
     "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
     "scope_key": "pixiv:production:7e3db56668de893bfdde03dc979f1693",
@@ -116,5 +116,465 @@
     "business_fingerprint": "fcd3d7670859a63e00180581c3cbf8c496d1f63802cbf560f7d215ff0a923f30",
     "resolver_run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda",
     "resolver_version": "source_concept_resolver_core_v7_alias_union_approval"
+  },
+  "frozen_validation_progress": {
+    "focused": {
+      "passed": 679,
+      "failed": 0,
+      "skipped": 2,
+      "errors": 0,
+      "failures": [],
+      "command": "correction29-frozen-focused-command-private.json"
+    },
+    "postgresql": {
+      "passed": 104,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "failures": [],
+      "command": "correction29-frozen-postgresql-command-private.json"
+    },
+    "historical": {
+      "passed": 88,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "failures": [],
+      "command": "correction29-frozen-historical-v2-command-private.json"
+    },
+    "historical_initial_attempt": {
+      "passed": 87,
+      "failed": 1,
+      "skipped": 0,
+      "errors": 0,
+      "failures": [
+        "tests/test_pd1a_mainline_governance.py::test_current_mainline_roadmap_persists_px3_boundary_and_fixed_route"
+      ],
+      "command": "correction29-frozen-historical-command-private.json"
+    }
+  },
+  "current_full_suite": {
+    "command": "correction29-frozen-full-command-private.json",
+    "admission": "correction29-full-non-e2e-admission-private.json",
+    "started_at": "2026-09-29T16:46:52.237767+00:00",
+    "collected_node_count": 5291,
+    "status": "finished",
+    "additional_invocations": 1,
+    "candidate_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "passed": 5268,
+    "failed": 1,
+    "skipped": 22,
+    "warnings": 15,
+    "known_historical_failures": 1,
+    "new_failures": 0,
+    "raw_exit_code": 1,
+    "registered_validation_recomputed": true
+  },
+  "historical_remediation_current": {
+    "passed": 88,
+    "failed": 0,
+    "first_attempt_preserved": {
+      "passed": 87,
+      "failed": 1
+    }
+  },
+  "frozen_validation_recomputed": {
+    "focused": {
+      "passed": 679,
+      "failed": 0,
+      "skipped": 2,
+      "errors": 0,
+      "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace"
+    },
+    "postgresql": {
+      "passed": 104,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace"
+    },
+    "non_e2e": {
+      "passed": 5268,
+      "failed": 1,
+      "skipped": 22,
+      "errors": 0,
+      "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+      "collected_node_count": 5291,
+      "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
+      "known_historical_failures": 1
+    },
+    "historical_non_e2e": {
+      "passed": 4541,
+      "failed": 89,
+      "skipped": 15,
+      "errors": 0,
+      "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
+      "known_historical_failures": 1,
+      "resolved_initial_failures": 88
+    }
+  },
+  "free_regressions": {
+    "requirements": 7,
+    "distinct_passed_nodes": 23
+  },
+  "current_review_dispositions": {
+    "evidence": "correction29-delivery-checkpoint-review-dispositions-private.json",
+    "remote": "correction29-delivery-checkpoint-remote-private.json",
+    "thread_count": 96,
+    "new_threads": 0,
+    "resolved_by_this_task": 0,
+    "production_contract_passed": false
+  },
+  "frozen_work_admission": {
+    "selected_pair_count": 9070,
+    "compatible_or_same_input_reuse_count": 9070,
+    "missing_distinct_inputs": 0,
+    "dispatchable_call_ceiling": 0,
+    "reserve_ceiling_microusd": 0,
+    "source": "correction29-d26bd0c-cache-work-correction-admission-private.json"
+  },
+  "frozen_work_replay": {
+    "selected": 9070,
+    "actual_cache_hits": 9070,
+    "source_proofs": 9070,
+    "missing": 0,
+    "errors": 0,
+    "new_provider_calls": 0,
+    "adjudication": "correction29-d26bd0c-cache-work-adjudication-private.json",
+    "source_provenance": "correction29-d26bd0c-cache-work-source-replay-private.json"
+  },
+  "offline_scope_verification": "correction29-scope-offline-verification.log",
+  "lossless_historical_role_artifacts": {
+    "files": 11,
+    "original_bytes": 1242550706,
+    "compressed_probe_bytes": 11779663,
+    "materialization_verified": true,
+    "index": "correction29-role-artifact-bundle-index.json",
+    "final_delivery": false
+  },
+  "business_push": {
+    "observed_at": "2026-09-29T17:48:42.396974+00:00",
+    "business_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "remote_pr_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "remote_snapshot": "correction29-business-push-remote-private.json",
+    "thread_count": 96,
+    "new_thread_ids": [],
+    "removed_thread_ids": [],
+    "pr_body_sha256": "3de2558501545709addc787859af0aeeb1a6eb55ab36cffb7036320bddaf1ff0",
+    "force_push": false,
+    "main_pushed": false,
+    "merged": false,
+    "reviewer_triggered": false,
+    "threads_resolved_by_agent": 0
+  },
+  "core_pack_preparation": {
+    "artifact_count": 70,
+    "original_bytes": 2246307943,
+    "materialization_verified": true,
+    "core_probe_bytes": 51532618,
+    "original_sources_probe_bytes": 26308876,
+    "combined_probe_bytes": 77841494,
+    "bundle_index": "correction29-core-artifact-bundle-v2-index.json",
+    "final_review_zip_built": false
+  },
+  "frozen_remaining_admission": {
+    "selected_pair_count": 22538,
+    "compatible_or_same_input_reuse_count": 22538,
+    "missing_distinct_inputs": 0,
+    "dispatchable_call_ceiling": 0,
+    "reserve_ceiling_microusd": 0
+  },
+  "replay_only_accounting": "correction29-replay-only-accounting-private.json",
+  "frozen_full_replay": {
+    "selected_pair_count": 31608,
+    "judgment_count": 31608,
+    "cache_hits": 31608,
+    "error_count": 0,
+    "new_provider_call_count": 0,
+    "remaining_missing_pair_count": 0,
+    "source_proofs": 31608,
+    "adjudication": "correction29-d26bd0c-cache-adjudication-private.json",
+    "final_graph_pending": false
+  },
+  "frozen_graph": {
+    "candidate_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda",
+    "business_fingerprint": "fcd3d7670859a63e00180581c3cbf8c496d1f63802cbf560f7d215ff0a923f30",
+    "signal_count": 100285,
+    "edge_count": 626765,
+    "concept_count": 17497,
+    "graph_proof": "correction29-d26bd0c-cache-offline-graph-proof-private.json",
+    "positive_source_paths": [
+      125,
+      67
+    ],
+    "copy_sequence": "correction29-copy-d26bd0c-1-sequence-private.json",
+    "production_changed": false,
+    "checker_corrections": {
+      "first_failure": "derived parenthetical context was incorrectly prohibited; original task retains it",
+      "second_failure": "graph membership was incorrectly restricted to active; actual needs_review states now retained explicitly",
+      "failure_logs": [
+        "correction29-copy-d26bd0c-1-final-graph-offline-command.log",
+        "correction29-copy-d26bd0c-1-final-graph-offline-v2-command.log"
+      ],
+      "successful_log": "correction29-copy-d26bd0c-1-final-graph-offline-v3-command.log",
+      "business_or_tests_changed": false,
+      "query_acceptance_claimed": false
+    }
+  },
+  "complete_core_pack_preparation": {
+    "original_files": 84,
+    "original_bytes": 3433419224,
+    "actual_materialization_passed": true,
+    "core_probe_bytes": 67081512,
+    "combined_source_probe_bytes": 93390388,
+    "final_zip_created": false,
+    "verified_dictionary_probe_bytes": 81126467,
+    "verified_dictionary_probe_sha256": "206bde7499dc1e7d06525419d87fc19ce80d68389817453a9c823629eca7357e",
+    "all_originals_retained": true,
+    "standard_decoder_verified": true
+  },
+  "current_old_production_observation": "correction29-post-copy-transactions-old-production-availability-private.json",
+  "additional_full_non_e2e_started": 1,
+  "additional_full_non_e2e_completed": 1,
+  "copy_source_replay": {
+    "candidate_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "actual_native_verify_role_completion_and_verify_semantic_manifest_returned": true,
+    "log": "correction29-copy-d26bd0c-1-lifecycle-command.log",
+    "graph_or_database_acceptance_claimed": false
+  },
+  "copy_initial_apply": {
+    "candidate_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "receipt": "correction29-copy-d26bd0c-1-apply-apply-private.json",
+    "bindings": 66392,
+    "active_runs": 1,
+    "complete_lifecycle_passed": false
+  },
+  "copy_withdrawal": {
+    "rollback": "correction29-copy-d26bd0c-1-rollback-rollback-private.json",
+    "repeated_rollback": "correction29-copy-d26bd0c-1-repeated-rollback-rollback-private.json",
+    "preservation": "correction29-copy-d26bd0c-1-after-rollback-preservation-private.json",
+    "passed": true,
+    "reapply_pending": false
+  },
+  "package_rehearsal": {
+    "bytes": 92214158,
+    "sha256": "fa1b14232e2c5fe74d89d099ad2f6dba47d80ecba9580560509da1fcf4ae9e70",
+    "clean_extraction_passed": true,
+    "offline_steps_passed": 7,
+    "evidence": "correction29-package-rehearsal-offline-replays-private.json",
+    "final_delivery_claimed": false
+  },
+  "copy_native_lifecycle": {
+    "evidence": "correction29-copy-d26bd0c-1-lifecycle-private.json",
+    "status": "finished",
+    "operation_count": 5,
+    "approved_run_verified": true,
+    "independent_support_preserved": true,
+    "bindings": 66392,
+    "media": 8623,
+    "batch_and_source_still_pending": false
+  },
+  "full_copy_recovery": {
+    "passed": true,
+    "recovery": "correction29-copy-d26bd0c-1-recovery-private.json",
+    "candidate_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "bindings": 66392,
+    "media": 8623,
+    "signals": 100285,
+    "preserved_tables": 17,
+    "preservation_checkpoints": 4,
+    "batch_equivalent": true,
+    "source_update_delete_restored": true,
+    "independent_offline_proof": "correction29-copy-d26bd0c-1-offline-copy.log",
+    "parenthetical_context_proof": "correction29-copy-d26bd0c-1-parenthetical-context-offline-private.json",
+    "bounded_class_screen": "correction29-copy-d26bd0c-1-bounded-class-member-private.json",
+    "first_graph_checker_failure_retained": "correction29-graph-checker-revision-provenance-private.json"
+  },
+  "independent_precision": {
+    "passed": true,
+    "case_count": 2,
+    "evidence": "correction29-copy-d26bd0c-1-surfaces-independent-precision-private.json",
+    "actual_full_query_observations": true,
+    "full_80_case_acceptance_claimed": false
+  },
+  "surface_initial_failures": {
+    "quality_failed_cases": 1,
+    "reason": "collector selected historical oracle before accepted 718 negative revision; approved correction21 oracle recheck prepared",
+    "holdouts_failed_cases": 1,
+    "missing_source_media_ids": [
+      4024
+    ],
+    "missing_http_media_ids": [],
+    "source_path_recheck_pending": true,
+    "raw_failures_preserved": true,
+    "business_or_tests_changed": false
+  },
+  "copy_surfaces_completed": {
+    "browser": "correction29-copy-d26bd0c-1-surfaces-browser-private.json",
+    "browser_passed": true,
+    "originals_loaded": 3,
+    "page_errors": 0,
+    "screenshot_review": "correction29-copy-screenshot-review-private.json",
+    "workload": "correction29-copy-d26bd0c-1-surfaces-workload-private.json",
+    "http_queries": 240,
+    "source_measurements": 720,
+    "source_p95_ms": 464.805,
+    "source_max_ms": 1116.524,
+    "performance_passed": true,
+    "quality_recheck_pending": false
+  },
+  "current_copy_acceptance": {
+    "quality_cases": 80,
+    "failed_cases": 0,
+    "precision_cases": 2,
+    "holdouts_passed": 3,
+    "creator_raw_rows": 8623,
+    "live_identity_rows": 66392,
+    "offline_proof": "correction29-copy-d26bd0c-1-surfaces-offline-surfaces-private.json",
+    "quality": "correction29-copy-d26bd0c-1-recheck-bound-combined-quality-private.json",
+    "evidence_repair_provenance": "correction29-surface-evidence-repair-provenance-private.json",
+    "query_delta_proof": "correction29-copy-d26bd0c-1-vs-withdrawn-query-delta-proof-private.json",
+    "native_contract_pending": true
+  },
+  "copy_release_contract": {
+    "file": "correction29-copy-d26bd0c-1-contract-private.json",
+    "sha256": "72492e1f135c2edc3213ecf3a4ef0861323ceec42d5db4bfd9ba720b65ec3b63",
+    "nonproduction_gates_passed": 15,
+    "production_gates_pending": [
+      "current_original_production_apply",
+      "current_original_production_normal_entry",
+      "registered_full_contract"
+    ],
+    "full_contract_passed": false
+  },
+  "current_release_preparation": {
+    "evidence": "correction29-fresh-production-backup-d26bd0c-1-private.json",
+    "backup_bytes": 355170251,
+    "backup_sha256": "f9f9d4816258fbca8ab0bfe1fa9a7d8b879cba62fa6e4aa224612ee53af54f89",
+    "restored_tables": 61,
+    "all_tables_equal": true,
+    "restore_database": "blombooru_a2_restore_20260929_d26bd0c",
+    "runtime_preparation": "correction29-release-preparation-d26bd0c-1-runtime-preparation-private.json",
+    "old_production_unchanged": true,
+    "baseline_readonly_plan": "correction29-baseline-return-plan-plan-private.json"
+  },
+  "normal_entry_coordination": {
+    "status": "owner_authorized_agent_owned_windows",
+    "evidence": "correction29-normal-entry-coordination-private.json",
+    "computer_use_reacquired": true,
+    "production_stop_admitted": true,
+    "received_at": "2026-10-01T14:49:38.058407+08:00",
+    "production_apply_completed": false
+  },
+  "current_cutover_checkpoint": {
+    "observed_at": "2026-09-29T22:51:32.493015+00:00",
+    "candidate_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "status": "ORIGINAL_READONLY_PLAN_COMPLETE_NORMAL_ENTRY_COORDINATION_PENDING",
+    "original_sequence": "correction29-original-d26bd0c-1-sequence-private.json",
+    "readonly_plan": "correction29-original-d26bd0c-1-plan-plan-private.json",
+    "old_production_observation": "correction29-coordination-checkpoint-availability-private.json",
+    "explicit_owner_answer_received": false,
+    "computer_use_reacquired": false,
+    "production_stop_admitted": false,
+    "production_applied": false,
+    "normal_exe_action_executed": false,
+    "new_production_browser_executed": false,
+    "new_production_workload_executed": false,
+    "full_registered_contract_passed": false,
+    "boundary_source": "2026-09-29 task: do not operate the current mouse, keyboard or windows or implicitly resume exited Computer Use; prior owner explicitly exited Computer Use.",
+    "pending_question": "正常无参数 Production Launcher.exe 的真实启动按钮由谁操作：Owner就绪后手动操作，或明确授权仅操作本轮新开的VIOLET窗口。",
+    "already_authorized_operations_not_reasked": [
+      "A2 implementation",
+      "one additional full non-E2E",
+      "conditional original owned production plan/apply",
+      "existing model and budget authority"
+    ],
+    "resume_requires": [
+      "actual owner desktop coordination reply",
+      "fresh live availability and target plan before stopping old production",
+      "new normal no-argument EXE observation",
+      "new production Edge and 240 HTTP workload",
+      "successful registered full contract"
+    ],
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false,
+    "ledger_unchanged": true,
+    "unrelated_debug_log_unchanged": true,
+    "evidence_hashes": {
+      "correction29-original-d26bd0c-1-sequence-private.json": "24acaa9e7775436dfe72f0ff125689fdfdd5f0617fa4d868ebb59433c267dc52",
+      "correction29-original-d26bd0c-1-plan-plan-private.json": "91987062c2c6a7e5a6906c426c8decdb2d7da391a861bc7655f2a8d17ac5780b",
+      "correction29-coordination-checkpoint-availability-private.json": "fecee801ebcd1277964ac8fee67ff5d1298de779a84d52400180d34340368b9a"
+    },
+    "approval_input": "correction29-d26bd0c-cache-approved-run-input-private.json"
+  },
+  "current_checkpoint_delivery": {
+    "archive": "correction29-owner-checkpoint-final-v3.zip",
+    "bytes": 99609384,
+    "sha256": "bf338582ba8c3822dd0326d524a859bab625060b905a7a34aa34f5b8c0c2770f",
+    "offline_replays_passed": 16,
+    "single_zip_limit_passed": true,
+    "normal_exe_coordination_pending": true,
+    "status": "verified_single_zip_checkpoint",
+    "receipt": "correction29-final-delivery-private.json",
+    "current_documentation_overlay": "correction29-current-documentation-index.json",
+    "documentation_uncommitted_to_preserve_frozen_execution_head": true
+  },
+  "current_post_package_guard": {
+    "evidence": "correction29-post-package-guard-addendum-private.json",
+    "first_boolean_gate_rejected": true,
+    "internal_cause_captured": false,
+    "direct_behavior_and_uncertain_drift": 0,
+    "unchanged_guard_recheck_passed": true,
+    "recheck_seconds": 9.61,
+    "business_source_changed": false,
+    "production_changed": false,
+    "next_package_includes_all_rejection_and_recheck_logs": true
+  },
+  "resume_20261001": {
+    "resumed_at": "2026-10-01T14:52:34.754625+08:00",
+    "opening": "correction29-resume-20261001-opening-private.json",
+    "remote": "correction29-resume-20261001-opening-remote-private.json",
+    "old_production_recovered": true,
+    "old_recovery": "correction29-resume-20261001-old-restored-availability-private.json",
+    "old_recovery_ui": "correction29-resume-20261001-old-exe-ui-private.json",
+    "coordination": "correction29-normal-entry-coordination-private.json",
+    "operator_scope": "assistant_owned_new_windows",
+    "fresh_backup_pending": false,
+    "new_plan_pending": false,
+    "production_candidate_applied": false,
+    "complete_contract_passed": false,
+    "fresh_backup": "correction29-fresh-production-backup-20261001-d26bd0c-1-private.json",
+    "independent_restore_verified": true,
+    "restored_table_count": 61,
+    "fresh_backup_sha256": "e522c1790faac2529c7603cc75ad68a4e0db5f81073db3f53752d8ca85495ffa",
+    "fresh_backup_receipt_sha256": "2a6947014ba68edb815f9ad82a538200a44998982045c073080a6e078956de16",
+    "new_original_plan": "correction29-original-d26bd0c-20261001-1-plan-plan-private.json",
+    "full_source_revalidation_passed": true,
+    "old_service_coordinated_stop": true,
+    "original_apply_in_progress": false,
+    "actual_stop_evidence": "correction29-original-d26bd0c-20261001-1-stopped-before-apply-availability-private.json",
+    "driver_initial_production_stopped_flag": false,
+    "checkpoint_collector_initial_rejection": "correction29-apply-start-checkpoint-initial-tool-output-20261001.log",
+    "checkpoint_collector_repair": "The runner retains its pre-coordination false marker; actual successful stop command and stopped_verified availability prove the stop. The runner and its raw marker are unchanged.",
+    "original_sequence": "correction29-original-d26bd0c-20261001-1-continued-sequence-private.json",
+    "original_sequence_sha256": "f0470fff4f7ad66884836c8c430715b89a8cef4ec7bb472d16cac57519923c43",
+    "protected_tables_preserved": true,
+    "approved_live_projection_verified": true,
+    "normal_entry_verified": false,
+    "normal_entry_failed": true,
+    "normal_entry_failure": "correction29-production-normal-20261001-d26bd0c-2-ui-failed-private.json",
+    "normal_entry_failure_sha256": "8e91e4580032cd56cd84424aceacdeb4934f8aa45d713057945d29256691d6d2",
+    "observed_start_lock": "correction29-actual-start-lock-observation-20261001-private.json",
+    "normal_entry_root_cause": "Actual own start lock is classified uncertain by candidate drift guard",
+    "production_service_running": true,
+    "baseline_recovery_stage": "baseline_running",
+    "post_full_source_fix_required": true,
+    "historical_original_apply": "correction29-original-d26bd0c-20261001-1-continued-sequence-private.json",
+    "baseline_owned_recovery": "correction29-normal-failure-baseline-20261001-1-observed-recovery-private.json",
+    "baseline_recovery_sha256": "756e42a28245bf3a85d65345417375f1193e39808ebd19d4998507bdc32133b4",
+    "production_service_pid": 35952,
+    "baseline_normal_entry": "correction29-restored-baseline-normal-20261001-1-launcher-private.json"
   }
 }
