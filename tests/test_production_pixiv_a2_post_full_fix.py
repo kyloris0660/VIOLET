@@ -9,7 +9,7 @@ from scripts import production_pixiv_a2_post_full_fix as contract
 from scripts.trusted_git import resolve_trusted_git_executable, trusted_git_environment
 
 
-def _fixture(tmp_path, monkeypatch):
+def _fixture(tmp_path, monkeypatch, semantic_files=False):
     repo = tmp_path / 'registered-repo'
     repo.mkdir()
     git = resolve_trusted_git_executable(excluded_roots=(repo,))
@@ -23,6 +23,12 @@ def _fixture(tmp_path, monkeypatch):
         path = repo / name; path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b'original source\n')
         before[name] = hashlib.sha256(path.read_bytes()).hexdigest()
+    if semantic_files:
+        for name in contract.REPLAY_SOURCE_FILES | {'backend/app/semantic_fixture.py'}:
+            path = repo / name
+            if not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'unchanged source fixture\n')
     run('add', '.'); run('commit', '-qm', 'baseline')
     base = run('rev-parse', 'HEAD'); monkeypatch.setattr(contract, 'BASELINE', base)
     files = {}
@@ -47,7 +53,7 @@ def test_post_full_source_contract_preserves_actual_full_baseline(tmp_path, monk
 
 
 @pytest.mark.parametrize('change', ['extra_runtime', 'extra_config', 'wrong_before', 'wrong_after',
-                                   'missing_file', 'wrong_scope', 'legacy_scope', 'uncommitted_registry', 'live_source'])
+                                   'missing_file', 'wrong_scope', 'legacy_scope', 'revision_only_scope', 'uncommitted_registry', 'live_source'])
 def test_post_full_source_contract_rejects_unregistered_or_changed_inputs(tmp_path, monkeypatch, change):
     repo, run, base, candidate, registry, registry_path = _fixture(tmp_path, monkeypatch)
     name = 'scripts/trusted_git.py'
@@ -62,6 +68,8 @@ def test_post_full_source_contract_rejects_unregistered_or_changed_inputs(tmp_pa
         registry['scope'] = 'all future changes'
     elif change == 'legacy_scope':
         registry['scope'] = 'verified-launcher-runtime-metadata'
+    elif change == 'revision_only_scope':
+        registry['scope'] = 'verified-launcher-runtime-metadata-and-live-source-revision'
     elif change == 'uncommitted_registry':
         registry['scope'] = 'uncommitted replacement'
     elif change == 'live_source':
@@ -72,3 +80,38 @@ def test_post_full_source_contract_rejects_unregistered_or_changed_inputs(tmp_pa
         run('add', '.'); run('commit', '-qm', 'counterexample'); candidate = run('rev-parse', 'HEAD')
     with pytest.raises(ValueError):
         contract.verify_registered_delta(repo, base, candidate)
+
+
+@pytest.mark.parametrize('change', ['none', 'unfinished', 'wrong_head', 'provider', 'ledger', 'identity', 'runtime_blob'])
+def test_source_replay_receipt_requires_unchanged_real_git_source(tmp_path, monkeypatch, change):
+    repo, run, base, prior, registry, registry_path = _fixture(tmp_path, monkeypatch, semantic_files=True)
+    monkeypatch.setattr(contract, 'SOURCE_REPLAY_HEAD', prior)
+    evidence = repo / 'scripts/production_pixiv_a2_evidence.py'
+    evidence.write_bytes(b'new bounded evidence gate\n')
+    registry['files']['scripts/production_pixiv_a2_evidence.py']['after_sha256'] = hashlib.sha256(evidence.read_bytes()).hexdigest()
+    if change == 'runtime_blob':
+        (repo / 'backend/app/semantic_fixture.py').write_bytes(b'changed semantic source\n')
+    registry_path.write_text(json.dumps(registry), encoding='utf-8')
+    run('add', '.'); run('commit', '-qm', 'new bounded gate')
+    candidate = run('rev-parse', 'HEAD')
+    identity = {'semantic': 'approved input'}
+    command = {'status':'finished', 'exit_code':0, 'source_head':prior, 'source_head_after':prior,
+               'behavior_guard_after':True, 'frozen_release_candidate':True,
+               'provider_dispatch_authorized_in_this_invocation':False,
+               'ledger_before_sha256':'a'*64, 'ledger_after_sha256':'a'*64, 'cwd':str(repo),
+               'argv':['python',str(repo/'scripts/run_production_pixiv_a2_concepts.py'),'--cache-only']}
+    manifest = {'candidate_head':prior, 'input_identity':identity,
+                'processing':{'selected_pair_count':1,'judgment_count':1,'error_count':0,'remaining_missing_pair_count':0}}
+    if change == 'unfinished': command['status'] = 'running'
+    elif change == 'wrong_head': command['source_head_after'] = candidate
+    elif change == 'provider': command['provider_dispatch_authorized_in_this_invocation'] = True
+    elif change == 'ledger': command['ledger_after_sha256'] = 'b'*64
+    elif change == 'identity': manifest['input_identity'] = {'semantic':'changed'}
+    arguments = dict(candidate=candidate, prior_head=prior, command=command, manifest=manifest,
+                     approved_identity=identity, ledger_sha256='a'*64)
+    if change == 'none':
+        result = contract.verify_source_replay_carry_forward(repo, **arguments)
+        assert result['actual_source_head'] == prior and result['candidate_head'] == candidate
+        assert result['original_invocation_not_relabelled'] and result['current_full_native_readmission_required']
+    else:
+        with pytest.raises(ValueError): contract.verify_source_replay_carry_forward(repo, **arguments)

@@ -311,7 +311,19 @@ def derive_result(private,repo=ROOT):
             require(approval['scope_fingerprint']==scope['canonical_fingerprint']
                 and approval['semantic_input_identity']==final.get('semantic_input_identity'),
                 'approved_run_candidate')
-            verify_final_projection(final['after'],collect_final_projection(cursor),approved_run=approval['run'])
+            projection_path='docs/state/production-pixiv-a2-approved-projection.json'
+            projection_raw=(repo/projection_path).read_bytes()
+            committed_projection=subprocess.check_output(['git','show',head+':'+projection_path],cwd=repo)
+            require(projection_raw.replace(b'\r\n',b'\n')==committed_projection.replace(b'\r\n',b'\n'),
+                'approved_projection_frozen_in_candidate')
+            projection_approval=json.loads(projection_raw)
+            require(projection_approval.get('schema_version')=='violet.production-pixiv-a2.approved-projection.v1'
+                and projection_approval.get('semantic_input_identity')==approval['semantic_input_identity']
+                and projection_approval['projection']['run_key']==approval['run']['run_key']
+                and projection_approval['projection']['product_fingerprint']==approval['run']['result_fingerprint'],
+                'approved_projection_semantic_candidate')
+            verify_final_projection(final['after'],collect_final_projection(cursor),approved_run=approval['run'],
+                approved_projection=projection_approval['projection'])
     verify_identity_projection(quality,identity_projection)
     precision_actual=recompute_precision({**quality,'projection_rows':identity_projection},load_precision_controls(),
         private_root=private,database=backup['database'],system_identifier=backup['system_identifier'])

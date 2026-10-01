@@ -669,7 +669,8 @@ independent evidence. Its terminal status is
 ## Route Gate
 
 `violet.production-pixiv-a2.post-full-fix.v1` registers the bounded launcher
-runtime metadata and live source-revision evidence corrections after the owner-authorized current full non-E2E
+runtime metadata, live source revision, complete owned business projection and
+concept-chip evidence corrections after the owner-authorized current full non-E2E
 run on d26bd0c. The full run retains its actual source HEAD and raw outcomes.
 The executable verifier separately binds every registered runtime/test/config
 blob to the new candidate and requires its current focused, PostgreSQL/API and
@@ -679,11 +680,26 @@ verification under the owner's 2026-09-29 section 2.2 instruction, with zero
 additional full runs; it is not documentation-only carry-forward or full-suite
 coverage of the new candidate. Current semantic, copy and production contracts
 still require the new candidate. Lead and Owner acceptance remain separate.
-The exact registered nine-file set includes the final projection collector and
-real PostgreSQL revision-trigger regressions. Updated source records cannot
+The exact registered eleven-file set includes the final projection collector,
+Git-protected approved business fingerprints, and real PostgreSQL drift and
+revision-trigger regressions. Updated source records cannot
 contribute retained stale binding rows to valid support; raw physical binding
-diagnostics remain available. The former seven-file launcher-only registry is
-historical and does not authorize this extended delta.
+diagnostics remain available. All owned product rows and seven core tables are
+reconstructed in one actual snapshot and compared with independent protected
+approval. Browser chips bind their DOM concept IDs and visible name to the raw
+detail API, current media support, actual query and complete result pagination.
+The former seven-file and nine-file registries are historical and do not
+authorize this extended delta.
+
+`violet.production-pixiv-a2.source-replay-carry-forward.v1` preserves the actual
+B3 cache command and its source HEAD. It permits reuse only after exact Git
+proof that all backend and source entry blobs are unchanged, the bounded delta
+contains only registered evidence gates, the approved semantic identity and
+budget ledger are unchanged, and the actual cache command finished successfully
+without provider dispatch. A separately derived input manifest records this
+provenance; the current product loader must still perform full native source
+readmission, current graph construction and actual copy/production operations.
+It does not relabel the original invocation or claim current full-suite coverage.
 
 `route_audit_contract_v1` is mandatory for route-decision phases. A route cannot
 be approved while an upstream pipeline contract is failed, deterministic-only,

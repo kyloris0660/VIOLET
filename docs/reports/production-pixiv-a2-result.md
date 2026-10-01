@@ -1,8 +1,8 @@
-# VIOLET A2 2026-09-29 / 2026-10-01 纠偏执行记录（97号实时revision门禁修复中）
+# VIOLET A2 2026-09-29 / 2026-10-01 纠偏执行记录（当前影响补测通过，完整来源与副本继续）
 
-当前A2 / PR #153 / codex/production-pixiv-a2，最新业务HEAD e820600f0e546f05f9b8497f4b646a34dfc5601a。旧44 owned投影及普通EXE已恢复健康；历史d26实际原生产apply、三次正常入口失败及恢复证据全部保留。完整全套仍绑定d26实际源码；新候选按9/29第2.2节进行精确差异与影响补测，未宣称行为中性或新增全套。target_met=false、safe_to_merge=false、route_approved=false，Lead复审和Owner人工验收待完成。
+当前A2 / PR #153 / codex/production-pixiv-a2，最新业务HEAD 8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f。97号实时来源revision修复已冻结；当前784 focused通过/3跳过/3警告、107真实PostgreSQL/API通过、88历史节点通过。九文件受保护源码差量及完整Git ancestry/tree/blob链由独立标准库重算通过。原新增完整non-E2E仍为d26真实结果，不重跑全套、不冒称新HEAD全套通过。旧44正常生产保留；当前完整来源、副本、新生产及18门尚未完成。target_met=false、safe_to_merge=false、route_approved=false。
 
-当前e820600定向验证783通过/3跳过/3警告，真实PostgreSQL/API104通过，历史88节点通过。首次补测781通过/2失败/3跳过的原结果保留；两项失败来自Windows默认CP936读取UTF-8中文问题导致指纹改变，源码和原始数据未改。明确启用PYTHONUTF8后同两节点复验通过，再运行上述完整定向组；没有新增失败例外。Git完整commit/tree/blob链及七项注册源码变化已由独立标准库脚本重算通过。当前缓存来源实际重放仍在执行，其后串行完整副本；尚无e820600质量、生产或完整契约通过结论。
+真实隔离PG修前标题/作者/状态三项全部失败，修后开发与当前冻结PG回归均通过；实际revision trigger使旧支持失效，最终投影与身份/作者投影一致排除失效绑定，其他媒体和事务回滚恢复通过。原始物理绑定保留审计。旧e820600副本完成来源核验和计算后，在第一产品plan前由HEAD门安全拒绝；raw running标志与实际exit1/失败栈原样保留，未伪造完成、未写原生产。当前完整语义来源cache-only按序继续，账本SHA不变，0新provider调用。
 
 远端最新97条线程中新增P1 4155396620：最终投影未过滤已更新来源的过期revision绑定，实际有效支持与收据可能同步失真。已确认查询缺陷，真实隔离PG反例与最小修复继续；原B2定向、缓存和未完成副本结果保留原HEAD，生产发布门关闭，旧44保持运行。没有新增完整全套或真实provider调用。
 

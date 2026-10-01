@@ -1,7 +1,8 @@
 """Exact source delta and affected verification after the one authorized full run.
 
 The full run remains evidence for its actual source. This contract permits only
-the registered launcher metadata and live source-revision evidence corrections.
+the registered launcher, live source-revision, complete owned-business, and
+concept-chip evidence corrections.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -11,14 +12,83 @@ from pathlib import Path
 
 BASELINE = 'd26bd0c5cde6865a2760a8c59b749a9fb4652ace'
 REGISTRY = 'docs/state/production-pixiv-a2-post-full-fix.json'
-REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-and-live-source-revision'
+REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-live-source-revision-owned-business-and-chip-concept'
 ALLOWED_FILES = frozenset({
     'scripts/trusted_git.py', 'scripts/production_pixiv_a2_full_suite.py',
     'scripts/production_pixiv_a2_post_full_fix.py', 'scripts/check_production_pixiv_a2.py',
     'tests/test_trusted_git.py', 'tests/test_production_pixiv_a2_post_full_fix.py',
     'docs/state/production-pixiv-a2-required-tests.json',
     'scripts/production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2.py',
+    'tests/test_production_pixiv_a2_evidence.py', 'docs/state/production-pixiv-a2-approved-projection.json',
 })
+SOURCE_REPLAY_HEAD = '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f'
+REPLAY_SOURCE_FILES = frozenset({
+    'scripts/run_production_pixiv_a2_concepts.py', 'scripts/run_production_pixiv_a2_metadata.py',
+    'scripts/run_production_pixiv_a2_product.py', 'scripts/check_python_env.py', 'scripts/trusted_git.py',
+})
+REPLAY_GATE_FILES = frozenset({
+    'scripts/check_production_pixiv_a2.py', 'scripts/production_pixiv_a2_evidence.py',
+    'scripts/production_pixiv_a2_post_full_fix.py', 'tests/test_production_pixiv_a2.py',
+    'tests/test_production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2_post_full_fix.py',
+    'docs/state/production-pixiv-a2-approved-projection.json', REGISTRY,
+})
+
+
+def verify_source_replay_carry_forward(root, *, candidate, prior_head, command, manifest,
+                                     approved_identity, ledger_sha256):
+    """Keep B3's actual source receipt while admitting unchanged inputs to B4.
+
+    This validates only unchanged source computation and input identity. The
+    current product loader must still perform its real full source verification.
+    """
+    from scripts.check_production_pixiv_a2 import require
+    from scripts.trusted_git import resolve_trusted_git_executable, run_trusted_git_bytes
+    root = Path(root).resolve(strict=True)
+    git = resolve_trusted_git_executable(repo_root=root)
+    def operation(*args):
+        result = run_trusted_git_bytes(root, args, git=git)
+        require(result.returncode == 0, 'source_replay_git_operation')
+        return result.stdout
+    verify_registered_delta(root, BASELINE, candidate)
+    require(prior_head == SOURCE_REPLAY_HEAD and candidate != prior_head
+            and operation('rev-parse', 'HEAD').decode().strip() == candidate
+            and operation('merge-base', prior_head, candidate).decode().strip() == prior_head,
+            'source_replay_candidate_ancestry')
+    require(command.get('status') == 'finished' and command.get('exit_code') == 0
+            and command.get('source_head') == command.get('source_head_after') == prior_head
+            and command.get('behavior_guard_after') is True
+            and command.get('frozen_release_candidate') is True
+            and command.get('provider_dispatch_authorized_in_this_invocation') is False
+            and command.get('ledger_before_sha256') == command.get('ledger_after_sha256') == ledger_sha256
+            and Path(command.get('cwd', '')).resolve() == root
+            and '--cache-only' in command.get('argv', [])
+            and str(root / 'scripts/run_production_pixiv_a2_concepts.py') in command.get('argv', []),
+            'source_replay_actual_command')
+    processing = manifest.get('processing', {})
+    require(manifest.get('candidate_head') == prior_head and manifest.get('input_identity') == approved_identity
+            and processing.get('selected_pair_count') == processing.get('judgment_count')
+            and type(processing.get('judgment_count')) is int and processing['judgment_count'] > 0
+            and processing.get('error_count') == processing.get('remaining_missing_pair_count') == 0,
+            'source_replay_approved_inputs')
+    changed = set(filter(None, operation('diff', '--name-only', '-z', prior_head, candidate).decode().split('\0')))
+    projections = {'docs/state/current-phase.json', 'docs/reports/production-pixiv-a2-summary.json'}
+    require(all(name in REPLAY_GATE_FILES | projections or (name.startswith('docs/') and name.endswith('.md'))
+                for name in changed), 'source_replay_semantic_source_changed')
+    backend = set(filter(None, operation('ls-tree', '-r', '--name-only', prior_head, '--', 'backend').decode().splitlines()))
+    require(backend and backend == set(filter(None, operation('ls-tree', '-r', '--name-only', candidate, '--', 'backend').decode().splitlines())),
+            'source_replay_backend_inventory')
+    blobs = {}
+    for name in sorted(backend | REPLAY_SOURCE_FILES):
+        before = operation('rev-parse', prior_head + ':' + name).decode().strip()
+        after = operation('rev-parse', candidate + ':' + name).decode().strip()
+        require(before == after, 'source_replay_semantic_blob_changed')
+        blobs[name] = before
+    return {'schema_version': 'violet.production-pixiv-a2.source-replay-carry-forward.v1',
+            'actual_source_head': prior_head, 'candidate_head': candidate,
+            'unchanged_source_blobs': blobs, 'changed_gate_paths': sorted(changed),
+            'input_identity': approved_identity, 'ledger_sha256': ledger_sha256,
+            'original_invocation_not_relabelled': True, 'current_full_native_readmission_required': True,
+            'new_provider_calls': 0, 'additional_full_suite_invocations': 0}
 
 
 def verify_registered_delta(root, baseline, candidate):

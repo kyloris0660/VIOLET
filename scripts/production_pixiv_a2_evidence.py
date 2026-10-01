@@ -51,6 +51,75 @@ def verify_preservation_snapshots(snapshots,*,candidate,database,system_identifi
     return {'table_count':len(baseline),'checkpoint_count':len(snapshots),'media_count':baseline['blombooru_media']['rows']}
 
 
+import hashlib, unicodedata
+from urllib.parse import parse_qs, urlparse
+
+def verify_source_chip_concept_binding(browser):
+    chip=browser.get('source_chip',{});detail=chip.get('detail',{});attempt=browser.get('attempt_id')
+    mid=chip.get('media_id');page=urlparse(detail.get('url',''));request=urlparse(detail.get('request_url',''))
+    if (type(mid) is not int or mid<=0 or detail.get('media_id')!=mid or detail.get('api_media_id')!=mid
+        or chip.get('attempt_id')!=attempt or detail.get('attempt_id')!=attempt or detail.get('status_code')!=200
+        or page.path!=f'/media/{mid}' or request.path!=f'/api/source-assertions/media/{mid}'
+        or not page.netloc or (page.scheme,page.netloc)!=(request.scheme,request.netloc)
+        or not any(a.get('action')=='thumbnail_to_detail' and a.get('media_id')==mid and a.get('attempt_id')==attempt for a in browser.get('actions',[]))):
+        raise ValueError('a2_browser_source_chip_detail_binding_changed')
+    try:
+        api_body=json.loads(detail['body_text'])
+        if (hashlib.sha256(detail['body_text'].encode('utf-8')).hexdigest()!=detail.get('body_sha256')
+            or api_body.get('media_id')!=mid or api_body.get('source_concepts')!=detail.get('source_concepts')):
+            raise ValueError('a2_browser_source_chip_api_body_changed')
+    except (KeyError,TypeError,json.JSONDecodeError) as exc:
+        raise ValueError('a2_browser_source_chip_api_body_missing') from exc
+    label=chip.get('display_name');name=chip.get('name_text');concepts=detail.get('source_concepts')
+    if not isinstance(label,str) or not label.strip() or label!=name or not isinstance(concepts,list) or not concepts:
+        raise ValueError('a2_browser_source_chip_concept_binding_changed')
+    key=lambda text:unicodedata.normalize('NFKC',str(text)).strip().lower()
+    def concept_label(c):return c.get('display_name') or c.get('primary_display_name') or c.get('search_value') or 'SourceConcept '+str(c.get('concept_id'))
+    group=[c for c in concepts if key(concept_label(c))==key(label)]
+    declared=chip.get('conceptIds','')
+    if not isinstance(declared,str) or not re.fullmatch(r'[1-9][0-9]*(?:,[1-9][0-9]*)*',declared):
+        raise ValueError('a2_browser_source_chip_concept_binding_changed')
+    ids=[int(value) for value in declared.split(',')]
+    expected=[c.get('concept_id') or c.get('id') for c in group]
+    if (not group or label!=concept_label(group[0]) or len(set(ids))!=len(ids) or any(type(i) is not int or i<=0 for i in expected)
+        or set(ids)!=set(expected) or any(not c.get('evidence_items') or not any(
+            e.get('media_scope')=='current_media' and type(e.get('id')) is int and e['id']>0 for e in c['evidence_items'])
+            or not any(type(s.get('source_metadata_record_id')) is int and s['source_metadata_record_id']>0
+                       and s.get('media_id')==mid for s in c.get('local_media_support',[])) for c in group)):
+        raise ValueError('a2_browser_source_chip_media_support_changed')
+    value=group[0].get('search_value')
+    if value is None:raise ValueError('a2_browser_source_chip_not_searchable')
+    value=str(value or concept_label(group[0]))
+    token=value.strip()
+    query='"'+token.replace('"','')+'"' if re.search(r'^-|[\s:"*?\[\]() ]',token) else token
+    href=urlparse(chip.get('href',''));search=chip.get('search',{})
+    if chip.get('value')!=value or parse_qs(href.query).get('q')!=[query] or search.get('query')!=query:
+        raise ValueError('a2_browser_source_chip_concept_query_changed')
+    expansions=search.get('source_concept_expansions',[])
+    if not isinstance(expansions,list) or not set(ids)&{r.get('concept_id') for r in expansions}:
+        raise ValueError('a2_browser_source_chip_search_concept_changed')
+    pages=search.get('pages');total=search.get('total');all_ids=search.get('all_api_ids')
+    if not isinstance(pages,list) or not pages or type(total) is not int or total<=0 or not isinstance(all_ids,list):
+        raise ValueError('a2_browser_source_chip_complete_results_missing')
+    observed=[];limit=None
+    for number,row in enumerate(pages,1):
+        url=urlparse(row.get('request_url',''));parameters=parse_qs(url.query)
+        if (row.get('page')!=number or row.get('status_code')!=200 or row.get('total')!=total
+            or url.path!='/api/search' or (url.scheme,url.netloc)!=(href.scheme,href.netloc)
+            or parameters.get('q')!=[query] or parameters.get('page')!=[str(number)]
+            or type(row.get('limit')) is not int or row['limit']<=0 or parameters.get('limit')!=[str(row['limit'])]):
+            raise ValueError('a2_browser_source_chip_result_page_changed')
+        if limit is None:limit=row['limit']
+        if row['limit']!=limit:raise ValueError('a2_browser_source_chip_result_page_changed')
+        values=row.get('ids')
+        if not isinstance(values,list) or any(type(i) is not int or i<=0 for i in values):
+            raise ValueError('a2_browser_source_chip_result_page_changed')
+        observed.extend(values)
+    if (len(pages)!=(total+limit-1)//limit or len(observed)!=len(set(observed)) or len(observed)!=total
+        or sorted(observed)!=all_ids or mid not in observed or set(search.get('api_ids',[]))!=set(pages[0]['ids'])):
+        raise ValueError('a2_browser_source_chip_media_result_changed')
+    return {'media_id':mid,'concept_ids':ids,'display_name':label,'query':query,'complete_result_count':total,'page_count':len(pages)}
+
 def verify_browser_actions(browser, *, launch=None, suggestion_oracle=None):
     if launch is not None:
         from scripts.production_pixiv_a2_service_evidence import verify_browser_service
@@ -129,7 +198,8 @@ def verify_browser_actions(browser, *, launch=None, suggestion_oracle=None):
         or recovery.get('mutation_performed') is not False or not recovery.get('text')
         or urlparse(recovery['request_url']).path!='/api/admin/dynamic-library-sync/recovery-items'):
         raise ValueError('a2_browser_recovery_page_not_observed')
-    return {'fullscreen_samples':len(opened),'search_dom_api_equal':True,'old_tag_dom_api_equal':True,'recovery_read_observed':True}
+    return {'fullscreen_samples':len(opened),'search_dom_api_equal':True,'old_tag_dom_api_equal':True,'recovery_read_observed':True,
+            'source_chip_concept_binding':verify_source_chip_concept_binding(browser)}
 
 
 def recorded_code_root_matches(value,repo):
@@ -312,12 +382,132 @@ def collect_creator_projection(cursor):
             for row in cursor.fetchall()]
 
 
+import hashlib, json
+
+def projection_fingerprint(value):
+    return hashlib.sha256(json.dumps(value,ensure_ascii=False,sort_keys=True,separators=(',',':'),allow_nan=False).encode('utf-8')).hexdigest()
+
+def collect_owned_business_projection(cursor, metadata):
+    """Read all owned core and product rows using the caller's one snapshot."""
+    resolver=metadata['resolver_run_id']; product_id=metadata['id']
+    def rows(table,condition,parameters):
+        cursor.execute('select to_jsonb(t) from blombooru_'+table+' t where '+condition+' order by t.id',parameters)
+        return [row[0] for row in cursor.fetchall()]
+    core={}
+    core['resolution_runs']=rows('source_concept_resolution_runs','t.run_id=%s',(resolver,))
+    core['signals']=rows('source_concept_signals','t.created_by_run_id=%s',(resolver,))
+    core['concepts']=rows('source_concepts','t.created_by_run_id=%s',(resolver,))
+    own_concepts='select id from blombooru_source_concepts where created_by_run_id=%s'
+    own_signals='select id from blombooru_source_concept_signals where created_by_run_id=%s'
+    for name,condition,parameters in (
+        ('aliases','t.created_by_run_id=%s or t.concept_id in ('+own_concepts+') or t.source_signal_id in ('+own_signals+')',(resolver,resolver,resolver)),
+        ('evidence','t.run_id=%s or t.concept_id in ('+own_concepts+') or t.signal_id in ('+own_signals+')',(resolver,resolver,resolver)),
+        ('signal_links','t.run_id=%s or t.concept_id in ('+own_concepts+') or t.signal_id in ('+own_signals+')',(resolver,resolver,resolver)),
+        ('search_index','t.run_id=%s or t.concept_id in ('+own_concepts+')',(resolver,resolver)),
+    ):
+        core[name]=rows('source_concept_'+name,condition,parameters)
+    signals={r['id']:r['signal_key'] for r in core['signals']}
+    concepts={r['id']:r['concept_key'] for r in core['concepts']}
+    runs={r['id']:r['run_id'] for r in core['resolution_runs']}
+    def ref(mapping,value):
+        if value is None:return None
+        return mapping.get(value,{'external_local_id':value})
+    floats={'signals':('confidence',),'concepts':('confidence_score','evidence_score'),
+            'aliases':('confidence',),'signal_links':('confidence',),'search_index':('weight',)}
+    full={}
+    for table,items in core.items():
+        normalized=[]
+        for original in items:
+            row={k:v for k,v in original.items() if k not in {'id','created_at','updated_at','started_at','finished_at','runtime_seconds'}}
+            # Operational before/after table counts are protected by separate
+            # transaction proofs. They are not database-neutral business data.
+            if table=='resolution_runs':row.pop('no_truth_write_proof_json',None)
+            for field in floats.get(table,()):
+                if row.get(field) is not None:row[field]=float(row[field])
+            for field,mapping in (('concept_id',concepts),('superseded_by_concept_id',concepts),('signal_id',signals),('source_signal_id',signals),('resolution_run_id',runs)):
+                if field in row:row[field]=ref(mapping,row[field])
+            normalized.append(row)
+        full[table]=sorted(normalized,key=projection_fingerprint)
+    full['counts']={key:len(values) for key,values in full.items()}
+    full['canonical_fingerprint']=projection_fingerprint(full)
+    # Reconstruct the existing authoritative core business schema as an
+    # additional cross-check against the actual apply/reapply receipt.
+    def select(row,fields):return {destination:row[source] for destination,source in fields}
+    core_business={
+        'signals':[select(r,[(k,k) for k in ('signal_key','provider','display_value','normalized_key','canonical_key','role_hint','work_context_key','source_kind','trust_tier','status','evidence_payload','source_run_id','created_by_run_id')]) for r in full['signals']],
+        'concepts':[select(r,[(k,k) for k in ('concept_key','primary_display_name','concept_type_hint','status','confidence_score','evidence_score','media_count','source_count','created_by_run_id')]+[('evidence_summary','evidence_summary_json'),('lifecycle','lifecycle_payload')]) for r in full['concepts']],
+        'aliases':[select(r,[('concept_key','concept_id'),('signal_key','source_signal_id')]+[(k,k) for k in ('alias_key','display_name','alias_role','status','confidence','evidence_payload','created_by_run_id')]) for r in full['aliases']],
+        'evidence':[select(r,[('concept_key','concept_id'),('signal_key','signal_id')]+[(k,k) for k in ('provider','evidence_type','evidence_strength','payload','run_id','status')]) for r in full['evidence']],
+        'links':[select(r,[('concept_key','concept_id'),('signal_key','signal_id')]+[(k,k) for k in ('link_status','confidence')]+[('reason_code','resolution_reason_code'),('negative_reason','negative_reason_code')]+[(k,k) for k in ('resolver_version','run_id','evidence_payload')]) for r in full['signal_links']],
+        'search_index':[select(r,[('concept_key','concept_id')]+[(k,k) for k in ('search_key','display_name','alias_role','weight','status')]+[('evidence_refs','evidence_refs_json'),('run_id','run_id')]) for r in full['search_index']],
+    }
+    keys={'signals':('signal_key',),'concepts':('concept_key',),'aliases':('concept_key','alias_key','alias_role'),
+          'evidence':('concept_key','signal_key','evidence_type'),'links':('signal_key','concept_key','run_id'),'search_index':('concept_key','search_key','alias_role')}
+    for table,key in keys.items():core_business[table].sort(key=lambda r:tuple(str(r[k]) for k in key))
+    core_business['counts']={key:len(values) for key,values in core_business.items()}
+    core_business['canonical_fingerprint']=projection_fingerprint(core_business)
+    product_rows={name:rows('source_concept_'+name,'t.product_run_id=%s',(product_id,))
+                  for name in ('product_clusters','candidate_dispositions','ambiguity_records')}
+    clusters=[select(r,[(k,k) for k in ('cluster_key','primary_display_name','concept_type_hint','status')]+[('member_signal_keys','member_signal_keys_json'),('stable_identity_anchors','stable_identity_anchors_json'),('aliases','aliases_json'),('evidence_summary','evidence_json'),('provenance','provenance_json')])|
+              {'work_references':r['work_page_references_json'].get('work',[]),'page_references':r['work_page_references_json'].get('page',[])} for r in product_rows['product_clusters']]
+    candidates=[select(r,[(k,k) for k in ('pair_key','left_signal_key','right_signal_key','disposition','reason_code','negative_reason','union_decision','same_resolved_component')]+[('evidence_refs','evidence_refs_json')]) for r in product_rows['candidate_dispositions']]
+    ambiguities=[select(r,[(k,k) for k in ('record_key','record_kind','status','reason_code')]+[('signal_keys','signal_keys_json'),('evidence_refs','evidence_refs_json'),('summary','summary_json')]) for r in product_rows['ambiguity_records']]
+    child_fingerprints={}
+    for table,payloads,key in (('product_clusters',clusters,'cluster_key'),('candidate_dispositions',candidates,'pair_key'),('ambiguity_records',ambiguities,'record_key')):
+        by_key={r[key]:r['canonical_fingerprint'] for r in product_rows[table]}
+        child_fingerprints[table]=[[r[key],by_key[r[key]],projection_fingerprint(r)] for r in sorted(payloads,key=lambda r:r[key])]
+        payloads.sort(key=lambda r:r[key])
+    cursor.execute('select summary_json from blombooru_source_concept_product_runs where id=%s',(product_id,))
+    summary=cursor.fetchone()[0]
+    versions=(summary or {}).get('policy_versions') or {}
+    product={
+        'scope_key':metadata['scope_key'],'source_mode':metadata['source_mode'],
+        'px1_input_fingerprint':metadata['input_fingerprint'],'px2_business_projection_fingerprint':metadata['business_fingerprint'],
+        'resolver_version':metadata['resolver_version'],'context_policy_version':versions.get('context_policy_version'),
+        'candidate_policy_version':versions.get('candidate_policy_version'),'product_policy_version':metadata['policy_version'],
+        'clusters':clusters,'candidate_dispositions':candidates,'ambiguity_records':ambiguities}
+    if (summary or {}).get('input_selection') is not None:product['input_selection']=summary['input_selection']
+    return {'run_key':metadata['run_key'],'product':product,'product_fingerprint':projection_fingerprint(product),
+            'child_fingerprints':child_fingerprints,'core_business':core_business,'full_core':full,
+            'full_core_fingerprint':full['canonical_fingerprint'],'core_business_fingerprint':core_business['canonical_fingerprint']}
+
+def verify_owned_business_projection(projection, metadata, *, approved=None):
+    if projection.get('run_key')!=metadata['run_key']:raise ValueError('a2_owned_business_projection_run_changed')
+    product=projection.get('product',{})
+    product_fingerprint=projection_fingerprint(product)
+    if (projection.get('product_fingerprint')!=product_fingerprint or product_fingerprint!=metadata['result_fingerprint']
+        or any(stored!=actual for values in projection.get('child_fingerprints',{}).values() for _,stored,actual in values)):
+        raise ValueError('a2_owned_product_projection_changed')
+    expected_children={'product_clusters','candidate_dispositions','ambiguity_records'}
+    if set(projection.get('child_fingerprints',{}))!=expected_children:raise ValueError('a2_owned_product_projection_missing')
+    for table,field,key in (('product_clusters','clusters','cluster_key'),('candidate_dispositions','candidate_dispositions','pair_key'),('ambiguity_records','ambiguity_records','record_key')):
+        declared=projection['child_fingerprints'][table]
+        expected=[[r[key],projection_fingerprint(r),projection_fingerprint(r)] for r in sorted(product[field],key=lambda r:r[key])]
+        if declared!=expected:raise ValueError('a2_owned_product_projection_child_changed')
+    for name in ('core_business','full_core'):
+        payload=dict(projection.get(name,{}));fingerprint=payload.pop('canonical_fingerprint',None)
+        expected={'signals','concepts','aliases','evidence','links','search_index'} if name=='core_business' else {'resolution_runs','signals','concepts','aliases','evidence','signal_links','search_index'}
+        if (set(payload)!=expected|{'counts'} or payload['counts']!={k:len(payload[k]) for k in expected}
+            or fingerprint!=projection_fingerprint(payload)
+            or projection.get('core_business_fingerprint' if name=='core_business' else 'full_core_fingerprint')!=fingerprint):
+            raise ValueError('a2_owned_core_projection_invalid')
+    if approved is not None:
+        required={'run_key','product_fingerprint','core_business_fingerprint','full_core_fingerprint','core_counts','product_counts'}
+        if (set(approved)!=required or any(projection.get(k)!=approved[k] for k in ('run_key','product_fingerprint','core_business_fingerprint','full_core_fingerprint'))
+            or projection['full_core']['counts']!=approved['core_counts']
+            or {k:len(product[k]) for k in ('clusters','candidate_dispositions','ambiguity_records')}!=approved['product_counts']):
+            raise ValueError('a2_owned_business_projection_not_approved_candidate')
+    return {'run_key':metadata['run_key'],'product_fingerprint':product_fingerprint,
+            'core_business_fingerprint':projection['core_business_fingerprint'],'full_core_fingerprint':projection['full_core_fingerprint'],
+            'core_counts':projection['full_core']['counts'],'product_counts':{k:len(product[k]) for k in ('clusters','candidate_dispositions','ambiguity_records')}}
+
+
 RUN_IDENTITY_FIELDS=('id','run_key','scope_key','source_mode','policy_version','result_fingerprint',
     'input_fingerprint','business_fingerprint','resolver_run_id','resolver_version')
 
 
 def collect_final_projection(cursor):
-    """Collect current valid support; retained stale bindings are audit only."""
+    """Collect valid support and every owned business row from the caller snapshot."""
     cursor.execute("""select id,run_key,scope_key,source_mode,policy_version,result_fingerprint,
         input_fingerprint,business_fingerprint,resolver_run_id,resolver_version from blombooru_source_concept_product_runs
         where source_mode in ('existing_source_metadata','production_scope') and status='active' order by id""")
@@ -328,13 +518,15 @@ def collect_final_projection(cursor):
         where p.source_mode in ('existing_source_metadata','production_scope') and p.status='active'
           and b.source_revision=r.binding_revision order by b.id""")
     rows=[list(r) for r in cursor.fetchall()]
-    return {'active_runs':len(runs),'run_keys':[r[1] for r in runs],
+    result={'active_runs':len(runs),'run_keys':[r[1] for r in runs],
         'run_metadata':[dict(zip(RUN_IDENTITY_FIELDS,row)) for row in runs],'binding_rows':rows,'bindings':len(rows),
         'bound_media_ids':sorted({r[4] for r in rows}),'source_record_ids':sorted({r[3] for r in rows}),
         'duplicate_support_count':len(rows)-len({(r[2],r[3],r[4]) for r in rows})}
 
+    result['owned_business_projection']=[collect_owned_business_projection(cursor,m) for m in result['run_metadata']]
+    return result
 
-def verify_final_projection(recorded,actual,*,approved_run=None):
+def verify_final_projection(recorded,actual,*,approved_run=None,approved_projection=None):
     fields=('active_runs','run_keys','run_metadata','bindings','binding_rows','bound_media_ids','source_record_ids','duplicate_support_count')
     if (actual.get('active_runs')!=1 or actual.get('duplicate_support_count')!=0
         or any(k not in recorded or recorded[k]!=actual.get(k) for k in fields)):
@@ -351,7 +543,18 @@ def verify_final_projection(recorded,actual,*,approved_run=None):
         if (set(approved_run)!=expected_fields
             or any(metadata[0][key]!=approved_run[key] for key in expected_fields)):
             raise ValueError('a2_live_run_not_approved_candidate')
-    return actual
+    owned=actual.get('owned_business_projection')
+    if owned is None:
+        if approved_projection is not None:raise ValueError('a2_owned_business_projection_missing')
+    else:
+        if not isinstance(owned,list) or len(owned)!=len(metadata):raise ValueError('a2_owned_business_projection_missing')
+        if 'owned_business_projection' in recorded and recorded['owned_business_projection']!=owned:
+            raise ValueError('a2_live_owned_business_projection_changed')
+        for projection,run in zip(owned,metadata):
+            verify_owned_business_projection(projection,run,approved=approved_projection)
+    # Historical apply receipts keep their actual eight-field schema. Current
+    # native gates explicitly require independent, Git-protected approval.
+    return actual if 'owned_business_projection' in recorded else {k:v for k,v in actual.items() if k!='owned_business_projection'}
 
 
 def collect_identity_projection(cursor):

@@ -1,0 +1,55 @@
+{
+  "schema_version": "violet.production-pixiv-a2.approved-projection.v1",
+  "semantic_input_identity": {
+    "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+    "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+    "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+    "role_facts": "8baa79c1cf2af2b9375ee43a673cf50a9d83ce89b098f1d14b878c905df24845",
+    "judgments": "c06f9fcdb1e517704e6d80aeb6c8c0727cf2ebfe37365a17696502c22d4954a6",
+    "versions": {
+      "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+      "role_schema": "violet.production-pixiv-role-result.v1",
+      "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+      "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+      "extraction_schema": "source_name_candidate_extraction_compact_v2",
+      "completion": "production_pixiv_residual_roles_v1",
+      "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+      "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+      "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+      "cache_policy": "source_concept_llm_adjudication_cache_v1",
+      "decision_schema": "source_concept_pair_decision_schema_v1",
+      "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+      "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+      "model": "gpt-4.1-mini",
+      "fallback": false
+    }
+  },
+  "projection": {
+    "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
+    "product_fingerprint": "8e0662f9ffd37d5a153e5734545a693bd9aed601eade02e951c3054a1f097b08",
+    "core_business_fingerprint": "493fc75e79f5d6f8f8773955c6141964bd55b774d77738552b8ffa9fc5be0292",
+    "full_core_fingerprint": "e6e17ece7bc2112cad3c4608e43453ef310faa7f514acedcf7877e8b318facea",
+    "core_counts": {
+      "resolution_runs": 1,
+      "signals": 100285,
+      "concepts": 17497,
+      "aliases": 21313,
+      "evidence": 65956,
+      "signal_links": 65956,
+      "search_index": 21313
+    },
+    "product_counts": {
+      "clusters": 17497,
+      "candidate_dispositions": 595157,
+      "ambiguity_records": 65978
+    }
+  },
+  "origin": {
+    "complete_semantic_candidate": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "actual_completed_copy_receipt": "correction29-copy-d26bd0c-1-reapply-apply-private.json",
+    "receipt_sha256": "8eab52831d296cb5333518a27b2d34710c342a6a2064197588260efa32e90656",
+    "independent_raw_projection": "correction29-approved-full-business-projection-20261001-private.json",
+    "raw_projection_sha256": "a0d84890c0f67563353eb38c7f51e8bb9bab2320416dce7b4f21c0096781f3f8"
+  },
+  "purpose": "Protected approval for unchanged complete semantics. Native current candidate gates must recompute all live owned product and core business rows from one repeatable-read snapshot; no finite-query substitution."
+}

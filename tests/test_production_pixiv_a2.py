@@ -525,3 +525,81 @@ def test_tied_positive_judgments_with_cannot_link_are_stable_across_resume_order
         assert not any({'AlphaVerse','GammaVerse'}<=set(group) for group in groups)
         fingerprints.add(run.business_projection_fingerprint);partitions.add(groups)
     assert len(partitions)==len(fingerprints)==1
+
+
+@pytest.mark.parametrize('table,operation,field,value', [
+    ('SourceConceptAlias','delete',None,None),
+    ('SourceConceptAlias','update','status','superseded'),
+    ('SourceConceptSearchIndex','delete',None,None),
+    ('SourceConceptSearchIndex','update','display_name','wrong search name'),
+    ('SourceConceptProductCluster','delete',None,None),
+    ('SourceConceptProductCluster','update','primary_display_name','wrong cluster name'),
+    ('SourceConceptCandidateDisposition','delete',None,None),
+    ('SourceConceptCandidateDisposition','update','reason_code','wrong reason'),
+    ('SourceConceptAmbiguityRecord','delete',None,None),
+    ('SourceConceptAmbiguityRecord','update','status','closed'),
+    ('SourceConcept','update','status','superseded'),
+    ('SourceConceptSignal','update','raw_value','wrong signal name'),
+    ('SourceConceptEvidence','update','status','superseded'),
+    ('SourceConceptSignalLink','update','link_status','superseded'),
+])
+def test_live_owned_product_core_drift_is_rejected(database, table, operation, field, value):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real complete owned business projection')
+    from app import models
+    from scripts.production_pixiv_a2_evidence import collect_final_projection, verify_final_projection
+    apply(database, build(database), scope_for(database))
+    cursor = database.connection().connection.cursor()
+    try:
+        before = collect_final_projection(cursor)
+        approved = {k:v for k,v in before['run_metadata'][0].items() if k != 'id'}
+        assert verify_final_projection(before, copy.deepcopy(before), approved_run=approved) == before
+        row = database.query(getattr(models, table)).order_by(getattr(models, table).id).first()
+        assert row is not None, table + ' must have actual persisted fixture rows'
+        if operation == 'delete': database.delete(row)
+        else: setattr(row, field, value)
+        database.flush()
+        actual = collect_final_projection(cursor)
+        # These mutations leave the run's approved result string and all media
+        # supports intact. A finite passing query set cannot close this hole.
+        assert actual['run_metadata'] == before['run_metadata']
+        if table not in ('SourceConceptEvidence',):
+            assert actual['binding_rows'] == before['binding_rows']
+        with pytest.raises(ValueError, match='live_.*projection|owned_.*projection'):
+            verify_final_projection(before, actual, approved_run=approved)
+    finally:
+        cursor.close(); database.rollback()
+
+
+
+@pytest.mark.parametrize('table,field,value', [
+    ('SourceConceptAlias', 'display_name', 'self-consistent changed alias'),
+    ('SourceConceptSignal', 'raw_value', 'self-consistent changed raw signal'),
+    ('SourceConceptSearchIndex', 'display_name', 'self-consistent changed index'),
+    ('SourceConceptEvidence', 'payload', {'changed':'self-consistent evidence'}),
+])
+def test_self_consistent_live_report_cannot_replace_independent_approval(database, table, field, value):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real independently approved business projection')
+    from app import models
+    from scripts.production_pixiv_a2_evidence import verify_owned_business_projection
+    from scripts.production_pixiv_a2_evidence import collect_final_projection, verify_final_projection
+    apply(database, build(database), scope_for(database))
+    cursor = database.connection().connection.cursor()
+    try:
+        before = collect_final_projection(cursor)
+        metadata = before['run_metadata'][0]
+        approved_run = {k:v for k,v in metadata.items() if k != 'id'}
+        approval = verify_owned_business_projection(before['owned_business_projection'][0], metadata)
+        row = database.query(getattr(models, table)).order_by(getattr(models, table).id).first()
+        assert row is not None
+        setattr(row, field, value)
+        database.flush()
+        actual = collect_final_projection(cursor)
+        assert actual['run_metadata'] == before['run_metadata']
+        with pytest.raises(ValueError, match='not_approved_candidate'):
+            verify_final_projection(copy.deepcopy(actual), actual, approved_run=approved_run, approved_projection=approval)
+        actual.pop('owned_business_projection')
+        with pytest.raises(ValueError, match='owned_business_projection_missing'):
+            verify_final_projection(copy.deepcopy(actual), actual, approved_run=approved_run, approved_projection=approval)
+    finally:
+        cursor.close()
+        database.rollback()

@@ -343,6 +343,17 @@ def browser_fixture():
         'request_url':'http://127.0.0.1/api/media/20','status_code':200,'api_media_id':20,'mutation_performed':False,'tag':'draft',
         'observed_items':[{'id':90,'media_id':20,'text':'draft','title':'suggestion','tag_name':'SPAN','href':None,'classes':'border-dashed','visible':True}],
         'api_items':[{'id':90,'name':'draft','is_suggestion':True}]}
+    chip=browser['source_chip']
+    chip.update(media_id=3,attempt_id=browser['attempt_id'],display_name='x',name_text='x',value='x',
+        detail={'media_id':3,'api_media_id':3,'status_code':200,'url':'http://127.0.0.1/media/3',
+                'request_url':'http://127.0.0.1/api/source-assertions/media/3','attempt_id':browser['attempt_id'],
+                'source_concepts':[{'concept_id':1,'display_name':'x','search_value':'x','status':'active',
+                    'evidence_items':[{'id':42,'media_scope':'current_media'}],
+                    'local_media_support':[{'media_id':3,'source_metadata_record_id':10}]}]})
+    chip['search'].update(api_ids=[1,3],dom_ids=[1,3],source_concept_expansions=[{'concept_id':1}],
+        all_api_ids=[1,3],total=2,pages=[{'page':1,'limit':64,'request_url':'http://127.0.0.1/api/search?q=x&page=1&limit=64',
+            'status_code':200,'total':2,'ids':[1,3]}])
+    bind_api_body(chip)
     return browser
 
 
@@ -421,3 +432,103 @@ def test_unrelated_passing_node_cannot_resolve_a_historical_failure(tmp_path):
         record[label]={**gate,'command':label+'-command.json','xml':xml.name}
     with pytest.raises(ValueError,match='unverified_remediation_node_mapping'):
         validation_evidence(tmp_path,record,'current')
+
+
+from urllib.parse import urlencode
+from scripts.production_pixiv_a2_evidence import verify_source_chip_concept_binding
+import hashlib
+
+def bind_api_body(chip):
+    detail = chip['detail']
+    body = json.dumps({'media_id': detail['api_media_id'], 'source_concepts': detail['source_concepts']}, ensure_ascii=False)
+    detail.update(body_text=body, body_sha256=hashlib.sha256(body.encode('utf-8')).hexdigest())
+
+def chip_browser(value='x', total_ids=(1, 3), limit=64):
+    browser = browser_fixture()
+    chip = browser['source_chip']
+    token = value.strip()
+    import re
+    query = '"' + token.replace('"', '') + '"' if re.search(r'^-|[\s:"*?\[\]()]', token) else token
+    chip.update(media_id=3, attempt_id=browser['attempt_id'], display_name=value, name_text=value, value=value,
+                href='http://127.0.0.1/?' + urlencode({'q': query}),
+                navigated_url='http://127.0.0.1/?' + urlencode({'q': query}),
+                detail={'media_id':3, 'api_media_id':3, 'status_code':200, 'url':'http://127.0.0.1/media/3',
+                        'request_url':'http://127.0.0.1/api/source-assertions/media/3', 'attempt_id':browser['attempt_id'],
+                        'source_concepts':[{'concept_id':1, 'display_name':value, 'search_value':value, 'status':'active',
+                                            'evidence_items':[{'id':42, 'media_scope':'current_media'}],
+                                            'local_media_support':[{'media_id':3, 'source_metadata_record_id':10}]}]})
+    pages = [{'page':number + 1, 'limit':limit, 'status_code':200, 'total':len(total_ids),
+              'ids':list(total_ids[start:start+limit]),
+              'request_url':'http://127.0.0.1/api/search?' + urlencode({'q':query, 'page':number+1, 'limit':limit})}
+             for number, start in enumerate(range(0, len(total_ids), limit))]
+    chip['search'].update(query=query, request_url=pages[0]['request_url'], status_code=200,
+                          api_ids=pages[0]['ids'], dom_ids=pages[0]['ids'],
+                          source_concept_expansions=[{'concept_id':1, 'display_name':value}],
+                          all_api_ids=sorted(total_ids), total=len(total_ids), pages=pages)
+    bind_api_body(chip)
+    return browser
+
+@pytest.mark.parametrize('value', ['x', 'two names', ' x ', '-leading', 'a"b', '名前(作品)'])
+def test_real_frontend_token_rules_remain_accepted(value):
+    from scripts.production_pixiv_a2_evidence import verify_browser_actions
+    assert verify_browser_actions(chip_browser(value))['source_chip_concept_binding']['media_id'] == 3
+
+def test_complete_second_page_contains_clicked_media():
+    result = verify_source_chip_concept_binding(chip_browser(total_ids=(1, 2, 3), limit=2))
+    assert result['complete_result_count'] == 3 and result['page_count'] == 2
+
+def test_normalized_group_keeps_all_actual_concept_ids():
+    browser = chip_browser()
+    chip = browser['source_chip']
+    second = copy.deepcopy(chip['detail']['source_concepts'][0])
+    second.update(concept_id=2, display_name='ｘ')
+    chip['detail']['source_concepts'].append(second)
+    chip['conceptIds'] = '1,2'
+    bind_api_body(chip)
+    assert verify_source_chip_concept_binding(browser)['concept_ids'] == [1, 2]
+
+@pytest.mark.parametrize('change', [
+    'missing_detail', 'wrong_media', 'wrong_api_media', 'wrong_api_origin', 'wrong_attempt',
+    'wrong_id', 'duplicate_ids', 'wrong_visible_name', 'wrong_api_name', 'disabled_search',
+    'empty_evidence', 'wrong_evidence_scope', 'missing_local_support', 'wrong_local_support',
+    'wrong_expansion', 'wrong_self_consistent_query', 'missing_pages', 'missing_last_page',
+    'duplicate_media', 'detail_media_absent', 'wrong_page_query', 'wrong_total',
+    'wrong_first_page', 'changed_body', 'missing_body', 'changed_api_concept_attachment',
+])
+def test_chip_binding_rejects_each_independent_evidence_gap(change):
+    browser = chip_browser(total_ids=(1, 2, 3), limit=2)
+    chip = browser['source_chip']
+    detail = chip['detail']
+    search = chip['search']
+    concept = detail['source_concepts'][0]
+    if change == 'missing_detail': chip.pop('detail')
+    elif change == 'wrong_media': detail['media_id'] = 99
+    elif change == 'wrong_api_media': detail['api_media_id'] = 99
+    elif change == 'wrong_api_origin': detail['request_url'] = 'http://elsewhere/api/source-assertions/media/3'
+    elif change == 'wrong_attempt': detail['attempt_id'] = 'other'
+    elif change == 'wrong_id': chip['conceptIds'] = '2'
+    elif change == 'duplicate_ids': chip['conceptIds'] = '1,1'
+    elif change == 'wrong_visible_name': chip['name_text'] = 'unrelated'
+    elif change == 'wrong_api_name': concept['display_name'] = 'unrelated'; bind_api_body(chip)
+    elif change == 'disabled_search': concept['search_value'] = None; bind_api_body(chip)
+    elif change == 'empty_evidence': concept['evidence_items'] = []; bind_api_body(chip)
+    elif change == 'wrong_evidence_scope': concept['evidence_items'][0]['media_scope'] = 'linked_media'; bind_api_body(chip)
+    elif change == 'missing_local_support': concept.pop('local_media_support'); bind_api_body(chip)
+    elif change == 'wrong_local_support': concept['local_media_support'][0]['media_id'] = 99; bind_api_body(chip)
+    elif change == 'wrong_expansion': search['source_concept_expansions'] = [{'concept_id':99}]
+    elif change == 'wrong_self_consistent_query':
+        chip['href'] = chip['navigated_url'] = 'http://127.0.0.1/?q=unrelated'
+        search.update(query='unrelated', request_url='http://127.0.0.1/api/search?q=unrelated')
+        for page in search['pages']: page['request_url'] = page['request_url'].replace('q=x', 'q=unrelated')
+    elif change == 'missing_pages': search.pop('pages')
+    elif change == 'missing_last_page': search['pages'].pop()
+    elif change == 'duplicate_media': search['pages'][1]['ids'] = [2]
+    elif change == 'detail_media_absent': search['pages'][1]['ids'] = [4]; search['all_api_ids'] = [1, 2, 4]
+    elif change == 'wrong_page_query': search['pages'][1]['request_url'] = search['pages'][1]['request_url'].replace('q=x', 'q=other')
+    elif change == 'wrong_total': search['pages'][1]['total'] = 9
+    elif change == 'wrong_first_page': search['api_ids'] = [99]
+    elif change == 'changed_body': detail['body_text'] += ' '
+    elif change == 'missing_body': detail.pop('body_text')
+    else: concept['search_value'] = 'unrecorded'
+    with pytest.raises(ValueError, match='source_chip'):
+        verify_source_chip_concept_binding(browser)
