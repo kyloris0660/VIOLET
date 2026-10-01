@@ -32,7 +32,7 @@ def _fixture(tmp_path, monkeypatch):
                        'after_sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
     registry = {'schema_version': 'violet.production-pixiv-a2.post-full-fix.v1',
         'baseline_head': base, 'authorization': 'owner-20260929-section-2.2-impact-verification',
-        'scope': 'verified-launcher-runtime-metadata', 'files': files}
+        'scope': contract.REGISTRY_SCOPE, 'files': files}
     registry_path = repo / contract.REGISTRY
     registry_path.write_text(json.dumps(registry), encoding='utf-8')
     run('add', '.'); run('commit', '-qm', 'registered correction')
@@ -47,7 +47,7 @@ def test_post_full_source_contract_preserves_actual_full_baseline(tmp_path, monk
 
 
 @pytest.mark.parametrize('change', ['extra_runtime', 'extra_config', 'wrong_before', 'wrong_after',
-                                   'missing_file', 'wrong_scope', 'uncommitted_registry', 'live_source'])
+                                   'missing_file', 'wrong_scope', 'legacy_scope', 'uncommitted_registry', 'live_source'])
 def test_post_full_source_contract_rejects_unregistered_or_changed_inputs(tmp_path, monkeypatch, change):
     repo, run, base, candidate, registry, registry_path = _fixture(tmp_path, monkeypatch)
     name = 'scripts/trusted_git.py'
@@ -60,6 +60,8 @@ def test_post_full_source_contract_rejects_unregistered_or_changed_inputs(tmp_pa
         del registry['files'][name]
     elif change == 'wrong_scope':
         registry['scope'] = 'all future changes'
+    elif change == 'legacy_scope':
+        registry['scope'] = 'verified-launcher-runtime-metadata'
     elif change == 'uncommitted_registry':
         registry['scope'] = 'uncommitted replacement'
     elif change == 'live_source':

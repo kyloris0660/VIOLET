@@ -1,7 +1,7 @@
 """Exact source delta and affected verification after the one authorized full run.
 
 The full run remains evidence for its actual source. This contract permits only
-the registered launcher metadata correction and its evidence-consumer changes.
+the registered launcher metadata and live source-revision evidence corrections.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -11,11 +11,13 @@ from pathlib import Path
 
 BASELINE = 'd26bd0c5cde6865a2760a8c59b749a9fb4652ace'
 REGISTRY = 'docs/state/production-pixiv-a2-post-full-fix.json'
+REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-and-live-source-revision'
 ALLOWED_FILES = frozenset({
     'scripts/trusted_git.py', 'scripts/production_pixiv_a2_full_suite.py',
     'scripts/production_pixiv_a2_post_full_fix.py', 'scripts/check_production_pixiv_a2.py',
     'tests/test_trusted_git.py', 'tests/test_production_pixiv_a2_post_full_fix.py',
     'docs/state/production-pixiv-a2-required-tests.json',
+    'scripts/production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2.py',
 })
 
 
@@ -40,7 +42,7 @@ def verify_registered_delta(root, baseline, candidate):
     require(registry.get('schema_version') == 'violet.production-pixiv-a2.post-full-fix.v1'
             and registry.get('baseline_head') == baseline
             and registry.get('authorization') == 'owner-20260929-section-2.2-impact-verification'
-            and registry.get('scope') == 'verified-launcher-runtime-metadata', 'post_full_registry_scope')
+            and registry.get('scope') == REGISTRY_SCOPE, 'post_full_registry_scope')
     require(set(registry.get('files', {})) == ALLOWED_FILES, 'post_full_registry_file_set')
     changed = set(filter(None, command('diff', '--name-only', '-z', baseline, candidate).decode().split('\0')))
     # Existing executable documentation carry-forward permits these projections;

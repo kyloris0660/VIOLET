@@ -207,6 +207,44 @@ def test_live_active_run_metadata_drift_is_rejected_with_unchanged_bindings(data
         cursor.close();database.rollback()
 
 
+@pytest.mark.parametrize('field,value', [('title','Revised artwork title'),
+                                        ('artist_name','Revised account name'),
+                                        ('status','superseded')])
+def test_live_final_projection_rejects_stale_source_revision(database,field,value):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real source revision trigger')
+    from scripts.run_production_pixiv_a2_product import database_state
+    from scripts.production_pixiv_a2_evidence import (collect_final_projection,
+        collect_creator_projection,collect_identity_projection,verify_final_projection)
+    apply(database,build(database),scope_for(database))
+    recorded=database_state(database)
+    approved={k:v for k,v in recorded['run_metadata'][0].items() if k!='id'}
+    cursor=database.connection().connection.cursor()
+    try:
+        assert verify_final_projection(recorded,collect_final_projection(cursor),approved_run=approved)==recorded
+        before_revision=database.execute(text('select binding_revision from blombooru_source_metadata_records where id=104')).scalar_one()
+        source=database.get(SourceMetadataRecord,104)
+        setattr(source,field,value);database.flush()
+        current_revision=database.execute(text('select binding_revision from blombooru_source_metadata_records where id=104')).scalar_one()
+        assert current_revision==before_revision+1
+        # The old physical bindings remain as audit data. They cannot grant
+        # current valid support, even when a finite query set misses this Media.
+        assert database_state(database)['binding_rows']==recorded['binding_rows']
+        actual=collect_final_projection(cursor)
+        assert actual['run_metadata']==recorded['run_metadata']
+        assert actual['binding_rows']==[row for row in recorded['binding_rows'] if row[3]!=104]
+        assert actual['bound_media_ids']==[1,2,3] and 104 not in actual['source_record_ids']
+        assert all(row[4]!=4 for row in collect_identity_projection(cursor))
+        assert all(row['media_id']!=4 for row in collect_creator_projection(cursor))
+        with pytest.raises(ValueError,match='live_final_projection_changed'):
+            verify_final_projection(recorded,actual,approved_run=approved)
+    finally:
+        cursor.close();database.rollback()
+    cursor=database.connection().connection.cursor()
+    try:
+        assert verify_final_projection(recorded,collect_final_projection(cursor),approved_run=approved)==recorded
+    finally:cursor.close()
+
+
 def test_cumulative_atomic_replacement_keeps_audit(database,monkeypatch):
     scope=scope_for(database)
     partial=build(database,['910000001'])

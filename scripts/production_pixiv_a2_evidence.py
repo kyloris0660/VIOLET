@@ -317,13 +317,16 @@ RUN_IDENTITY_FIELDS=('id','run_key','scope_key','source_mode','policy_version','
 
 
 def collect_final_projection(cursor):
+    """Collect current valid support; retained stale bindings are audit only."""
     cursor.execute("""select id,run_key,scope_key,source_mode,policy_version,result_fingerprint,
         input_fingerprint,business_fingerprint,resolver_run_id,resolver_version from blombooru_source_concept_product_runs
         where source_mode in ('existing_source_metadata','production_scope') and status='active' order by id""")
     runs=cursor.fetchall()
     cursor.execute("""select b.id,b.product_run_id,b.evidence_id,b.source_metadata_record_id,b.media_id,b.source_revision
         from blombooru_source_concept_product_media_bindings b join blombooru_source_concept_product_runs p on p.id=b.product_run_id
-        where p.source_mode in ('existing_source_metadata','production_scope') and p.status='active' order by b.id""")
+        join blombooru_source_metadata_records r on r.id=b.source_metadata_record_id
+        where p.source_mode in ('existing_source_metadata','production_scope') and p.status='active'
+          and b.source_revision=r.binding_revision order by b.id""")
     rows=[list(r) for r in cursor.fetchall()]
     return {'active_runs':len(runs),'run_keys':[r[1] for r in runs],
         'run_metadata':[dict(zip(RUN_IDENTITY_FIELDS,row)) for row in runs],'binding_rows':rows,'bindings':len(rows),
