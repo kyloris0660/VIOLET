@@ -26,7 +26,8 @@
     "tests/test_trusted_git.py",
     "tests/test_production_launcher_control.py",
     "tests/test_production_pixiv_a2_post_full_fix.py",
-    "tests/test_production_pixiv_a1_contract.py"
+    "tests/test_production_pixiv_a1_contract.py",
+    "tests/test_source_concept_task_budget.py"
   ],
   "postgresql": [
     "tests/test_production_pixiv_a2.py",

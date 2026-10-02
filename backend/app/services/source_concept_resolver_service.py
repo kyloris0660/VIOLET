@@ -3015,6 +3015,16 @@ def _pair_budget_identity(config, metadata, decision_input_key):
     return key,()
 
 
+def _admit_budgeted_cached_judgment(budget, record, *, admission_key):
+    """Recover a retained response, then verify actual settled eligibility."""
+    saved = record.get('budget_response')
+    key = saved['key'] if saved else admission_key
+    reservation = saved['reservation'] if saved else None
+    budget.recover_response(key=key, reservation=reservation,
+        usage=saved['usage'] if saved else {}, business_valid=True)
+    budget.require_cached_response(key=key, reservation=reservation)
+
+
 def _pair_system_instructions(config):
     text=("You are adjudicating unconfirmed source-layer name signals. "
         "Return JSON only with keys decision, confidence, and optional reason_code. "
@@ -3239,6 +3249,7 @@ def _judgment_from_cache_record(
         "cache_reuse_level": reuse_level,
         "compatible_for_exact_reuse": True,
         "error_state": None,
+        **({"budget_response": record["budget_response"]} if record.get("budget_response") else {}),
     }
 
 
@@ -3285,6 +3296,7 @@ def _durable_cache_record_from_judgment(
         "right_signal_key": block_payload["right"]["signal_key"],
         "input_signal_summary": {"left": block_payload["left"], "right": block_payload["right"]},
         "error_state": None,
+        **({"budget_response": judgment["budget_response"]} if judgment.get("budget_response") else {}),
     }
 
 
@@ -4133,12 +4145,7 @@ def run_bounded_llm_adjudication(
         exact_record = _load_exact_cache_record(durable_cache_root, metadata=metadata, config=config)
         if exact_record is not None:
             if budget:
-                saved=exact_record.get('budget_response')
-                if saved:
-                    budget.recover_response(key=saved['key'],reservation=saved['reservation'],
-                        usage=saved['usage'],business_valid=True)
-                else:
-                    budget.recover_response(key=admission_key,usage={},business_valid=True)
+                _admit_budgeted_cached_judgment(budget, exact_record, admission_key=admission_key)
             cache_hits += 1
             exact_cache_hits += 1
             cached = _judgment_from_cache_record(
@@ -4152,6 +4159,8 @@ def run_bounded_llm_adjudication(
             continue
         legacy_record = _legacy_cache_record(legacy_dirs=legacy_dirs, legacy_fingerprint=fingerprint)
         if legacy_record is not None:
+            if budget:
+                _admit_budgeted_cached_judgment(budget, legacy_record, admission_key=admission_key)
             migrated = _durable_cache_record_from_judgment(
                 legacy_record,
                 metadata=metadata,
@@ -4176,10 +4185,8 @@ def run_bounded_llm_adjudication(
             continue
         compatible = decision_cache.get(decision_input_key)
         if compatible:
-            if budget and compatible.get('budget_response'):
-                saved=compatible['budget_response']
-                budget.recover_response(key=saved['key'],reservation=saved['reservation'],
-                    usage=saved['usage'],business_valid=True)
+            if budget:
+                _admit_budgeted_cached_judgment(budget, compatible, admission_key=admission_key)
             cached = _judgment_from_cache_record(compatible,block_payload=block_payload,
                 selected_pair_id=selected_pair_id,cache_status='hit',reuse_level='same_decision_input_new_occurrence')
             migrated = _durable_cache_record_from_judgment(cached,metadata=metadata,block_payload=block_payload,

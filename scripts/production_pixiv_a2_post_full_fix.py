@@ -5,6 +5,8 @@ the registered launcher, live source-revision, complete owned-business, and
 concept-chip evidence, review102 literal-component boundary, and reviews103104
 business-valid source and trusted candidate Git corrections, including the
 same validity rule for retained role responses in review105.
+Review106 adds strict settled-call admission before runtime exact, semantic,
+or legacy cache reuse, with the original paid ticket retained on migration.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -19,6 +21,8 @@ LITERAL_QUERY_FILE = 'backend/app/services/source_concept_search_service.py'
 LITERAL_QUERY_BEFORE_SHA256 = 'fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd'
 LITERAL_QUERY_AFTER_SHA256 = '2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f'
 RELEASE_GATE_SOURCE_DELTAS = {
+    'backend/app/services/source_concept_budget.py': {'before_sha256': '236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57', 'after_sha256': '45b732d3955f743ecf05941cc82b99d2e6fecd93f12d6a8fcdcce836586bfb10'},
+    'backend/app/services/source_concept_resolver_service.py': {'before_sha256': 'b1639c8ee41001799a6bffc7d4a87cdb3b3223e7ac88c25d5145d736041f92e3', 'after_sha256': '138386e98b08b36834be643be79340f9a29e93ef052d54da26ae232116922ac9'},
     'backend/app/services/production_pixiv_release_provenance.py': {
         'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10',
         'after_sha256': 'e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80'},
@@ -27,6 +31,8 @@ RELEASE_GATE_SOURCE_DELTAS = {
         'after_sha256': '8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8'},
 }
 ALLOWED_FILES = frozenset({
+    'backend/app/services/source_concept_resolver_service.py',
+    'backend/app/services/source_concept_budget.py', 'tests/test_source_concept_task_budget.py',
     'scripts/trusted_git.py', 'scripts/production_pixiv_a2_full_suite.py',
     'scripts/production_pixiv_a2_post_full_fix.py', 'scripts/check_production_pixiv_a2.py',
     'tests/test_trusted_git.py', 'tests/test_production_pixiv_a2_post_full_fix.py',
@@ -49,6 +55,8 @@ REPLAY_SOURCE_FILES = frozenset({
     'scripts/run_production_pixiv_a2_product.py', 'scripts/check_python_env.py', 'scripts/trusted_git.py',
 })
 REPLAY_GATE_FILES = frozenset({
+    'backend/app/services/source_concept_resolver_service.py',
+    'backend/app/services/source_concept_budget.py', 'tests/test_source_concept_task_budget.py',
     'docs/state/production-pixiv-a2-required-tests.json',
     'scripts/check_production_pixiv_a2.py', 'scripts/production_pixiv_a2_evidence.py',
     'scripts/production_pixiv_a2_post_full_fix.py', 'tests/test_production_pixiv_a2.py',

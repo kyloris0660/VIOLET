@@ -6,6 +6,38 @@ def ledger(tmp_path,cap=0.002):
     return AdjudicationBudget(tmp_path/'budget.json',model='gpt-4.1-mini',cap_usd=cap,input_per_million=0.4,output_per_million=1.6)
 
 
+@pytest.mark.parametrize('validity',['absent',True,False,None,0,1,'true'])
+@pytest.mark.parametrize('by_reservation',[False,True])
+def test_cached_response_admission_is_strict_read_only_and_preserves_legacy_absence(tmp_path,validity,by_reservation):
+    import json
+    book=ledger(tmp_path,10);ticket=book.reserve('original',[])
+    book.settle(ticket,{'prompt_tokens':100,'completion_tokens':50},success=True)
+    state=json.loads(book.path.read_text())
+    if validity=='absent':state['calls'][0].pop('business_valid')
+    else:state['calls'][0]['business_valid']=validity
+    book.path.write_text(json.dumps(state),encoding='utf-8');before=book.path.read_bytes()
+    kwargs={'key':'original','reservation':ticket if by_reservation else None}
+    if validity=='absent' or validity is True:book.require_cached_response(**kwargs)
+    else:
+        with pytest.raises(AdjudicationBudgetBlocked,match='cached_response'):book.require_cached_response(**kwargs)
+    assert book.path.read_bytes()==before
+
+
+@pytest.mark.parametrize('condition',['missing','duplicate','wrong_key','reserved','failed'])
+def test_cached_response_cannot_use_missing_ambiguous_or_unsettled_calls(tmp_path,condition):
+    import json
+    book=ledger(tmp_path,10);ticket=book.reserve('original',[])
+    if condition!='reserved':book.settle(ticket,{'prompt_tokens':100,'completion_tokens':50},success=condition!='failed')
+    state=json.loads(book.path.read_text())
+    if condition=='missing':state['calls']=[]
+    elif condition=='duplicate':state['calls'].append({**state['calls'][0],'id':'another'})
+    elif condition=='wrong_key':state['calls'][0]['key']='different-question'
+    book.path.write_text(json.dumps(state),encoding='utf-8');before=book.path.read_bytes()
+    with pytest.raises(AdjudicationBudgetBlocked,match='cached_response'):
+        book.require_cached_response(key='original',reservation=ticket if condition=='wrong_key' else None)
+    assert book.path.read_bytes()==before
+
+
 @pytest.mark.parametrize('change',[
     {'charged_microusd':0}, {'charged_microusd':-1}, {'charged_microusd':True},
     {'usage':None}, {'usage':{'prompt_tokens':-1,'completion_tokens':50}},

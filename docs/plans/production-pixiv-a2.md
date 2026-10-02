@@ -1,3 +1,5 @@
+第106条当前集中修复：缓存恢复返回False不等同于可用答案；真实复现exact/semantic/旧缓存三路径，补充严格账本准入，先于追加judgment或迁移写入拒绝failed/撤销/歧义来源。原费用、回答和寿命不变、零新调用；冻结后仅定向/真实PG/历史影响验证，完整全套不重跑。完整角色9543缺口仍独立受阻，旧B5保留。
+
 # A2 当前已授权纠偏执行与阻断层
 
 当前业务/验证 HEAD 为 `b3ce5aac37559e4917744f6589a11d2424cc1960`，分支 `codex/production-pixiv-a2`，PR #153 保持 OPEN、非 Draft。当前状态为角色原始来源准入失败；`target_met`、`safe_to_merge`、`route_approved`、Owner 验收均 false，A3 未启动。

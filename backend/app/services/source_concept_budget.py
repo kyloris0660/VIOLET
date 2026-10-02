@@ -250,6 +250,22 @@ class AdjudicationBudget:
             ticket=row['id']
         return self.settle(ticket,usage,success=business_valid)
 
+    def require_cached_response(self, *, key, reservation=None):
+        """Read-only admission after recovery; False alone does not prove reuse.
+
+        Already settled successful calls need no new settlement. Failed,
+        revoked, missing or ambiguous calls cannot authorize a cached answer.
+        Field absence retains the established legacy-success interpretation.
+        """
+        with self._locked() as state:
+            matches = [r for r in state['calls'] if r['id'] == reservation] if reservation else [
+                r for r in state['calls'] if r['key'] == key]
+            if len(matches) != 1 or matches[0]['key'] != key:
+                raise AdjudicationBudgetBlocked('adjudication_cached_response_attempt_not_unique')
+            row = matches[0]
+            if row['status'] != 'success' or row.get('business_valid', True) is not True:
+                raise AdjudicationBudgetBlocked('adjudication_cached_response_not_business_valid')
+
     def response_identity(self, reservation):
         with self._locked() as state:
             row=next(r for r in state['calls'] if r['id']==reservation)

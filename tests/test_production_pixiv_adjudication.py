@@ -20,6 +20,61 @@ def config(tmp_path):
         output_price_per_million=1.6,semantic_cache_reuse=True)
 
 
+@pytest.mark.parametrize('style',['exact','semantic','legacy_no_receipt','legacy_import'])
+@pytest.mark.parametrize('outcome',['failed','recovered_invalid'])
+def test_runtime_cache_refuses_failed_or_revoked_original_call(tmp_path,monkeypatch,style,outcome):
+    from dataclasses import asdict
+    from app.services.source_concept_budget import AdjudicationBudget,AdjudicationBudgetBlocked
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider();cfg=config(tmp_path)
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    if outcome=='failed':
+        settle=AdjudicationBudget.settle
+        monkeypatch.setattr(AdjudicationBudget,'settle',lambda self,reservation,usage,*,success:settle(self,reservation,usage,success=False))
+    rows,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    path=tmp_path/'budget.json';original=json.loads(path.read_text());call=original['calls'][0]
+    book=AdjudicationBudget(path,model=cfg.model_label,cap_usd=cfg.max_budget_usd,input_per_million=cfg.input_price_per_million,output_per_million=cfg.output_price_per_million)
+    if outcome=='recovered_invalid':book.recover_response(key=call['key'],reservation=call['id'],usage=call['usage'],business_valid=False)
+    if style=='legacy_no_receipt':
+        cache=service._cache_root(cfg)/'records'/(rows[0]['cache_key']+'.json');record=json.loads(cache.read_text());record.pop('budget_response');cache.write_text(json.dumps(record),encoding='utf-8')
+    if style=='legacy_import':
+        cache=service._cache_root(cfg)/'records'/(rows[0]['cache_key']+'.json')
+        legacy=tmp_path/'legacy';legacy.mkdir();cfg=replace(cfg,legacy_cache_dirs=(str(legacy),))
+        payload={'edge':asdict(edges[0]),**rows[0]['input_signal_summary']}
+        fingerprint=service.llm_cache_fingerprint(prompt_version=cfg.prompt_version,model_label=cfg.model_label,block_payload=payload)
+        (legacy/(fingerprint+'.json')).write_bytes(cache.read_bytes());cache.rename(tmp_path/'preserved-original-cache.json')
+    if style=='semantic':
+        signals=[replace(s,signal_key='new:'+s.signal_key) for s in signals]
+        edges=[replace(e,edge_key='new:'+e.edge_key,left_signal_key='new:'+e.left_signal_key,right_signal_key='new:'+e.right_signal_key) for e in edges]
+    before=path.read_bytes();cache_before={p.relative_to(service._cache_root(cfg)).as_posix():p.read_bytes() for p in service._cache_root(cfg).rglob('*.json')}
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:pytest.fail('replay must not initialize another provider'))
+    with pytest.raises(AdjudicationBudgetBlocked,match='cached_response'):
+        service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    assert path.read_bytes()==before and provider.calls==1
+    assert cache_before=={p.relative_to(service._cache_root(cfg)).as_posix():p.read_bytes() for p in service._cache_root(cfg).rglob('*.json')}
+
+
+def test_semantic_migration_retains_exact_paid_attempt_with_failed_history(tmp_path,monkeypatch):
+    from app.services.source_concept_budget import AdjudicationBudget
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider();cfg=config(tmp_path)
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    original,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    book=AdjudicationBudget(tmp_path/'budget.json',model=cfg.model_label,cap_usd=cfg.max_budget_usd,input_per_million=cfg.input_price_per_million,output_per_million=cfg.output_price_per_million)
+    call=json.loads(book.path.read_text())['calls'][0]
+    book.recover_response(key=call['key'],reservation=call['id'],usage=call['usage'],business_valid=False)
+    record=service._cache_root(cfg)/'records'/(original[0]['cache_key']+'.json');record.rename(tmp_path/'retained-invalid-record.json')
+    current,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    source=json.loads(record.read_text())['budget_response'];assert source['reservation']!=call['id']
+    before=book.path.read_bytes()
+    signals=[replace(s,signal_key='new:'+s.signal_key) for s in signals]
+    edges=[replace(e,edge_key='new:'+e.edge_key,left_signal_key='new:'+e.left_signal_key,right_signal_key='new:'+e.right_signal_key) for e in edges]
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:pytest.fail('valid replay is offline'))
+    for _ in range(2):
+        rows,receipt=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+        assert rows[0]['budget_response']==source and rows[0]['decision']==current[0]['decision']
+        assert receipt['new_provider_call_count']==0
+    assert book.path.read_bytes()==before and provider.calls==2
+
+
 def test_correction_plan_preserves_old_logical_attempt_and_reuses_unchanged_input(tmp_path,monkeypatch):
     from app.services.production_pixiv_pair_correction import plan_corrected_pairs
     signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
