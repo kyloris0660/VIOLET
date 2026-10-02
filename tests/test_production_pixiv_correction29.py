@@ -165,6 +165,7 @@ def git_fixture(tmp_path,ignore):
     import subprocess
     def git(*args):return subprocess.check_output(['git','-C',str(tmp_path),*args],text=True).strip()
     git('init','-q');git('config','user.name','fixture');git('config','user.email','fixture@example.invalid')
+    git('config','core.autocrlf','true')  # Match Windows text writes without global config.
     (tmp_path/'.gitignore').write_text(ignore)
     (tmp_path/'module.py').write_text('VALUE=1\n')
     git('add','.');git('commit','-qm','baseline')

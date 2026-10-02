@@ -29,6 +29,7 @@ def test_production_candidate_pin_rejects_behavior_and_untracked_drift(tmp_path)
     git('init','-q')
     git('config','user.name','A1 regression')
     git('config','user.email','a1-regression@example.invalid')
+    git('config','core.autocrlf','true')  # Match Windows text writes without global config.
     (tmp_path/'.gitignore').write_text('.local_manifests/\n',encoding='utf-8')
     (tmp_path/'run.py').write_text('print(1)\n',encoding='utf-8')
     git('add','.')

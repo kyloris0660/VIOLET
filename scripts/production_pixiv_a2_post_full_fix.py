@@ -37,6 +37,8 @@ ALLOWED_FILES = frozenset({
     'docs/state/production-pixiv-a2-ignored-inputs.json',
     'backend/app/services/production_pixiv_release_provenance.py',
     'tests/test_production_pixiv_adjudication.py',
+    'tests/test_production_pixiv_review60.py', 'tests/test_production_pixiv_correction29.py',
+    'tests/test_production_pixiv_a1_contract.py',
 })
 SOURCE_REPLAY_HEAD = '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f'
 REPLAY_SOURCE_FILES = frozenset({
@@ -54,6 +56,8 @@ REPLAY_GATE_FILES = frozenset({
     'docs/state/production-pixiv-a2-ignored-inputs.json',
     'scripts/trusted_git.py', 'backend/app/services/production_pixiv_release_provenance.py',
     'tests/test_production_pixiv_adjudication.py', 'tests/test_trusted_git.py',
+    'tests/test_production_pixiv_review60.py', 'tests/test_production_pixiv_correction29.py',
+    'tests/test_production_pixiv_a1_contract.py',
 })
 
 

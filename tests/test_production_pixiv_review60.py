@@ -143,6 +143,7 @@ def state_repo(tmp_path):
         return subprocess.check_output(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
             *args], cwd=root, text=True, stderr=subprocess.DEVNULL).strip()
     git('init')
+    git('config','core.autocrlf','true')  # Match Windows text writes without global config.
     (root / 'run.py').write_text('VERSION=1\n')
     state = json.loads((Path(__file__).resolve().parents[1] / 'docs/state/current-phase.json').read_text(encoding='utf-8'))
     for link in state['durable_links']:

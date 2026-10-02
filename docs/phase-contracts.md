@@ -680,7 +680,7 @@ verification under the owner's 2026-09-29 section 2.2 instruction, with zero
 additional full runs; it is not documentation-only carry-forward or full-suite
 coverage of the new candidate. Current semantic, copy and production contracts
 still require the new candidate. Lead and Owner acceptance remain separate.
-The current exact registered eighteen-file set includes the final projection collector,
+The current exact registered twenty-one-file set includes the final projection collector,
 Git-protected approved business fingerprints, and real PostgreSQL drift and
 revision-trigger regressions. Updated source records cannot
 contribute retained stale binding rows to valid support; raw physical binding
