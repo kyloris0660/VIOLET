@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
+  "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -22,7 +22,7 @@
     "status": "existing_b5_service_preserved_current_candidate_not_deployed",
     "startup_business_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
     "worker_pid": 22852,
-    "observation": "correction29-b10-source-blocked-closeout-20261002-1-availability-private.json",
+    "observation": "correction29-b11-source-blocked-closeout-20261002-1-availability-private.json",
     "current_production_acceptance": false
   },
   "budget": {
@@ -52,18 +52,18 @@
   },
   "validation": {
     "focused": {
-      "passed": 935,
+      "passed": 1003,
       "failed": 0,
       "skipped": 3,
       "errors": 0,
-      "source_head": "b3ce5aac37559e4917744f6589a11d2424cc1960"
+      "source_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e"
     },
     "postgresql": {
       "passed": 142,
       "failed": 0,
       "skipped": 0,
       "errors": 0,
-      "source_head": "b3ce5aac37559e4917744f6589a11d2424cc1960"
+      "source_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e"
     },
     "non_e2e": {
       "passed": 5268,
@@ -74,12 +74,14 @@
       "collected_node_count": 5291,
       "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
       "known_historical_failures": 1,
-      "validation_candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
+      "validation_candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
       "post_full_fix": {
         "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-        "candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
+        "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
         "registered_files": [
           "backend/app/services/production_pixiv_release_provenance.py",
+          "backend/app/services/source_concept_budget.py",
+          "backend/app/services/source_concept_resolver_service.py",
           "backend/app/services/source_concept_search_service.py",
           "docs/state/production-pixiv-a2-approved-projection.json",
           "docs/state/production-pixiv-a2-ignored-inputs.json",
@@ -101,12 +103,13 @@
           "tests/test_production_pixiv_release_inputs.py",
           "tests/test_production_pixiv_review60.py",
           "tests/test_production_pixiv_review68.py",
+          "tests/test_source_concept_task_budget.py",
           "tests/test_trusted_git.py"
         ],
-        "registry_sha256": "1c7b5f6f8c5f0fa41f1abac9ddaac5a8ad93e70f9d192deba24569aeeaa80e7d",
+        "registry_sha256": "8384c0121eadb62c9b90c3a316badbab69e96b0a9605823ccbe59a0f9feb6906",
         "affected_verification": {
           "focused": {
-            "passed": 935,
+            "passed": 1003,
             "failed": 0,
             "skipped": 3,
             "errors": 0
@@ -173,119 +176,22 @@
     }
   },
   "post_full_fix": {
-    "candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
+    "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
     "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-    "registered_source_files": 23,
-    "source_carry_forward": "correction29-b10-source-carry-forward-20261002-private.json",
-    "status": "b10_affected_validation_passed_native_role_source_blocked",
+    "registered_source_files": 26,
+    "status": "actual_frozen_affected_validation_passed_current_role_source_blocked",
     "additional_full_invocations": 0,
     "new_provider_calls": 0,
     "behavior_neutral_claimed": false,
-    "original_role_evidence_gap_open": true,
-    "validation": "correction29-post-full-b3ce5aa-20261002-1-validation-private.json",
-    "verification": {
-      "focused": {
-        "passed": 935,
-        "failed": 0,
-        "skipped": 3,
-        "errors": 0,
-        "source_head": "b3ce5aac37559e4917744f6589a11d2424cc1960"
-      },
-      "postgresql": {
-        "passed": 142,
-        "failed": 0,
-        "skipped": 0,
-        "errors": 0,
-        "source_head": "b3ce5aac37559e4917744f6589a11d2424cc1960"
-      },
-      "non_e2e": {
-        "passed": 5268,
-        "failed": 1,
-        "skipped": 22,
-        "errors": 0,
-        "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-        "collected_node_count": 5291,
-        "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
-        "known_historical_failures": 1,
-        "validation_candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
-        "post_full_fix": {
-          "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-          "candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
-          "registered_files": [
-            "backend/app/services/production_pixiv_release_provenance.py",
-            "backend/app/services/source_concept_search_service.py",
-            "docs/state/production-pixiv-a2-approved-projection.json",
-            "docs/state/production-pixiv-a2-ignored-inputs.json",
-            "docs/state/production-pixiv-a2-required-tests.json",
-            "scripts/check_production_pixiv_a2.py",
-            "scripts/production_pixiv_a2_evidence.py",
-            "scripts/production_pixiv_a2_full_suite.py",
-            "scripts/production_pixiv_a2_post_full_fix.py",
-            "scripts/trusted_git.py",
-            "scripts/violet_production_control.py",
-            "tests/test_production_launcher_control.py",
-            "tests/test_production_pixiv_a1_contract.py",
-            "tests/test_production_pixiv_a2.py",
-            "tests/test_production_pixiv_a2_api.py",
-            "tests/test_production_pixiv_a2_evidence.py",
-            "tests/test_production_pixiv_a2_post_full_fix.py",
-            "tests/test_production_pixiv_adjudication.py",
-            "tests/test_production_pixiv_correction29.py",
-            "tests/test_production_pixiv_release_inputs.py",
-            "tests/test_production_pixiv_review60.py",
-            "tests/test_production_pixiv_review68.py",
-            "tests/test_trusted_git.py"
-          ],
-          "registry_sha256": "1c7b5f6f8c5f0fa41f1abac9ddaac5a8ad93e70f9d192deba24569aeeaa80e7d",
-          "affected_verification": {
-            "focused": {
-              "passed": 935,
-              "failed": 0,
-              "skipped": 3,
-              "errors": 0
-            },
-            "postgresql": {
-              "passed": 142,
-              "failed": 0,
-              "skipped": 0,
-              "errors": 0
-            },
-            "historical": {
-              "passed": 88,
-              "failed": 0,
-              "skipped": 0,
-              "errors": 0
-            }
-          },
-          "additional_full_invocations": 0,
-          "behavior_neutral_claimed": false,
-          "coverage_scope": "registered source delta and affected verification"
-        }
-      },
-      "historical_non_e2e": {
-        "passed": 4541,
-        "failed": 89,
-        "skipped": 15,
-        "errors": 0,
-        "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
-        "known_historical_failures": 1,
-        "resolved_initial_failures": 88
-      }
-    },
-    "current_full_copy_passed": false,
-    "current_production_passed": false,
-    "focused_passed": 935,
-    "focused_skipped": 3,
-    "focused_warnings": 3,
-    "postgresql_passed": 142,
-    "postgresql_skipped": 0,
-    "postgresql_warnings": 0,
-    "historical_passed": 88,
-    "historical_skipped": 0,
-    "historical_warnings": 0,
-    "current_native_role_readmission": "correction29-review105-native-b3ce5aa-role-20261002-2-command-private.json",
-    "current_native_role_readmission_sha256": "e48d1855d7135f3797139808db3b175ddae66da88e55699eb2a79b040ed612e1",
-    "actual_native_missing_records": 9543
+    "validation": "correction29-post-full-20d9419-20261002-1-validation-private.json",
+    "registered_files": 26,
+    "current_counts": {
+      "focused_passed": 1003,
+      "focused_skipped": 3,
+      "focused_warnings": 3,
+      "postgresql_passed": 142,
+      "historical_passed": 88
+    }
   },
   "reviews103104": {
     "implementation_plan": "correction29-reviews103104-implementation-plan-20261002-private.json",
@@ -436,16 +342,13 @@
     "current_contract_closeout": "correction29-b10-current-source-blocked-20261002-1-contract-private.json"
   },
   "current_contract_closeout": {
-    "file": "correction29-b10-current-source-blocked-20261002-1-contract-private.json",
-    "sha256": "7461a1366cc2e2e3c7940f9c2abdfc32ba7e0b24c5b4300acb166a9a10ade213",
-    "candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
+    "file": "correction29-b11-current-source-blocked-20261002-1-contract-private.json",
     "counts": {
-      "failed": 2,
       "passed": 9,
+      "failed": 2,
       "blocked_unexecuted": 7
     },
-    "registered_contract_passed": false,
-    "complete_current_runtime_claimed": false
+    "current_complete_runtime_claimed": false
   },
   "historical_b5_runtime_before_current_source_refusal": {
     "production": {
@@ -615,19 +518,20 @@
   },
   "current_status": "PRODUCTION_PIXIV_A2_CORRECTION29_CURRENT_ROLE_SOURCE_BLOCKED",
   "current_review_dispositions": {
-    "file": "correction29-review105-current-source-blocked-20261002-review-dispositions-private.json",
-    "sha256": "028e621ca7fb1663dc7c3e8d1339ad9449c65873627e5aeb3e010a6f0889cd42",
-    "thread_count": 105
+    "file": "correction29-review106-current-source-blocked-20261002-review-dispositions-private.json",
+    "sha256": "a43c098934a3bd4dec8e76f8f0bb737ca0edd3ab25d6bd60e2814798ff48a91d",
+    "thread_count": 106
   },
   "review_package": {
     "kind": "failure_delivery_current_role_source_blocked",
-    "archive": "correction29-source-blocked-review105-final-20261002-2.zip",
-    "build_receipt": "correction29-source-blocked-review105-final-20261002-2-build-private.json",
-    "clean_verification_receipt": "correction29-source-blocked-review105-final-20261002-2-clean-verification-private.json",
-    "offline_replays_receipt": "correction29-source-blocked-review105-final-20261002-2-offline-replays-private.json",
+    "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
+    "build_receipt": "correction29-source-blocked-review106-final-20261002-1-build-private.json",
+    "clean_verification_receipt": "correction29-source-blocked-review106-final-20261002-1-clean-verification-private.json",
+    "offline_replays_receipt": "correction29-source-blocked-review106-final-20261002-1-offline-replays-private.json",
     "claim_rule": "Only actual size/SHA and successful fresh extraction/replay receipts authorize delivery completion; no current A2 engineering acceptance.",
     "maximum_bytes": 100000000,
-    "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json"
+    "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json",
+    "current_scope_binding": "correction29-b11-role-scope-binding-20261002-private.json"
   },
   "review_package_size_failure": {
     "first_archive": "correction29-source-blocked-review105-final-20261002-1.zip",
@@ -640,7 +544,7 @@
   "reviews106": {
     "thread_id": "PRRT_kwDOSTBMB86oXKyD",
     "comment_id": 4166406298,
-    "status": "bounded_runtime_cache_admission_plan_before_implementation",
+    "status": "implemented_frozen_current_validation_pending",
     "source_snapshot": "correction29-source-blocked-final2-delivery-20261002-1-remote-private.json",
     "root_cause": "recover_response False can mean either already valid or failed/revoked; runtime cache consumers ignored the distinction.",
     "scope": [
@@ -654,6 +558,24 @@
     "role_cache_audit": "Different full-batch parser/partial-sibling recovery contract; current full role native provenance already rejects the complete 9543 source gaps. No role facts or response policies changed by this pair-cache fix.",
     "new_provider_calls": 0,
     "production_changed": false,
-    "role_source_gap_open": true
+    "role_source_gap_open": true,
+    "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+    "development": [
+      {
+        "command": "correction29-review106-runtime-development-20261002-2-command-private.json",
+        "actual_passed": 166
+      },
+      {
+        "command": "correction29-review106-contract-development-20261002-1-command-private.json",
+        "actual_passed": 156
+      }
+    ],
+    "frozen_validation": "correction29-post-full-20d9419-20261002-1-validation-private.json",
+    "native_role_invocation": "correction29-review106-native-20d9419-role-20261002-1-command-private.json",
+    "formal_affected_checks_passed": true,
+    "current_runtime_accepted": false,
+    "whole_role_missing_records": 9543,
+    "first_historical_failures_retained": 2,
+    "historical_clean_rerun_passed": 88
   }
 }
