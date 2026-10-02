@@ -94,9 +94,9 @@ def test_current_authority_and_handoff_cannot_reenable_metadata_dispatch():
 @pytest.mark.parametrize('change',['none','missing_anchor','changed_call','empty_keys','wrong_keys'])
 def test_legacy_absent_logical_keys_require_exact_anchored_call_and_original_request(tmp_path,monkeypatch,change):
     import json
-    from test_production_pixiv_role_coverage import partial_facts
+    from test_production_pixiv_release_inputs import successful_contextual_facts
     from app.services import production_pixiv_release_provenance as p
-    consumer,vocab,facts,provider,budget=partial_facts(tmp_path)
+    consumer,vocab,facts,provider,budget=successful_contextual_facts(tmp_path)
     ledger=json.loads(budget.path.read_text());call=ledger['calls'][0]
     call.pop('logical_keys');original=copy.deepcopy(call)
     anchored={} if change=='missing_anchor' else {call['id']:original}

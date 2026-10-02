@@ -39,6 +39,7 @@ ALLOWED_FILES = frozenset({
     'backend/app/services/production_pixiv_release_provenance.py',
     'tests/test_production_pixiv_adjudication.py',
     'tests/test_production_pixiv_release_inputs.py',
+    'tests/test_production_pixiv_review68.py',
     'tests/test_production_pixiv_review60.py', 'tests/test_production_pixiv_correction29.py',
     'tests/test_production_pixiv_a1_contract.py',
 })
@@ -59,6 +60,7 @@ REPLAY_GATE_FILES = frozenset({
     'scripts/trusted_git.py', 'backend/app/services/production_pixiv_release_provenance.py',
     'tests/test_production_pixiv_adjudication.py', 'tests/test_trusted_git.py',
     'tests/test_production_pixiv_release_inputs.py',
+    'tests/test_production_pixiv_review68.py',
     'tests/test_production_pixiv_review60.py', 'tests/test_production_pixiv_correction29.py',
     'tests/test_production_pixiv_a1_contract.py',
 })

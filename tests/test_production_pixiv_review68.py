@@ -158,9 +158,9 @@ def test_precision_keeps_legitimate_mixed_search_extras():
 
 @pytest.mark.parametrize('kind',['raw','question-reconstruction','valid_relative_root'])
 def test_release_role_reader_checks_its_actual_cache_boundary(tmp_path,monkeypatch,kind):
-    from test_production_pixiv_role_coverage import partial_facts
+    from test_production_pixiv_release_inputs import successful_contextual_facts
     from app.services.production_pixiv_release_provenance import verify_role_response_sources
-    value,vocabulary,facts,provider,budget=partial_facts(tmp_path)
+    value,vocabulary,facts,provider,budget=successful_contextual_facts(tmp_path)
     cache=tmp_path/'roles';raw=next((cache/'raw').glob('*.json'))
     if kind=='valid_relative_root':
         monkeypatch.chdir(tmp_path)
