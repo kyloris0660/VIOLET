@@ -8,6 +8,10 @@
       "before_sha256": "2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10",
       "after_sha256": "e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80"
     },
+    "backend/app/services/production_pixiv_role_extraction.py": {
+      "before_sha256": "286f861a58842384ce5b862fd67fc988c703ad3fbaaf73efc6a3a2f903ff87ca",
+      "after_sha256": "151e42935adb5f88e5e8b04acd3d54450a2cb4d181cb1610d764dcd6bf1d0a56"
+    },
     "backend/app/services/source_concept_budget.py": {
       "before_sha256": "236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57",
       "after_sha256": "45b732d3955f743ecf05941cc82b99d2e6fecd93f12d6a8fcdcce836586bfb10"
@@ -24,13 +28,17 @@
       "before_sha256": null,
       "after_sha256": "6173b47634370f1dae565b0e2a1e1835877da6a5603ba5d12477b07dc1405eef"
     },
+    "docs/state/production-pixiv-a2-budget-prefix-compatibility.json": {
+      "before_sha256": null,
+      "after_sha256": "25f1948943cc49909d1c628176274d27e9d1dad2e5874864200a0c6d23f1c21f"
+    },
     "docs/state/production-pixiv-a2-ignored-inputs.json": {
       "before_sha256": "6c18d1b9b37e781005ea95543866142b05e304926ae6eaa559d5b6323e50d9c3",
       "after_sha256": "30e2387d0e91ddcdb14f890661440a3d31936d512dbe0009a9ab1cbb9d9ffb71"
     },
     "docs/state/production-pixiv-a2-required-tests.json": {
       "before_sha256": "2340d627b0f16cd124f539a340816cfa84255f68d38d1ccd195606135d13e238",
-      "after_sha256": "5ef15b937c952352ca23cd6c27fca912f04c46c79fcab9c0a9a7c539a96391f9"
+      "after_sha256": "daa59ccd07cdcbacb3b65011c3c82f49304cf36aaf0f19caece2aab86947ed06"
     },
     "scripts/check_production_pixiv_a2.py": {
       "before_sha256": "0e580d2dc3e4d34b7eaee020aad879bffb15e8f175c57a48ba2e80c3afc490b2",
@@ -46,7 +54,11 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "68569ff94d2f7534ae73e957f409fada6ac9f585c7b5af5884bb7db71c83ed35"
+      "after_sha256": "8148ed6ac67f5f8b1de2b6e603c5b1acb50db263ac26073dc06d067bdcee11e3"
+    },
+    "scripts/production_pixiv_budget_authority.py": {
+      "before_sha256": "2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744",
+      "after_sha256": "27a20b36948d1cff9ef1c9ef4f9e5e7e109c697f1777212a657e8ed325b9686a"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
@@ -78,7 +90,7 @@
     },
     "tests/test_production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "2b39ec17e98af20319055ba384a5ef98594c573a26f3a34e7c3191e515e9b370"
+      "after_sha256": "87a32bee0292b1b6a1d3be928728aba492555c0b0cf18370e6164e010f2e28fa"
     },
     "tests/test_production_pixiv_adjudication.py": {
       "before_sha256": "797bb70fd86cf43fb017ffcbeae051537678b03f4ed2300d35f7279281cd1b52",
@@ -99,6 +111,18 @@
     "tests/test_production_pixiv_review68.py": {
       "before_sha256": "16c7f66a00b87133c0c6663c2d7c7e0d957fb54cc6c693d329a1e31faecf3718",
       "after_sha256": "5e9e1c2198577dd6158a8e7468a2b322fdcdea1b17dec133f4a80f21e13efb37"
+    },
+    "tests/test_production_pixiv_reviews107_109.py": {
+      "before_sha256": null,
+      "after_sha256": "364a99a4e5605702f177a40af932efb40f56a20c2f9086d9a9cdc1ff57b95364"
+    },
+    "tests/test_production_pixiv_role_coverage.py": {
+      "before_sha256": "f2fbbfef8aedca3f1bc238f26d8bb740c581e11b73f00fb80c70317d4b63edec",
+      "after_sha256": "6dc9fa6f6ff2d7836040f9de920a0fd5e09bc0806227e0fd6c079d9c7d540957"
+    },
+    "tests/test_production_pixiv_role_extraction.py": {
+      "before_sha256": "42cff373aeb0898a7d4183b8d30f3a16c8f20770d180217758c9f00ca1946cb0",
+      "after_sha256": "2ceccc3c61f6e15e123d0b5132a28b07552cfb76deea9f45771969124337ddee"
     },
     "tests/test_source_concept_task_budget.py": {
       "before_sha256": "e81d877d2dbf7de05ae67e005fdd0fe40f6cdd49634c8d9581cc5d44944275dc",

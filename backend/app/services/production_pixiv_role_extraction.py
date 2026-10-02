@@ -284,6 +284,7 @@ def _record(unit,model,verdict,candidates,*,origin):
 
 
 def _unit_answer_complete(unit,record):
+    if record.get('source_admission')=='retained_partial_evidence_only':return False
     return (unit.unit_group.data_origin not in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}
         or not role_target_coverage(unit,record)['missing_raw_tags'])
 
@@ -334,10 +335,18 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             raise ValueError('production_role_actual_model_mismatch')
         self.cache_dir=Path(cache_dir);self.units={unit.unit_group.group_key:unit for unit in units}
         self.last_usage={};self.calls=0;self.raw_cache_hits=0;self.gate=gate or ExtractionDispatchGate()
+        self.admitted_units={};self.publishing_response=None;self.retained_partials={}
 
     def is_available(self):return self.provider.is_available()
     def get_provider_name(self):return self.provider.get_provider_name()
     async def translate_tags(self,tags):raise RuntimeError('role_extraction_has_no_translation_write_route')
+
+    def require_unit_source(self,unit,cached):
+        if not unit.llm_required and cached.get('origin')=='existing_f7a_deterministic':return
+        response=cached.get('budget_response') or self.admitted_units.get(unit.unit_group.group_key)
+        if not response:
+            raise AdjudicationBudgetBlocked('role_unit_cache_original_source_not_admitted')
+        self.budget.require_cached_response(key=response['key'],reservation=response.get('reservation'))
 
     @staticmethod
     def logical_keys(groups):
@@ -395,7 +404,19 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         self.budget.recover_response(key=response.get('key','role-extraction:'+saved['input_fingerprint']),
             reservation=response.get('reservation'),usage=saved.get('usage',{}),business_valid=error is None,
             logical_keys=self.logical_keys(groups))
+        if error is not None:
+            # Retain the complete raw batch as evidence. An invalid whole
+            # source cannot publish complete siblings under the current
+            # release contract; it needs a separately accepted unit contract.
+            self.gate.reason='role_partial_batch_original_source_not_admitted'
+            self.publishing_response={**response,'key':response.get('key','role-extraction:'+saved['input_fingerprint'])}
+            self.save_units(saved['content'],partial_evidence_only=True)
+            raise AdjudicationBudgetBlocked(self.gate.reason)
+        self.budget.require_cached_response(key=response.get('key','role-extraction:'+saved['input_fingerprint']),
+            reservation=response.get('reservation'))
+        self.publishing_response={**response,'key':response.get('key','role-extraction:'+saved['input_fingerprint'])}
         self.save_units(saved['content'])
+        self.admitted_units.update({group.group_key:self.publishing_response for group in groups})
         return error
 
     def adapted_content(self,content):
@@ -410,7 +431,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             rows[index]=_adapt_response_record(row,unit)
         return json.dumps(payload,ensure_ascii=False)
 
-    def save_units(self,content):
+    def save_units(self,content,*,partial_evidence_only=False):
         try:
             payload=json.loads(self.adapted_content(content))
             rows=payload.get('records',[]) if isinstance(payload,dict) else []
@@ -446,9 +467,16 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             row=_merge_valid_target_answers(unit,row,candidates,previous)
             try:verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
             except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
-            _atomic_write_json(path,
-                {**_record(unit,self.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
-                 'validated_response':row})
+            value={**_record(unit,self.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
+                'validated_response':row,'budget_response':self.publishing_response}
+            if partial_evidence_only:
+                # Parsing retained incomplete evidence grants no complete-unit
+                # cache or source admission. Keep the old raw and fees, and do
+                # not dispatch another question on behalf of this partial batch.
+                if unit.unit_group.data_origin in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}:
+                    self.retained_partials[unit.extraction_key]={**value,'source_admission':'retained_partial_evidence_only'}
+                continue
+            _atomic_write_json(path,value)
 
     def replay_saved_raw(self):
         recovered_before=sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())
@@ -458,8 +486,14 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             path=checked_cache_path(self.cache_dir,path)
             saved=json.loads(path.read_text(encoding='utf-8'))
             if saved.get('model')!=self.model:continue
+            rows=json.loads(saved['content']).get('records',[])
+            # An unrelated retained failure is not this invocation's question.
+            # The final native source gate still verifies the entire scope.
+            if not any(isinstance(row,dict) and row.get('group_key') in self.units for row in rows):continue
             if saved.get('request_messages') is not None:
-                self.recover_saved(saved)
+                try:self.recover_saved(saved)
+                except AdjudicationBudgetBlocked as exc:
+                    if str(exc)!='role_partial_batch_original_source_not_admitted' or not self.retained_partials:raise
                 continue
             try:
                 rows=json.loads(saved['content'])['records']
@@ -471,7 +505,9 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             expected=canonical_fingerprint({'model':self.model,'messages':messages,
                 'temperature':0.0,'max_tokens':6000})
             if expected==saved['input_fingerprint']:
-                self.recover_saved(saved)
+                try:self.recover_saved(saved)
+                except AdjudicationBudgetBlocked as exc:
+                    if str(exc)!='role_partial_batch_original_source_not_admitted' or not self.retained_partials:raise
         return sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())-recovered_before
 
     async def complete_chat(self,messages,*,temperature=0.0,max_tokens=6000):
@@ -488,6 +524,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             if path and path.exists():
                 cached,_=_read_unit_cache(path,unit,self.model)
                 if cached.get('validated_response') and _unit_answer_complete(unit,cached):
+                    self.require_unit_source(unit,cached)
                     known[row['group_key']]=cached['validated_response']
         if known:
             missing=[row for row in requested if row['group_key'] not in known]
@@ -542,9 +579,16 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 'wire_fingerprint':canonical_fingerprint(wire),'budget_response':response_identity}
             destination=path if not path.exists() else self.cache_dir/'raw'/'attempts'/f'{signature}.{reservation}.json'
             _atomic_write_json(checked_cache_path(self.cache_dir,destination),saved)
-            self.save_units(content)
             _,validation_error=self.validate_saved(saved)
             self.budget.settle(reservation,self.last_usage,success=validation_error is None)
+            if validation_error is not None:
+                self.gate.reason='role_partial_batch_original_source_not_admitted'
+                self.publishing_response=response_identity
+                self.save_units(content,partial_evidence_only=True)
+                raise AdjudicationBudgetBlocked(self.gate.reason)
+            self.budget.require_cached_response(key=response_identity['key'],reservation=reservation)
+            self.publishing_response=response_identity
+            self.save_units(content)
         except BaseException as exc:
             if not response_returned:
                 self.budget.settle(reservation,getattr(self.provider,'last_usage',{}),success=False)
@@ -556,7 +600,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                         _atomic_write_json(checked_cache_path(self.cache_dir,self.cache_dir/'response-recovery'/f'{signature}.{reservation}.json'),saved)
                     except (OSError,ValueError):
                         pass
-                self.gate.reason='role_response_persistence_recovery_required'
+                if not isinstance(exc,AdjudicationBudgetBlocked):
+                    self.gate.reason='role_response_persistence_recovery_required'
                 raise
             self.gate.returned(exc)
             raise
@@ -582,6 +627,7 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
         path=_unit_path(cache_dir,unit)
         if path.exists():
             value,variant=_read_unit_cache(path,unit,wrapped.model)
+            wrapped.require_unit_source(unit,value)
             canonical_reuse+=int(variant)
             records[unit.extraction_key]=value;cached+=1
             if not _unit_answer_complete(unit,value):pending.append(unit)
@@ -600,7 +646,12 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
             blocked=str(exc)
         for unit in batch:
             path=_unit_path(cache_dir,unit)
-            if path.exists():records[unit.extraction_key]=_read_unit_cache(path,unit,wrapped.model)[0]
+            if path.exists():
+                value=_read_unit_cache(path,unit,wrapped.model)[0]
+                wrapped.require_unit_source(unit,value)
+                records[unit.extraction_key]=value
+            elif unit.extraction_key in wrapped.retained_partials:
+                records[unit.extraction_key]=wrapped.retained_partials[unit.extraction_key]
         if progress:progress({'completed_units':len(records),'total_units':len(units),'provider_calls':wrapped.calls,
             'budget':budget.summary(),'blocked':blocked})
         if blocked:break
@@ -737,7 +788,7 @@ def complete_contextual_production_roles(consumer,vocabulary,role_facts,*,provid
     extracted=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache_dir,batch_size=batch_size,progress=progress,
         workers=workers,provider_factory=provider_factory)
     by_key={unit.extraction_key:unit for unit in units}
-    accounted={key:role_target_coverage(by_key[key],record) for key,record in extracted['records'].items()}
+    accounted={key:role_target_coverage(unit,extracted['records'].get(key,{})) for key,unit in by_key.items()}
     return {**role_facts,'completion_records':{**role_facts.get('completion_records',{}),**extracted['records']},
         'completion_by_aggregate':{**role_facts.get('completion_by_aggregate',{}),
             **{aggregate:key for aggregate,key in mapping.items() if key in extracted['records']}},
@@ -942,12 +993,14 @@ def repair_missing_role_coverage(consumer,vocabulary,role_facts,*,provider,budge
     units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
     # Settle saved envelopes before any unit-cache shortcut, including a
     # response whose final attempt reached the limit before the crash.
-    recovered=BudgetedExtractionProvider(provider,budget,cache_dir,units).replay_saved_raw()
+    admission=BudgetedExtractionProvider(provider,budget,cache_dir,units)
+    recovered=admission.replay_saved_raw()
     cached={}
     for unit in units:
         path=_unit_path(cache_dir,unit)
         if path.is_file():
             record,_=_read_unit_cache(path,unit,provider.model)
+            admission.require_unit_source(unit,record)
             cached[unit.extraction_key]={**record,'parent_extraction_key':plan['parent_extraction_keys'][unit.extraction_key],
                 'target_coverage':role_target_coverage(unit,record)}
     if cached:role_facts=_merge_coverage_records(role_facts,cached,mapping)
@@ -970,12 +1023,14 @@ def repair_missing_role_coverage(consumer,vocabulary,role_facts,*,provider,budge
                     'identity_confirmed':False,'unknown_rejudged':False}
     role_facts={**role_facts,'role_terminal_targets':terminal}
     units,mapping,plan=plan_role_coverage_repair(consumer,vocabulary,role_facts)
-    recovered+=BudgetedExtractionProvider(provider,budget,cache_dir,units).replay_saved_raw()
+    admission=BudgetedExtractionProvider(provider,budget,cache_dir,units)
+    recovered+=admission.replay_saved_raw()
     extra_cached={}
     for unit in units:
         path=_unit_path(cache_dir,unit)
         if path.is_file():
             record,_=_read_unit_cache(path,unit,provider.model)
+            admission.require_unit_source(unit,record)
             extra_cached[unit.extraction_key]={**record,'parent_extraction_key':plan['parent_extraction_keys'][unit.extraction_key],
                 'target_coverage':role_target_coverage(unit,record)}
     if extra_cached:role_facts=_merge_coverage_records(role_facts,extra_cached,mapping)

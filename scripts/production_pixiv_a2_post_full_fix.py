@@ -7,6 +7,8 @@ business-valid source and trusted candidate Git corrections, including the
 same validity rule for retained role responses in review105.
 Review106 adds strict settled-call admission before runtime exact, semantic,
 or legacy cache reuse, with the original paid ticket retained on migration.
+Reviews107-109 apply that admission to role units, bind the exact historical
+88 nodes and preserve every original debit field under the sealed backfill.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -20,17 +22,13 @@ REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-live-source-revision-owned-
 LITERAL_QUERY_FILE = 'backend/app/services/source_concept_search_service.py'
 LITERAL_QUERY_BEFORE_SHA256 = 'fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd'
 LITERAL_QUERY_AFTER_SHA256 = '2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f'
-RELEASE_GATE_SOURCE_DELTAS = {
-    'backend/app/services/source_concept_budget.py': {'before_sha256': '236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57', 'after_sha256': '45b732d3955f743ecf05941cc82b99d2e6fecd93f12d6a8fcdcce836586bfb10'},
-    'backend/app/services/source_concept_resolver_service.py': {'before_sha256': 'b1639c8ee41001799a6bffc7d4a87cdb3b3223e7ac88c25d5145d736041f92e3', 'after_sha256': '138386e98b08b36834be643be79340f9a29e93ef052d54da26ae232116922ac9'},
-    'backend/app/services/production_pixiv_release_provenance.py': {
-        'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10',
-        'after_sha256': 'e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80'},
-    'scripts/trusted_git.py': {
-        'before_sha256': '3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1',
-        'after_sha256': '8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8'},
-}
+RELEASE_GATE_SOURCE_DELTAS = {'backend/app/services/production_pixiv_role_extraction.py': {'before_sha256': '286f861a58842384ce5b862fd67fc988c703ad3fbaaf73efc6a3a2f903ff87ca', 'after_sha256': '151e42935adb5f88e5e8b04acd3d54450a2cb4d181cb1610d764dcd6bf1d0a56'}, 'scripts/production_pixiv_budget_authority.py': {'before_sha256': '2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744', 'after_sha256': '27a20b36948d1cff9ef1c9ef4f9e5e7e109c697f1777212a657e8ed325b9686a'}, 'backend/app/services/source_concept_budget.py': {'before_sha256': '236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57', 'after_sha256': '45b732d3955f743ecf05941cc82b99d2e6fecd93f12d6a8fcdcce836586bfb10'}, 'backend/app/services/source_concept_resolver_service.py': {'before_sha256': 'b1639c8ee41001799a6bffc7d4a87cdb3b3223e7ac88c25d5145d736041f92e3', 'after_sha256': '138386e98b08b36834be643be79340f9a29e93ef052d54da26ae232116922ac9'}, 'backend/app/services/production_pixiv_release_provenance.py': {'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10', 'after_sha256': 'e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80'}, 'scripts/trusted_git.py': {'before_sha256': '3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1', 'after_sha256': '8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8'}}
 ALLOWED_FILES = frozenset({
+    'backend/app/services/production_pixiv_role_extraction.py',
+    'scripts/production_pixiv_budget_authority.py',
+    'docs/state/production-pixiv-a2-budget-prefix-compatibility.json',
+    'tests/test_production_pixiv_role_extraction.py', 'tests/test_production_pixiv_reviews107_109.py',
+    'tests/test_production_pixiv_role_coverage.py',
     'backend/app/services/source_concept_resolver_service.py',
     'backend/app/services/source_concept_budget.py', 'tests/test_source_concept_task_budget.py',
     'scripts/trusted_git.py', 'scripts/production_pixiv_a2_full_suite.py',
@@ -55,6 +53,11 @@ REPLAY_SOURCE_FILES = frozenset({
     'scripts/run_production_pixiv_a2_product.py', 'scripts/check_python_env.py', 'scripts/trusted_git.py',
 })
 REPLAY_GATE_FILES = frozenset({
+    'backend/app/services/production_pixiv_role_extraction.py',
+    'scripts/production_pixiv_budget_authority.py',
+    'docs/state/production-pixiv-a2-budget-prefix-compatibility.json',
+    'tests/test_production_pixiv_role_extraction.py', 'tests/test_production_pixiv_reviews107_109.py',
+    'tests/test_production_pixiv_role_coverage.py',
     'backend/app/services/source_concept_resolver_service.py',
     'backend/app/services/source_concept_budget.py', 'tests/test_source_concept_task_budget.py',
     'docs/state/production-pixiv-a2-required-tests.json',
@@ -254,9 +257,7 @@ def verify_post_full_fix(private, gate, *, candidate, root, baseline_result):
         if kind != 'historical':
             verify_required_test_command(private, item, cmd, kind)
         else:
-            require(cmd['argv'][1:3] == ['-m', 'pytest'] and cmd['argv'][-2] == '-v'
-                    and Path(cmd['argv'][-1].split('=', 1)[1]).resolve() == xml_path,
-                    'post_full_historical_command')
+            verify_exact_historical_tests(root,cmd,xml_path)
         counts, failures = pytest_outcome(cmd, log_path.read_text(encoding='utf-8'), xml_path)
         require(not failures and counts['failed'] == counts['errors'] == 0 and counts['passed'] > 0
                 and all(counts[k] == item[k] for k in ('passed', 'failed', 'skipped', 'errors')),
@@ -266,3 +267,26 @@ def verify_post_full_fix(private, gate, *, candidate, root, baseline_result):
         results[kind] = counts
     return {**delta, 'affected_verification': results, 'additional_full_invocations': 0,
             'behavior_neutral_claimed': False, 'coverage_scope': 'registered source delta and affected verification'}
+
+
+def verify_exact_historical_tests(root,command,xml_path):
+    """Bind every original failure node, interpreter, cwd and actual XML case."""
+    import sys
+    from xml.etree import ElementTree as ET
+    from scripts.check_production_pixiv_a2 import require
+    root=Path(root).resolve(strict=True)
+    manifest=json.loads((root/'docs/state/production-pixiv-a2-required-tests.json').read_text(encoding='utf-8'))
+    expected=manifest['historical'];argv=command.get('argv',[])
+    require(len(expected)==len(set(expected))==88,'post_full_historical_registration')
+    require(len(argv)==len(expected)+5 and argv[1:3]==['-m','pytest']
+        and argv[3:-2]==expected and argv[-2]=='-v' and argv[-1].startswith('--junitxml='),
+        'post_full_historical_command')
+    require(Path(argv[0]).resolve()==Path(sys.executable).resolve()
+        and Path(command.get('cwd','')).resolve()==root,'post_full_historical_runtime')
+    require(Path(argv[-1].split('=',1)[1]).resolve()==Path(xml_path).resolve(),
+        'post_full_historical_xml')
+    cases=list(ET.parse(xml_path).iter('testcase'))
+    actual=[case.attrib['classname'].replace('.','/')+'.py::'+case.attrib['name'] for case in cases]
+    require(len(actual)==len(set(actual))==88 and set(actual)==set(expected),
+        'post_full_historical_exact_nodes')
+    return {'exact_historical_nodes':88,'runtime_and_cwd_bound':True}

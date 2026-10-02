@@ -74,7 +74,7 @@ def test_local_response_failure_keeps_one_paid_attempt_across_two_resumes(tmp_pa
         if stage=='settle':patch.setattr(budget,'settle',lambda *a,**k: (_ for _ in ()).throw(OSError('settle failure')))
         with pytest.raises(OSError):asyncio.run(wrapped.complete_chat(extraction_messages([u.unit_group for u in units])))
     assert len(provider.calls)==1
-    assert json.loads(budget.path.read_text())['calls'][0]['status']=='reserved'
+    assert json.loads(budget.path.read_text())['calls'][0]['status']==('success' if stage=='unit' else 'reserved')
     if stage=='unit':assert roles._unit_path(cache,units[0]).exists()
     for _ in range(2):
         resumed=roles.BudgetedExtractionProvider(provider,budget,cache,units)
@@ -129,7 +129,7 @@ def test_saved_role_request_must_match_current_prompt_before_publishing_units(tm
     assert all(path.read_bytes()==value for path,value in raw_before.items())
 
 
-def test_paid_invalid_role_retries_only_invalid_unit_and_keeps_raw(tmp_path):
+def test_paid_invalid_role_keeps_raw_and_stops_without_publishing_or_repay(tmp_path):
     import asyncio
     from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
     from app.services.source_name_candidate_extraction_service import extraction_messages
@@ -141,16 +141,16 @@ def test_paid_invalid_role_retries_only_invalid_unit_and_keeps_raw(tmp_path):
     provider=Partial();budget=task_budget(tmp_path,provider);units=multiple_units()[:2]
     wrapped=BudgetedExtractionProvider(provider,budget,tmp_path/'roles',units)
     messages=extraction_messages([u.unit_group for u in units])
-    asyncio.run(wrapped.complete_chat(messages))
+    from app.services.source_concept_budget import AdjudicationBudgetBlocked
+    with pytest.raises(AdjudicationBudgetBlocked,match='role_partial_batch_original_source_not_admitted'):
+        asyncio.run(wrapped.complete_chat(messages))
     first_raw=next((tmp_path/'roles'/'raw').glob('*.json'));original=first_raw.read_bytes()
-    answer=json.loads(asyncio.run(wrapped.complete_chat(messages)))
-    assert len(answer['records'])==2 and len(provider.calls)==2
-    assert len(provider.calls[1])==1
-    assert provider.calls[1][0]['group_key']==provider.calls[0][-1]['group_key']
+    with pytest.raises(AdjudicationBudgetBlocked):asyncio.run(wrapped.complete_chat(messages))
+    assert len(provider.calls)==1 and not list((tmp_path/'roles'/'units').glob('*.json'))
     assert first_raw.read_bytes()==original
     rows=json.loads(budget.path.read_text())['calls']
-    assert [r['business_valid'] for r in rows]==[False,True]
-    assert budget.summary()['charged_or_reserved_usd']==0.0004
+    assert [r['business_valid'] for r in rows]==[False]
+    assert budget.summary()['charged_or_reserved_usd']==0.0002
 
 
 def test_two_text_workers_overlap_with_independent_usage_and_resume_without_repay(tmp_path):
@@ -244,10 +244,14 @@ def test_partial_invalid_batch_never_repays_already_valid_units(tmp_path):
             return content
     provider=Partial();units=multiple_units();budget=task_budget(tmp_path,provider)
     facts=extract_production_roles(units,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
-    assert facts['summary']['completed_units']==3
-    assert [len(call) for call in provider.calls]==[3,1]
-    resumed=extract_production_roles(list(reversed(units)),provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
-    assert resumed['summary']['cache_hits']==3 and budget.summary()['call_count']==2
+    assert facts['summary']['completed_units']==0 and facts['summary']['remaining_units']==3
+    assert facts['summary']['blocked']=='role_partial_batch_original_source_not_admitted'
+    assert [len(call) for call in provider.calls]==[3]
+    from app.services.source_concept_budget import AdjudicationBudgetBlocked
+    raw=next((tmp_path/'roles/raw').glob('*.json'));original=raw.read_bytes()
+    with pytest.raises(AdjudicationBudgetBlocked):
+        extract_production_roles(list(reversed(units)),provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
+    assert raw.read_bytes()==original and budget.summary()['call_count']==1
 
 
 def test_auth_failure_keeps_success_and_pauses_remaining_role_batches(tmp_path):
@@ -399,12 +403,13 @@ def test_saved_context_work_answer_recovers_actual_tag_provenance_without_repay(
         'validated_response':response}
     cached=tmp_path/'roles';path=_unit_path(cached,unit);path.parent.mkdir(parents=True)
     path.write_text(json.dumps(old),encoding='utf-8');original=path.read_bytes()
+    _persist_original_paid_response(cached,unit,provider,budget,response)
     result=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cached)
     recovered=next(iter(result['records'].values()))
     assert recovered['candidates'][0]['candidate_role']=='work_title'
     assert recovered['candidates'][0]['origin_type']=='source_tag_observation'
     assert recovered['response_adapter_version']=='production_tag_provenance_v2'
-    assert path.read_bytes()==original and not provider.calls and budget.summary()['call_count']==0
+    assert path.read_bytes()==original and not provider.calls and budget.summary()['call_count']==1
 
 
 def test_actual_tag_provenance_repair_does_not_promote_unobserved_provider_title(tmp_path):
@@ -412,6 +417,24 @@ def test_actual_tag_provenance_repair_does_not_promote_unobserved_provider_title
     units,_=plan_role_extraction(consumer(1),build_semantic_vocabulary([]))
     row={'candidates':[{'raw_value':'UnobservedTitle','source_field':'provider_field','role':'work_title'}]}
     assert _adapt_response_record(row,units[0])==row
+
+
+def _persist_original_paid_response(cache,unit,provider,budget,row):
+    """Local fixture for an existing charged question, never a provider call."""
+    from dataclasses import asdict
+    from app.services.production_pixiv_role_extraction import _production_messages
+    from app.services.source_name_candidate_extraction_service import extraction_messages
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    messages=_production_messages(extraction_messages([unit.unit_group]))
+    signature=canonical_fingerprint({'model':provider.model,'messages':messages,'temperature':0.0,'max_tokens':6000})
+    reservation=budget.reserve('role-extraction:'+signature,messages,max_output_tokens=6000)
+    usage={'prompt_tokens':100,'completion_tokens':100};budget.settle(reservation,usage,success=True)
+    raw=cache/'raw'/f'{signature}.json';raw.parent.mkdir(parents=True,exist_ok=True)
+    raw.write_text(json.dumps({'model':provider.model,'input_fingerprint':signature,
+        'content':json.dumps({'records':[row]}),'usage':usage,
+        'request_messages':messages,'request_groups':[asdict(unit.unit_group)],
+        'temperature':0.0,'max_tokens':6000,'budget_response':budget.response_identity(reservation)}),encoding='utf-8')
+    return raw
 
 
 @pytest.mark.parametrize('role_field',['role','candidate_role'])
@@ -431,11 +454,7 @@ def test_paid_context_role_stays_unknown_and_recovers_valid_siblings_without_rep
                 'confidence':0.9,'source_field':'provider_tag','extraction_action':'direct_name'}],
         'rejected_summary':{}}
     provider=Provider();budget=task_budget(tmp_path,provider)
-    messages=_production_messages(extraction_messages([unit.unit_group]))
-    signature=canonical_fingerprint({'model':provider.model,'messages':messages,'temperature':0.0,'max_tokens':6000})
-    cache=tmp_path/'roles';raw=cache/'raw'/f'{signature}.json';raw.parent.mkdir(parents=True)
-    raw.write_text(json.dumps({'model':provider.model,'input_fingerprint':signature,
-        'content':json.dumps({'records':[row]})}),encoding='utf-8')
+    cache=tmp_path/'roles';raw=_persist_original_paid_response(cache,unit,provider,budget,row)
     original=raw.read_bytes()
     result=extract_production_roles([unit],provider=provider,budget=budget,cache_dir=cache)
     record=result['records'][unit.extraction_key]
@@ -446,7 +465,7 @@ def test_paid_context_role_stays_unknown_and_recovers_valid_siblings_without_rep
     assert record['validated_response']['candidates'][0]['production_reported_role']=='work_context'
     assert row['candidates'][0][role_field]=='work_context' and raw.read_bytes()==original
     assert result['summary']['paid_raw_units_recovered_locally']==1
-    assert not provider.calls and budget.summary()['call_count']==0
+    assert not provider.calls and budget.summary()['call_count']==1
 
 
 def test_context_role_adapter_does_not_accept_an_unobserved_name_or_other_invalid_role():

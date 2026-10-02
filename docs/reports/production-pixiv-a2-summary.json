@@ -583,5 +583,21 @@
     "whole_role_missing_records": 9543,
     "first_historical_failures_retained": 2,
     "historical_clean_rerun_passed": 88
+  },
+  "reviews107109": {
+    "status": "ordinary_review_fixes_in_development_current_frozen_checks_pending",
+    "thread_count": 109,
+    "comments": [
+      4167310188,
+      4167310192,
+      4167310200
+    ],
+    "new_provider_calls": 0,
+    "additional_full_invocations": 0,
+    "historical_logical_backfill_independently_replayed": 1665,
+    "original_6110_rows_full_field_guard": true,
+    "role_partial_source_complete_cache_rejected": true,
+    "exact_original_historical_nodes": 88,
+    "target_met": false
   }
 }

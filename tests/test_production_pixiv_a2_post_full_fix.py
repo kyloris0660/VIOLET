@@ -25,9 +25,7 @@ def _literal_query_sources():
 
 def _release_gate_sources(name):
     after = (Path(__file__).resolve().parents[1] / name).read_bytes().replace(b'\r\n', b'\n')
-    if name in {'backend/app/services/production_pixiv_release_provenance.py',
-                'backend/app/services/source_concept_budget.py',
-                'backend/app/services/source_concept_resolver_service.py'}:
+    if name != 'scripts/trusted_git.py':
         # Bind the entire historical module to its real Git object, including
         # the earlier role branches, instead of reconstructing selected lines.
         source_root = Path(__file__).resolve().parents[1]
