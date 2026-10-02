@@ -4,10 +4,10 @@
 
 当前状态以 docs/state/current-phase.json 为准。
 
-- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_CORRECTION29_IMPLEMENTING`。
+- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_CORRECTION29_ENGINEERING_COMPLETE_PENDING_LEAD`。
 - 分支：`codex/production-pixiv-a2`；PR：`153`。
 - 已接受并合并基线：PR #152 / `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。
-- 工程目标完成：`False`；负责人接受：`pending_project_lead_review`。
+- 工程目标完成：`True`；负责人接受：`pending_project_lead_review`。
 - 新LLM调用累计上限USD 30；既有消费不清零，原图不下载、不上传。
 
 ## 已完成检查点
@@ -72,7 +72,7 @@
 - 2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。
 - 2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。
 - 2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。
-- 2026-10-02T08:02:00.710889+08:00：正常EXE实际Start健康，但原生完成门因pid_create_time=null拒绝；Windows JSON时间格式解析缺陷已复现4失败并修复，132通过/2跳过及18登记契约开发测试通过。旧F9副本、原库apply及全部不利证据保留，当前新冻结验证未完成，三完成标志仍false。
+- 2026-10-02T14:04:44.060576+08:00 562bc18实际完整来源、副本、原生产owned apply和普通无参数EXE、生产80/80及独立精度、系统Edge/240 HTTP/720来源层与18项完整注册契约通过；target_met=true，safe_to_merge/route_approved及Owner验收保持false。 同阶段最新对账：2026-10-02 推送后第100条P1已用真实Git原件和原生门禁复核：B5提交中旧F9字段确被拒绝，当前工作树B5/实际18门及两次文档检查通过；仅补齐六文档投影和100线程对账，不改业务/重跑全套/重做apply。旧99对账、提交前交付包装中断及两次采集器断言失败完整保留。
 
 ## 后续执行
 
@@ -103,7 +103,7 @@
 - 不合并、不推main、不触发额外reviewer、不进入A3。
 - 自动验证、负责人接受及产品用户体验分别记账。
 
-下一检查点：冻结Windows JSON时间解析修复，实际当前影响验证/副本/正常EXE/生产18门与唯一ZIP；不新增全套或Provider。
+下一检查点：当前B5原生产与18门、100线程逐项对账完成；继续六文档提交和单ZIP实际解压/31项离线复算，随后停在Lead复审及Owner人工验收。
 
 ## 持久入口
 

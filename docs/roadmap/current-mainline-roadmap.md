@@ -1,9 +1,11 @@
 # Current Mainline Roadmap
 
-2026-10-02当前执行：在现有A2授权内修复正常EXE的Windows JSON创建时间解析；保留原F9完整副本/原库apply及失败历史，冻结后只做当前影响验证和实际A2发布契约，不追加完整non-E2E或Provider调用。正常窗口持续授权有效，Lead/Owner验收未完成。
+2026-10-02第100条已复核：已提交旧F9候选字段拒绝证据保留，当前B5实际18门及正常入口通过；本次六文档续接统一B5和100线程，旧99记录另存，不追加业务修改、完整全套或Provider调用。最终单ZIP实测≤100000000字节，实际干净解压及31项独立复算后停在Lead/Owner检查点。
+
+2026-10-02当前结果：正常EXE的Windows JSON创建时间解析修复已实际冻结于562bc18；当前影响验证836/125/88、完整副本、原库目标plan/apply、新正常EXE和18项契约通过。原F9调用/失败及所有历史原件保持原身份；Lead/Owner待验收。
 
 <!-- CORRECTION29_RESUME_20261001 -->
-当前A2业务候选f9ffe6e416436922cd92d8eed33395ed4442292a：98/99号完整业务投影和chip概念绑定修复已冻结，开发反例及源码续接契约通过；当前正式影响验证、完整副本、原生产、正常EXE、Edge/240及18门继续。实际B3完整缓存与B1唯一新增全套原HEAD/结果保留，不重新跑全套、不改标原调用。旧44生产健康，target_met/safe_to_merge/route_approved均false；执行代理后续自开窗口操作无需重复授权。
+2026-10-02 562bc18原生产owned apply、普通EXE、当前质量/精度、Edge/240工作量和完整18项契约全部通过；原新增全套仍绑定d26实际基线，十三项差异及影响补测明确保留。target_met=true，safe_to_merge/route_approved及Owner验收保持false。文档与单ZIP交付后停在Lead复审/Owner手工体验。
 
 <!-- CURRENT_PHASE: PRODUCTION-PIXIV-A2 -->
 
