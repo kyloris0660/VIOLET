@@ -6,7 +6,7 @@
   "files": {
     "backend/app/services/production_pixiv_release_provenance.py": {
       "before_sha256": "2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10",
-      "after_sha256": "de99dbc8cc2dc2e8e17be9bfe44d83a4943f955c39f4464e13a2f0b89f7841af"
+      "after_sha256": "e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80"
     },
     "backend/app/services/source_concept_search_service.py": {
       "before_sha256": "fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd",
@@ -38,7 +38,7 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "8f302c2e89d4d1650ebdbd14cd7a8a393704378200bd2ae86933c093d3a07ddb"
+      "after_sha256": "9d35dc61b3ad7f0010bdadba1fa1f5ade1fd39100b21691345a75009d8b33201"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
@@ -70,7 +70,7 @@
     },
     "tests/test_production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "75ecc06c7c537bb3e09f8e3f92c64a0e1c38b3ae853ea27bf59bb6afdcbdba45"
+      "after_sha256": "850e0ff7eb97a3076a5546d081115dbd8b1904d68b9bad47812bcd375cb882e6"
     },
     "tests/test_production_pixiv_adjudication.py": {
       "before_sha256": "797bb70fd86cf43fb017ffcbeae051537678b03f4ed2300d35f7279281cd1b52",
@@ -79,6 +79,10 @@
     "tests/test_production_pixiv_correction29.py": {
       "before_sha256": "937978c4cff0f5766c186c68d6f07c712e08a721b2e8c36eb62e2312675d1caf",
       "after_sha256": "4860cc1160f4449bca7120d25acd9e14db79f03ce43eef5b79130ee6bfc9d25a"
+    },
+    "tests/test_production_pixiv_release_inputs.py": {
+      "before_sha256": "0f65d341fbb208dd21730b2af2f206d7566a0abf70a26d919414b3a1ac0b2941",
+      "after_sha256": "be9e5d836c6d7451bb1fb870925be29e14f0c48b15972f931847a2b8baa1ff71"
     },
     "tests/test_production_pixiv_review60.py": {
       "before_sha256": "6b9f5a6527ae9e6ac8867b168fe02e4999b0eea69e83e1b9058b13e7fcfe01f2",

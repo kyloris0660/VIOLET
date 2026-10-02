@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from scripts import production_pixiv_a2_post_full_fix as contract
-from scripts.trusted_git import resolve_trusted_git_executable, trusted_git_environment
+from scripts.trusted_git import resolve_trusted_git_executable, trusted_git_environment, run_trusted_git_bytes
 
 
 def _literal_query_sources():
@@ -26,8 +26,14 @@ def _literal_query_sources():
 def _release_gate_sources(name):
     after = (Path(__file__).resolve().parents[1] / name).read_bytes().replace(b'\r\n', b'\n')
     if name == 'backend/app/services/production_pixiv_release_provenance.py':
-        before = after.replace(b" or call.get('business_valid',True) is not True", b'')
-        before = before.replace(b" and call.get('business_valid',True) is True", b'')
+        # Bind the entire historical module to its real Git object, including
+        # the earlier role branches, instead of reconstructing selected lines.
+        source_root = Path(__file__).resolve().parents[1]
+        git = resolve_trusted_git_executable(repo_root=source_root)
+        original = run_trusted_git_bytes(source_root,
+            ['show', '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f:' + name], git=git)
+        assert original.returncode == 0
+        before = original.stdout
     else:
         current = b"""        trusted = resolve_trusted_git_executable(repo_root=repo_root)
         def git(*args):

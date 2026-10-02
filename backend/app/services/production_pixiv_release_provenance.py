@@ -150,8 +150,13 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         response=saved.get('budget_response')
         if response:
             call=calls.get(response['reservation'])
-            if not call or call['status']=='reserved' or call['key']!='role-extraction:'+fingerprint:
+            if not call or call['key']!='role-extraction:'+fingerprint:
                 raise ValueError('semantic_role_source_attempt_not_settled')
+            # Failed and revoked calls remain charged history. They cannot
+            # supply answer evidence, including otherwise parseable siblings.
+            # An independent valid retry must still prove the retained facts.
+            if call.get('status')!='success' or call.get('business_valid',True) is not True:
+                continue
             if call.get('usage_known') and call['usage']!={k:saved['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
                 raise ValueError('semantic_role_source_usage_changed')
             source_attempts=[call['id']]
@@ -159,10 +164,14 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             # Older raw envelopes predate the explicit reservation field.
             # Bind them to the original full request key and actual usage;
             # a self-consistent question/answer file alone is insufficient.
-            source_attempts=[call['id'] for call in calls_by_key['role-extraction:'+fingerprint]
-                if call['status']!='reserved' and (not call.get('usage_known') or
+            matching_calls=calls_by_key['role-extraction:'+fingerprint]
+            source_attempts=[call['id'] for call in matching_calls
+                if call.get('status')=='success' and call.get('business_valid',True) is True
+                and (not call.get('usage_known') or
                     call['usage']=={k:saved.get('usage',{}).get(k) for k in ('prompt_tokens','completion_tokens')})]
-            if not source_attempts:raise ValueError('semantic_legacy_role_source_attempt_missing')
+            if not source_attempts:
+                if not matching_calls:raise ValueError('semantic_legacy_role_source_attempt_missing')
+                continue
         expected_logical_keys=roles.BudgetedExtractionProvider.logical_keys(groups)
         for attempt in source_attempts:
             keys=calls[attempt].get('logical_keys')

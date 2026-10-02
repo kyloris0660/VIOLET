@@ -3,7 +3,8 @@
 The full run remains evidence for its actual source. This contract permits only
 the registered launcher, live source-revision, complete owned-business, and
 concept-chip evidence, review102 literal-component boundary, and reviews103104
-business-valid source and trusted candidate Git corrections.
+business-valid source and trusted candidate Git corrections, including the
+same validity rule for retained role responses in review105.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -20,7 +21,7 @@ LITERAL_QUERY_AFTER_SHA256 = '2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe288
 RELEASE_GATE_SOURCE_DELTAS = {
     'backend/app/services/production_pixiv_release_provenance.py': {
         'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10',
-        'after_sha256': 'de99dbc8cc2dc2e8e17be9bfe44d83a4943f955c39f4464e13a2f0b89f7841af'},
+        'after_sha256': 'e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80'},
     'scripts/trusted_git.py': {
         'before_sha256': '3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1',
         'after_sha256': '8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8'},
@@ -37,6 +38,7 @@ ALLOWED_FILES = frozenset({
     'docs/state/production-pixiv-a2-ignored-inputs.json',
     'backend/app/services/production_pixiv_release_provenance.py',
     'tests/test_production_pixiv_adjudication.py',
+    'tests/test_production_pixiv_release_inputs.py',
     'tests/test_production_pixiv_review60.py', 'tests/test_production_pixiv_correction29.py',
     'tests/test_production_pixiv_a1_contract.py',
 })
@@ -56,6 +58,7 @@ REPLAY_GATE_FILES = frozenset({
     'docs/state/production-pixiv-a2-ignored-inputs.json',
     'scripts/trusted_git.py', 'backend/app/services/production_pixiv_release_provenance.py',
     'tests/test_production_pixiv_adjudication.py', 'tests/test_trusted_git.py',
+    'tests/test_production_pixiv_release_inputs.py',
     'tests/test_production_pixiv_review60.py', 'tests/test_production_pixiv_correction29.py',
     'tests/test_production_pixiv_a1_contract.py',
 })

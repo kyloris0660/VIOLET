@@ -1,4 +1,5 @@
 import copy
+import json
 import pytest
 
 from app.services.production_pixiv_release_inputs import (
@@ -6,12 +7,34 @@ from app.services.production_pixiv_release_inputs import (
 from app.services.production_pixiv_service import build_fixed_scope
 
 
+def successful_contextual_facts(tmp_path):
+    from test_production_pixiv_role_coverage import partial_facts
+    value, vocabulary, facts, provider, budget = partial_facts(tmp_path, ['MysteryKnown', 'MysteryUnknown'])
+    assert all(call['status'] == 'success' and call['business_valid'] is True
+               for call in json.loads(budget.path.read_text())['calls'])
+    return value, vocabulary, facts, provider, budget
+
+
+def successful_role_facts(tmp_path):
+    from test_production_pixiv_role_extraction import Provider, task_budget
+    from test_production_pixiv_role_coverage import context
+    from app.services.production_pixiv_semantics import build_semantic_vocabulary
+    from app.services.production_pixiv_role_extraction import plan_role_extraction, extract_production_roles
+    value = context(['MysteryName'])
+    vocabulary = build_semantic_vocabulary([])
+    units, _ = plan_role_extraction(value, vocabulary)
+    provider = Provider()
+    budget = task_budget(tmp_path, provider)
+    facts = extract_production_roles(units, provider=provider, budget=budget, cache_dir=tmp_path / 'roles')
+    return value, vocabulary, facts, provider, budget
+
+
 @pytest.mark.parametrize('changed',['none','candidate','context','raw'])
 def test_role_release_replays_original_response_and_full_context(tmp_path,changed):
     import json
     from test_production_pixiv_role_coverage import partial_facts
     from app.services.production_pixiv_release_provenance import verify_role_response_sources
-    value,vocabulary,facts,provider,budget=partial_facts(tmp_path)
+    value,vocabulary,facts,provider,budget=successful_contextual_facts(tmp_path)
     if changed=='candidate':next(iter(facts['completion_records'].values()))['candidates'][0]['confidence']=0.01
     elif changed=='context':
         from dataclasses import replace
@@ -50,7 +73,7 @@ def test_legacy_raw_requires_matching_paid_attempt_even_without_reservation_fiel
     import json
     from test_production_pixiv_role_coverage import partial_facts
     from app.services.production_pixiv_release_provenance import verify_role_response_sources
-    value,vocab,facts,provider,budget=partial_facts(tmp_path)
+    value,vocab,facts,provider,budget=successful_contextual_facts(tmp_path)
     for path in (tmp_path/'roles'/'raw').glob('*.json'):
         saved=json.loads(path.read_text());saved.pop('budget_response',None)
         path.write_text(json.dumps(saved),encoding='utf-8')
@@ -75,10 +98,13 @@ def test_release_replays_inherited_partial_answers_without_borrowing_other_quest
     inherited=[r for r in facts['coverage_repair_records'].values() if r.get('inherited_valid_response_keys')]
     assert inherited and len(first.calls)==len(second.calls)==1
     ledger=json.loads(budget.path.read_text())
-    assert verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)['new_provider_calls']==0
-    inherited[0]['target_coverage']['outcomes']['MysteryDescription']={'disposition':'unknown','reason_code':'tampered'}
-    with pytest.raises(ValueError,match='target_coverage_changed'):
+    # Partial siblings remain in storage, but their invalid batches cannot
+    # supply production-release evidence, even through inheritance.
+    assert any(call['business_valid'] is False for call in ledger['calls'])
+    retained = budget.path.read_bytes()
+    with pytest.raises(ValueError,match='semantic_.*role_'):
         verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)
+    assert budget.path.read_bytes() == retained
 
 
 def test_full_live_input_rejects_subset_revision_change_and_page_mismatch():
@@ -118,8 +144,103 @@ def test_release_replays_legacy_v1_repair_without_changing_current_prompt(tmp_pa
         patch.setattr(roles,'_production_messages',legacy_adapter)
         facts=roles.repair_missing_role_coverage(value,vocab,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
     assert roles.COVERAGE_REPAIR_ORIGIN=='production_pixiv_role_coverage_repair_v2'
-    result=verify_role_response_sources(value,vocab,facts,tmp_path/'roles',json.loads(budget.path.read_text()))
-    assert result['new_provider_calls']==0 and len(provider.calls)==1
+    # Replaying a historical prompt cannot rehabilitate a failed original
+    # batch. Keep that paid response and reject it at the current release gate.
+    retained = budget.path.read_bytes()
+    with pytest.raises(ValueError,match='semantic_.*role_'):
+        verify_role_response_sources(value,vocab,facts,tmp_path/'roles',json.loads(retained))
+    assert budget.path.read_bytes()==retained and len(provider.calls)==1
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+@pytest.mark.parametrize('outcome', ['failed', 'recovered_invalid'])
+def test_role_release_rejects_actual_failed_or_recovered_invalid_call(tmp_path, monkeypatch, legacy, outcome):
+    from app.services.source_concept_budget import AdjudicationBudget
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    if outcome == 'failed':
+        settle = AdjudicationBudget.settle
+        def settle_failed(self, reservation, usage, *, success):
+            return settle(self, reservation, usage, success=False)
+        monkeypatch.setattr(AdjudicationBudget, 'settle', settle_failed)
+    value, vocabulary, facts, provider, budget = successful_role_facts(tmp_path)
+    before = json.loads(budget.path.read_text())
+    assert len(before['calls']) == len(provider.calls) == 1
+    call = before['calls'][0]
+    if outcome == 'recovered_invalid':
+        assert call['status'] == 'success' and call['business_valid'] is True
+        budget.recover_response(key=call['key'], usage=call['usage'], business_valid=False, reservation=call['id'])
+    retained = budget.path.read_bytes()
+    ledger = json.loads(retained)
+    current = ledger['calls'][0]
+    assert current['status'] == ('failed' if outcome == 'failed' else 'success')
+    assert current['business_valid'] is False and current['charged_microusd'] == call['charged_microusd']
+    if legacy:
+        for path in (tmp_path / 'roles' / 'raw').glob('*.json'):
+            raw = json.loads(path.read_text())
+            raw.pop('budget_response', None)
+            path.write_text(json.dumps(raw), encoding='utf-8')
+    with pytest.raises(ValueError, match='semantic_.*role_'):
+        verify_role_response_sources(value, vocabulary, facts, tmp_path / 'roles', ledger)
+    assert budget.path.read_bytes() == retained and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+@pytest.mark.parametrize('validity', ['absent', True, False, None, 0, 1, 'true'])
+def test_role_release_requires_exact_business_validity_with_legacy_absence(tmp_path, legacy, validity):
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    value, vocabulary, facts, provider, budget = successful_role_facts(tmp_path)
+    retained = budget.path.read_bytes()
+    ledger = json.loads(retained)
+    if validity == 'absent': ledger['calls'][0].pop('business_valid')
+    else: ledger['calls'][0]['business_valid'] = validity
+    if legacy:
+        for path in (tmp_path / 'roles' / 'raw').glob('*.json'):
+            saved = json.loads(path.read_text()); saved.pop('budget_response', None)
+            path.write_text(json.dumps(saved), encoding='utf-8')
+    if validity == 'absent' or validity is True:
+        proof = verify_role_response_sources(value, vocabulary, facts, tmp_path / 'roles', ledger)
+        assert proof['record_count'] == 1 and proof['new_provider_calls'] == 0
+    else:
+        with pytest.raises(ValueError, match='semantic_.*role_'):
+            verify_role_response_sources(value, vocabulary, facts, tmp_path / 'roles', ledger)
+    assert budget.path.read_bytes() == retained and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+@pytest.mark.parametrize('status', ['reserved', 'failed', 'unknown'])
+def test_role_release_never_accepts_a_non_success_call(tmp_path, legacy, status):
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    value, vocabulary, facts, provider, budget = successful_role_facts(tmp_path)
+    retained = budget.path.read_bytes(); ledger = json.loads(retained)
+    ledger['calls'][0]['status'] = status
+    if legacy:
+        for path in (tmp_path / 'roles' / 'raw').glob('*.json'):
+            saved = json.loads(path.read_text()); saved.pop('budget_response', None)
+            path.write_text(json.dumps(saved), encoding='utf-8')
+    with pytest.raises(ValueError, match='semantic_.*role_'):
+        verify_role_response_sources(value, vocabulary, facts, tmp_path / 'roles', ledger)
+    assert budget.path.read_bytes() == retained and len(provider.calls) == 1
+
+
+@pytest.mark.parametrize('legacy', [False, True])
+def test_failed_role_history_cannot_supply_sources_or_poison_a_valid_response(tmp_path, legacy):
+    from app.services.production_pixiv_release_provenance import verify_role_response_sources
+    value, vocabulary, facts, provider, budget = successful_role_facts(tmp_path)
+    retained = budget.path.read_bytes(); ledger = json.loads(retained)
+    valid = ledger['calls'][0]
+    ledger['calls'].append({**valid, 'id': 'retained-failed', 'status': 'failed', 'business_valid': False})
+    path = next((tmp_path / 'roles' / 'raw').glob('*.json'))
+    saved = json.loads(path.read_text())
+    failed = copy.deepcopy(saved)
+    failed['budget_response']['reservation'] = 'retained-failed'
+    attempts = path.parent / 'attempts'; attempts.mkdir(exist_ok=True)
+    (attempts / 'retained-failed.json').write_text(json.dumps(failed), encoding='utf-8')
+    if legacy:
+        saved.pop('budget_response'); path.write_text(json.dumps(saved), encoding='utf-8')
+    proof = verify_role_response_sources(value, vocabulary, facts, tmp_path / 'roles', ledger)
+    assert proof['record_count'] == 1
+    assert {ticket for row in proof['records'] for source in row['sources'] for ticket in source['attempts']} == {valid['id']}
+    assert budget.path.read_bytes() == retained and len(provider.calls) == 1
 
 
 def test_semantic_release_binds_current_sources_roles_context_versions_and_judgments():
