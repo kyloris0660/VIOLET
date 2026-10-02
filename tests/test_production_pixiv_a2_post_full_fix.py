@@ -23,6 +23,42 @@ def _literal_query_sources():
     return before, after
 
 
+def _release_gate_sources(name):
+    after = (Path(__file__).resolve().parents[1] / name).read_bytes().replace(b'\r\n', b'\n')
+    if name == 'backend/app/services/production_pixiv_release_provenance.py':
+        before = after.replace(b" or call.get('business_valid',True) is not True", b'')
+        before = before.replace(b" and call.get('business_valid',True) is True", b'')
+    else:
+        current = b"""        trusted = resolve_trusted_git_executable(repo_root=repo_root)
+        def git(*args):
+            result = run_trusted_git_text(repo_root, args, git=trusted, timeout=10)
+            if result.returncode != 0:
+                raise TrustedGitError('candidate_carry_git_operation_failed')
+            return result.stdout.strip()
+"""
+        historical = b"""    def git(*args):
+        return subprocess.check_output(['git', '-C', str(repo_root), *args],
+            text=True, encoding='utf-8', stderr=subprocess.DEVNULL, timeout=10).strip()
+"""
+        before = after.replace(current, b'')
+        marker = b'    """Local launcher and A1 evidence share the same candidate drift boundary."""\n'
+        before = before.replace(marker, marker + historical)
+        before = before.replace(b'drift=inspect_worktree_drift(trusted,repo_root,',
+            b'drift=inspect_worktree_drift(resolve_trusted_git_executable(repo_root=repo_root),repo_root,')
+        before = before.replace(
+            b"referenced = run_trusted_git_text(repo_root, ['grep','-l','-F',path,'--',\n                'backend','frontend','scripts','run.py'], git=trusted, timeout=10)",
+            b"referenced = subprocess.run(['git','-C',str(repo_root),'grep','-l','-F',path,'--',\n                'backend','frontend','scripts','run.py'], capture_output=True, timeout=10)")
+    assert {key:hashlib.sha256(value).hexdigest() for key,value in
+            (('before_sha256',before),('after_sha256',after))} == contract.RELEASE_GATE_SOURCE_DELTAS[name]
+    return before, after
+
+
+def _registered_sources(name):
+    if name == contract.LITERAL_QUERY_FILE: return _literal_query_sources()
+    if name in contract.RELEASE_GATE_SOURCE_DELTAS: return _release_gate_sources(name)
+    return b'original source\n', b'bounded corrected source\n'
+
+
 def _fixture(tmp_path, monkeypatch, semantic_files=False):
     repo = tmp_path / 'registered-repo'
     repo.mkdir()
@@ -35,7 +71,7 @@ def _fixture(tmp_path, monkeypatch, semantic_files=False):
     before = {}
     for name in contract.ALLOWED_FILES:
         path = repo / name; path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(_literal_query_sources()[0] if name == contract.LITERAL_QUERY_FILE else b'original source\n')
+        path.write_bytes(_registered_sources(name)[0])
         before[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     if semantic_files:
         for name in contract.REPLAY_SOURCE_FILES | {'backend/app/semantic_fixture.py'}:
@@ -47,7 +83,7 @@ def _fixture(tmp_path, monkeypatch, semantic_files=False):
     base = run('rev-parse', 'HEAD'); monkeypatch.setattr(contract, 'BASELINE', base)
     files = {}
     for name in contract.ALLOWED_FILES:
-        path = repo / name; path.write_bytes(_literal_query_sources()[1] if name == contract.LITERAL_QUERY_FILE else b'bounded corrected source\n')
+        path = repo / name; path.write_bytes(_registered_sources(name)[1])
         files[name] = {'before_sha256': before[name],
                        'after_sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
     registry = {'schema_version': 'violet.production-pixiv-a2.post-full-fix.v1',
@@ -55,9 +91,10 @@ def _fixture(tmp_path, monkeypatch, semantic_files=False):
         'scope': contract.REGISTRY_SCOPE, 'files': files}
     if semantic_files:
         # The recorded source replay predates the new query correction.
-        source = repo / contract.LITERAL_QUERY_FILE
-        source.write_bytes(_literal_query_sources()[0])
-        registry['files'][contract.LITERAL_QUERY_FILE]['after_sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
+        for name in {contract.LITERAL_QUERY_FILE, *contract.RELEASE_GATE_SOURCE_DELTAS}:
+            source = repo / name
+            source.write_bytes(_registered_sources(name)[0])
+            registry['files'][name]['after_sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
     registry_path = repo / contract.REGISTRY
     registry_path.write_text(json.dumps(registry), encoding='utf-8')
     run('add', '.'); run('commit', '-qm', 'registered correction')
@@ -78,6 +115,21 @@ def test_literal_query_delta_pins_the_entire_verified_module(change):
     else:
         with pytest.raises(ValueError,match='literal_query_delta'):
             contract.verify_literal_query_delta(before,after)
+
+
+@pytest.mark.parametrize('name',sorted(contract.RELEASE_GATE_SOURCE_DELTAS))
+@pytest.mark.parametrize('change',['none','before','after','extra_runtime'])
+def test_release_gate_delta_pins_whole_business_validity_and_trusted_git_modules(name,change):
+    before,after = _release_gate_sources(name)
+    if change == 'before': before += b'\n# changed baseline\n'
+    elif change == 'after': after += b'\n# changed correction\n'
+    elif change == 'extra_runtime': after += b'\nexec("unregistered")\n'
+    if change == 'none':
+        result = contract.verify_release_gate_source_delta(name,before,after)
+        assert result['current_full_native_readmission_required'] and not result['behavior_neutral_claimed']
+    else:
+        with pytest.raises(ValueError,match='release_gate_delta'):
+            contract.verify_release_gate_source_delta(name,before,after)
 
 
 def test_post_full_source_contract_preserves_actual_full_baseline(tmp_path, monkeypatch):
@@ -117,7 +169,7 @@ def test_post_full_source_contract_rejects_unregistered_or_changed_inputs(tmp_pa
         contract.verify_registered_delta(repo, base, candidate)
 
 
-@pytest.mark.parametrize('change', ['none', 'unfinished', 'wrong_head', 'provider', 'ledger', 'identity', 'runtime_blob', 'query_blob'])
+@pytest.mark.parametrize('change', ['none', 'unfinished', 'wrong_head', 'provider', 'ledger', 'identity', 'runtime_blob', 'query_blob', 'provenance_blob', 'trusted_git_blob'])
 def test_source_replay_receipt_requires_unchanged_real_git_source(tmp_path, monkeypatch, change):
     repo, run, base, prior, registry, registry_path = _fixture(tmp_path, monkeypatch, semantic_files=True)
     monkeypatch.setattr(contract, 'SOURCE_REPLAY_HEAD', prior)
@@ -125,6 +177,11 @@ def test_source_replay_receipt_requires_unchanged_real_git_source(tmp_path, monk
     query_source.write_bytes(_literal_query_sources()[1])
     if change == 'query_blob': query_source.write_bytes(query_source.read_bytes() + b'\n# unregistered query change\n')
     registry['files'][contract.LITERAL_QUERY_FILE]['after_sha256'] = hashlib.sha256(query_source.read_bytes()).hexdigest()
+    for name in contract.RELEASE_GATE_SOURCE_DELTAS:
+        source = repo / name; source.write_bytes(_release_gate_sources(name)[1])
+        if change == ('trusted_git_blob' if name == 'scripts/trusted_git.py' else 'provenance_blob'):
+            source.write_bytes(source.read_bytes() + b'\n# unregistered release gate\n')
+        registry['files'][name]['after_sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
     evidence = repo / 'scripts/production_pixiv_a2_evidence.py'
     evidence.write_bytes(b'new bounded evidence gate\n')
     registry['files']['scripts/production_pixiv_a2_evidence.py']['after_sha256'] = hashlib.sha256(evidence.read_bytes()).hexdigest()

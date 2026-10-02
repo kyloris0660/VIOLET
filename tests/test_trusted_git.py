@@ -570,3 +570,68 @@ def test_candidate_launcher_runtime_metadata_cannot_follow_a_link(tmp_path, monk
     try: lock.symlink_to(outside)
     except (OSError, NotImplementedError): pytest.skip('Symlink creation unavailable on this host')
     assert not fixture.boundary._verified_launcher_runtime_file(fixture.repo, str(lock.relative_to(fixture.repo)).replace('\\','/'), fixture.spec, fixture.candidate)
+
+
+def test_candidate_carry_rejects_committed_behavior_hidden_by_path_git(tmp_path, monkeypatch):
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    repo = _new_repo(tmp_path)
+    (repo / 'backend').mkdir()
+    source = repo / 'backend/hook.py'
+    source.write_text('value = 1\n', encoding='utf-8')
+    candidate = _commit(repo, 'original backend', 'backend/hook.py')
+    source.write_text('value = 2\n', encoding='utf-8')
+    _commit(repo, 'changed behavior', 'backend/hook.py')
+    assert _bootstrap_git(repo, 'diff', '--name-only', candidate) == 'backend/hook.py'
+    drift = inspect_worktree_drift(resolve_trusted_git_executable(repo_root=repo), repo)
+    assert not any((drift.behavior_untracked_count, drift.uncertain_untracked_count,
+                    drift.behavior_ignored_count, drift.uncertain_ignored_count))
+    real = subprocess.check_output
+    def path_wrapper(argv, *args, **kwargs):
+        if argv[0] == 'git' and 'diff' in argv:
+            return '' if kwargs.get('text') else b''
+        return real(argv, *args, **kwargs)
+    monkeypatch.setattr(subprocess, 'check_output', path_wrapper)
+    assert candidate_behavior_carry_forward(repo, candidate) is False
+
+
+def test_candidate_carry_preserves_docs_without_path_or_inherited_git_controls(tmp_path, monkeypatch):
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    repo = _new_repo(tmp_path)
+    candidate = _bootstrap_git(repo, 'rev-parse', 'HEAD')
+    (repo / 'docs').mkdir()
+    (repo / 'docs/note.md').write_text('documentation\n', encoding='utf-8')
+    _commit(repo, 'docs only', 'docs/note.md')
+    (repo / 'docs/evidence.txt').write_text('ordinary artifact\n', encoding='utf-8')
+    monkeypatch.setenv('GIT_DIR', str(tmp_path / 'foreign.git'))
+    monkeypatch.setenv('GIT_WORK_TREE', str(tmp_path / 'foreign'))
+    monkeypatch.setenv('GIT_CONFIG_COUNT', '1')
+    monkeypatch.setenv('GIT_CONFIG_KEY_0', 'alias.diff')
+    monkeypatch.setenv('GIT_CONFIG_VALUE_0', '!echo hidden')
+    real = subprocess.run
+    calls = []
+    def forbid_path(argv, *args, **kwargs):
+        assert argv[0] != 'git', 'candidate Git consulted PATH'
+        calls.append((argv, kwargs.get('env', {})))
+        return real(argv, *args, **kwargs)
+    monkeypatch.setattr(subprocess, 'run', forbid_path)
+    assert candidate_behavior_carry_forward(repo, candidate) is True
+    assert calls and len({str(argv[0]).casefold() for argv, _ in calls}) == 1
+    assert all('GIT_DIR' not in env and 'GIT_WORK_TREE' not in env
+               and 'GIT_CONFIG_COUNT' not in env for _, env in calls)
+
+
+def test_candidate_carry_rejects_referenced_artifact_despite_path_grep_wrapper(tmp_path, monkeypatch):
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    repo = _new_repo(tmp_path)
+    (repo / 'backend').mkdir()
+    (repo / 'backend/hook.py').write_text('input_path = "docs/evidence.txt"\n', encoding='utf-8')
+    candidate = _commit(repo, 'referenced input', 'backend/hook.py')
+    (repo / 'docs').mkdir()
+    (repo / 'docs/evidence.txt').write_text('loaded input\n', encoding='utf-8')
+    real = subprocess.run
+    def path_wrapper(argv, *args, **kwargs):
+        if argv[0] == 'git' and 'grep' in argv:
+            return subprocess.CompletedProcess(argv, 1, stdout=b'', stderr=b'')
+        return real(argv, *args, **kwargs)
+    monkeypatch.setattr(subprocess, 'run', path_wrapper)
+    assert candidate_behavior_carry_forward(repo, candidate) is False

@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
+  "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -194,8 +194,146 @@
     "current_completion_withdrawn": true,
     "actual_before_command": "correction29-review102-before-real-pg-20261002-1-command-private.json",
     "historical_b5_full_contract_only": true,
-    "new_candidate_validation_pending": true,
-    "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
-    "stage": "frozen_current_affected_validation_pending"
+    "new_candidate_validation_pending": false,
+    "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+    "stage": "actual_current_affected_validation_passed_full_copy_ready",
+    "current_copy_and_production_pending": true,
+    "validation": "correction29-post-full-b84ed7d-20261002-1-validation-private.json",
+    "byte_pinned_counterfactual": {
+      "file": "correction29-review102-byte-pinned-counterfactual-20261002-private.json",
+      "sha256": "b9e565b271b03253acf92fb3b9313eb4f8047962a7401eed2e45bb37d9bdbfde",
+      "historical_git_module_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+      "original_test_bytes_verified": true,
+      "same_original_working_module_bytes_claimed": false,
+      "historical_counts": {
+        "passed": 1,
+        "failed": 3,
+        "skipped": 0
+      },
+      "current_counts": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "production_writes": 0
+    }
+  },
+  "post_full_fix": {
+    "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+    "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "superseded_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+    "registry": "docs/state/production-pixiv-a2-post-full-fix.json",
+    "registered_source_files": 16,
+    "additional_full_invocations": 0,
+    "behavior_neutral_claimed": false,
+    "source_carry_forward": "correction29-b6-source-carry-forward-20261002-3-private.json",
+    "actual_prior_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+    "prior_failure_logs_preserved": true,
+    "new_provider_calls": 0,
+    "status": "actual_current_b6_full_copy_running",
+    "validation": "correction29-post-full-b84ed7d-20261002-1-validation-private.json",
+    "verification": {
+      "focused": {
+        "passed": 843,
+        "failed": 0,
+        "skipped": 3,
+        "errors": 0,
+        "source_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76"
+      },
+      "postgresql": {
+        "passed": 142,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0,
+        "source_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76"
+      },
+      "non_e2e": {
+        "passed": 5268,
+        "failed": 1,
+        "skipped": 22,
+        "errors": 0,
+        "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+        "collected_node_count": 5291,
+        "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
+        "known_historical_failures": 1,
+        "validation_candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+        "post_full_fix": {
+          "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+          "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+          "registered_files": [
+            "backend/app/services/source_concept_search_service.py",
+            "docs/state/production-pixiv-a2-approved-projection.json",
+            "docs/state/production-pixiv-a2-ignored-inputs.json",
+            "docs/state/production-pixiv-a2-required-tests.json",
+            "scripts/check_production_pixiv_a2.py",
+            "scripts/production_pixiv_a2_evidence.py",
+            "scripts/production_pixiv_a2_full_suite.py",
+            "scripts/production_pixiv_a2_post_full_fix.py",
+            "scripts/trusted_git.py",
+            "scripts/violet_production_control.py",
+            "tests/test_production_launcher_control.py",
+            "tests/test_production_pixiv_a2.py",
+            "tests/test_production_pixiv_a2_api.py",
+            "tests/test_production_pixiv_a2_evidence.py",
+            "tests/test_production_pixiv_a2_post_full_fix.py",
+            "tests/test_trusted_git.py"
+          ],
+          "registry_sha256": "5a585e8e98b9401dd58cecfd1f6111206b4832bcea742adf23bfd21e1678b35d",
+          "affected_verification": {
+            "focused": {
+              "passed": 843,
+              "failed": 0,
+              "skipped": 3,
+              "errors": 0
+            },
+            "postgresql": {
+              "passed": 142,
+              "failed": 0,
+              "skipped": 0,
+              "errors": 0
+            },
+            "historical": {
+              "passed": 88,
+              "failed": 0,
+              "skipped": 0,
+              "errors": 0
+            }
+          },
+          "additional_full_invocations": 0,
+          "behavior_neutral_claimed": false,
+          "coverage_scope": "registered source delta and affected verification"
+        }
+      },
+      "historical_non_e2e": {
+        "passed": 4541,
+        "failed": 89,
+        "skipped": 15,
+        "errors": 0,
+        "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
+        "known_historical_failures": 1,
+        "resolved_initial_failures": 88
+      }
+    },
+    "focused_passed": 843,
+    "focused_skipped": 3,
+    "focused_warnings": 3,
+    "postgresql_passed": 142,
+    "postgresql_skipped": 0,
+    "postgresql_warnings": 0,
+    "historical_passed": 88,
+    "historical_skipped": 0,
+    "historical_warnings": 0,
+    "current_copy_label": "correction29-copy-b84ed7d-1",
+    "current_semantic_manifest": "correction29-b6-semantic-readmission-20261002-manifest-private.json",
+    "current_copy_pipeline": "correction29-b6-copy-pipeline-20261002-1-continuation-private.json"
+  },
+  "reviews103104": {
+    "implementation_plan": "correction29-reviews103104-implementation-plan-20261002-private.json",
+    "implementation_plan_sha256": "1b0fdfd1d812e4561a9bb4df41520e1bb7b95767d28b488daeefb08ac6b6a9ad",
+    "thread_count": 104,
+    "status": "bounded_counterexample_and_fix_pending",
+    "before_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+    "historical_b6_impact_validation_preserved": true,
+    "copy_interruption": "correction29-b6-readonly-source-interruption-reviews103104-20261002-private.json"
   }
 }

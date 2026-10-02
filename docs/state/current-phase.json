@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
+  "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -30,7 +30,7 @@
     "legacy_main_documentation_check": "a1_live_branch",
     "legacy_permission_fields": "原执行代理阶段字段保留；不否定39号已接受、已合并及发布对齐授权，也不授予再次merge或推main权限。"
   },
-  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION29_REVIEW102_REMEDIATION",
+  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION29_REVIEWS103104_REMEDIATION",
   "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
@@ -118,9 +118,9 @@
     "2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。",
     "2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。",
     "2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。",
-    "2026-10-02T14:04:44.060576+08:00 562bc18实际完整来源、副本、原生产owned apply和普通无参数EXE、生产80/80及独立精度、系统Edge/240 HTTP/720来源层与18项完整注册契约通过；target_met=true，safe_to_merge/route_approved及Owner验收保持false。 同阶段最新对账：2026-10-02 推送后第100条P1已用真实Git原件和原生门禁复核：B5提交中旧F9字段确被拒绝，当前工作树B5/实际18门及两次文档检查通过；仅补齐六文档投影和100线程对账，不改业务/重跑全套/重做apply。旧99对账、提交前交付包装中断及两次采集器断言失败完整保留。；2026-10-02新增102号在隔离PG复现3失败/1通过，当前target_met撤回为false；保留B5原生产及全部历史完成证据，按当前A2授权修复unknown待审组件边界。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。"
+    "2026-10-02T14:04:44.060576+08:00 562bc18实际完整来源、副本、原生产owned apply和普通无参数EXE、生产80/80及独立精度、系统Edge/240 HTTP/720来源层与18项完整注册契约通过；target_met=true，safe_to_merge/route_approved及Owner验收保持false。 同阶段最新对账：2026-10-02 推送后第100条P1已用真实Git原件和原生门禁复核：B5提交中旧F9字段确被拒绝，当前工作树B5/实际18门及两次文档检查通过；仅补齐六文档投影和100线程对账，不改业务/重跑全套/重做apply。旧99对账、提交前交付包装中断及两次采集器断言失败完整保留。；2026-10-02新增102号在隔离PG复现3失败/1通过，当前target_met撤回为false；保留B5原生产及全部历史完成证据，按当前A2授权修复unknown待审组件边界。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。 当前b84ed7da03adc6bbf393bf978811769c0b3c9b76正式影响验证实际通过：focused 843/3跳过，真实PG/API 142，历史88节点；16文件差量已登记，零新增全套/调用。最新完整副本及生产验收继续。 2026-10-02T16:58:03.213122+08:00 当前b84ed7d正式影响验证及独立源码/输入复算通过，开始实际当前完整副本/图与生命周期；原B5副本及原库apply历史保留，原生产服务不停止，0新增全套/Provider，三完成标志仍false。 第102条原测试字节及完整Git旧模块已新增真实PG修前3失败/1通过、当前4通过；原首轮工作文件SHA和失败原样保留，不冒称字节已复原。当前完整副本来源校验继续，0新调用。 第103/104条发布门禁意见已保存；B6副本在完整来源只读阶段停止，尚未plan/apply，实际失败及partial标记保留。当前恢复集中修复与全量验证，生产B5原worker保持。"
   ],
-  "next_required_checkpoint": "B6当前frozen focused/真实PG/API/历史节点、完整副本和质量/15门；通过后新备份恢复/原生产/正常EXE/18门，再102线程与单ZIP。",
+  "next_required_checkpoint": "修复103/104的业务有效性与可信Git门禁，冻结后补测及全量来源/完整副本，再按已有授权完成原生产、正常EXE、Edge/240/18门和单ZIP。",
   "durable_links": [
     {
       "label": "A2实施方案",
@@ -374,7 +374,7 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-10-02T16:18:42.390764+08:00",
+  "updated_at": "2026-10-02T17:55:03.923949+08:00",
   "production_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
   "correction17_progress": {
     "current_execution": {
@@ -969,7 +969,7 @@
     "computer_use_reacquired": true,
     "production_candidate_applied": true,
     "preflight_evidence": "correction29-preflight-private.json",
-    "stage": "complete_original_production_contract_passed_pending_lead_owner",
+    "stage": "actual_current_b6_full_copy_running",
     "role_denominator_replayed": true,
     "requested_role_targets": 49227,
     "role_aggregates": 8288,
@@ -1585,33 +1585,33 @@
       "project_lead_acceptance": "pending"
     },
     "post_full_fix": {
-      "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+      "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
       "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-      "superseded_candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+      "superseded_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
       "registry": "docs/state/production-pixiv-a2-post-full-fix.json",
-      "status": "current_source_copy_production_and_contract_passed",
-      "registered_source_files": 13,
+      "registered_source_files": 16,
       "additional_full_invocations": 0,
       "behavior_neutral_claimed": false,
-      "source_carry_forward": "correction29-b5-source-carry-forward-20261002-private.json",
+      "source_carry_forward": "correction29-b6-source-carry-forward-20261002-3-private.json",
       "actual_prior_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
       "prior_failure_logs_preserved": true,
       "new_provider_calls": 0,
-      "validation": "correction29-post-full-562bc18-20261002-1-validation-private.json",
+      "status": "actual_current_b6_full_copy_running",
+      "validation": "correction29-post-full-b84ed7d-20261002-1-validation-private.json",
       "verification": {
         "focused": {
-          "passed": 836,
+          "passed": 843,
           "failed": 0,
           "skipped": 3,
           "errors": 0,
-          "source_head": "562bc18b2178883e3a604b2d9e6bc01454d37080"
+          "source_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76"
         },
         "postgresql": {
-          "passed": 125,
+          "passed": 142,
           "failed": 0,
           "skipped": 0,
           "errors": 0,
-          "source_head": "562bc18b2178883e3a604b2d9e6bc01454d37080"
+          "source_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76"
         },
         "non_e2e": {
           "passed": 5268,
@@ -1622,12 +1622,14 @@
           "collected_node_count": 5291,
           "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
           "known_historical_failures": 1,
-          "validation_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+          "validation_candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
           "post_full_fix": {
             "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-            "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+            "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
             "registered_files": [
+              "backend/app/services/source_concept_search_service.py",
               "docs/state/production-pixiv-a2-approved-projection.json",
+              "docs/state/production-pixiv-a2-ignored-inputs.json",
               "docs/state/production-pixiv-a2-required-tests.json",
               "scripts/check_production_pixiv_a2.py",
               "scripts/production_pixiv_a2_evidence.py",
@@ -1637,20 +1639,21 @@
               "scripts/violet_production_control.py",
               "tests/test_production_launcher_control.py",
               "tests/test_production_pixiv_a2.py",
+              "tests/test_production_pixiv_a2_api.py",
               "tests/test_production_pixiv_a2_evidence.py",
               "tests/test_production_pixiv_a2_post_full_fix.py",
               "tests/test_trusted_git.py"
             ],
-            "registry_sha256": "dc1e50c75c47e587a1aa4da9a3fdc9a68091bd030e1d98304cc45a7edd055092",
+            "registry_sha256": "5a585e8e98b9401dd58cecfd1f6111206b4832bcea742adf23bfd21e1678b35d",
             "affected_verification": {
               "focused": {
-                "passed": 836,
+                "passed": 843,
                 "failed": 0,
                 "skipped": 3,
                 "errors": 0
               },
               "postgresql": {
-                "passed": 125,
+                "passed": 142,
                 "failed": 0,
                 "skipped": 0,
                 "errors": 0
@@ -1677,76 +1680,18 @@
           "resolved_initial_failures": 88
         }
       },
-      "focused_passed": 836,
+      "focused_passed": 843,
       "focused_skipped": 3,
       "focused_warnings": 3,
-      "postgresql_passed": 125,
+      "postgresql_passed": 142,
       "postgresql_skipped": 0,
       "postgresql_warnings": 0,
       "historical_passed": 88,
       "historical_skipped": 0,
       "historical_warnings": 0,
-      "current_copy_label": "correction29-copy-562bc18-1",
-      "current_semantic_manifest": "correction29-b5-semantic-readmission-20261002-manifest-private.json",
-      "current_copy_pipeline": "correction29-b5-copy-pipeline-20261002-4-continuation-private.json",
-      "current_native_source_and_graph_checkpoint": "correction29-b5-copy-native-graph-checkpoint-20261002-private.json",
-      "current_native_source_and_graph_passed": true,
-      "current_native_copy_step_checkpoints": {
-        "apply": "correction29-b5-copy-apply-checkpoint-20261002-private.json",
-        "replay": "correction29-b5-copy-replay-checkpoint-20261002-private.json",
-        "rollback": "correction29-b5-copy-rollback-checkpoint-20261002-private.json",
-        "repeated-rollback": "correction29-b5-copy-repeated-rollback-checkpoint-20261002-private.json",
-        "reapply": "correction29-b5-copy-reapply-checkpoint-20261002-private.json"
-      },
-      "current_native_copy_lifecycle_completed": {
-        "file": "correction29-copy-562bc18-1-lifecycle-private.json",
-        "sha256": "c249a1231e2410c039626c0bb151c35096b18cc73e6f9836b3806c08503263f5",
-        "provider_calls": 0,
-        "whole_copy_quality_passed_claimed": false
-      },
-      "current_copy_screenshot_inspection": {
-        "file": "correction29-b5-copy-screenshot-inspection-20261002-private.json",
-        "sha256": "4ba5036831697eacc7e28258903d32191fa53538bb4c44ab2e908a1035957a1c",
-        "actual_files_viewed": 5
-      },
-      "current_copy_quality_checkpoint": {
-        "file": "correction29-b5-copy-quality-checkpoint-20261002-private.json",
-        "sha256": "696dea67e676fccd627bb66938f5887d4317794f8bd0c28da752165c0d100268"
-      },
-      "fresh_backup": "correction29-fresh-production-backup-20261002-562bc18-1-private.json",
-      "current_release_preparation": "correction29-release-preparation-562bc18-20261002-1-resume-4-continuation-private.json",
-      "current_runtime_preparation": "correction29-release-preparation-562bc18-20261002-1-runtime-preparation-private.json",
-      "current_original_sequence": "correction29-original-562bc18-20261002-1-sequence-private.json",
-      "current_original_checkpoint": {
-        "at": "2026-10-02T12:47:26.887266+08:00",
-        "stage": "normal-entry",
-        "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
-        "evidence": [
-          {
-            "file": "correction29-original-562bc18-20261002-1-sequence-private.json",
-            "sha256": "373563897fea384cfaa6150994abba1d57f2397d65142dc041fffae28f0985cf"
-          },
-          {
-            "file": "correction29-fresh-production-backup-20261002-562bc18-1-private.json",
-            "sha256": "a6278b5cb6503c6d0b952bfa18ab826b589fa48222a97fb8b2a524b93e38a582"
-          },
-          {
-            "file": "correction29-copy-562bc18-1-contract-private.json",
-            "sha256": "3a950998a26100490c5c6d970b219b1ebb750a57149e3e935a014d2f9c216f4a"
-          },
-          {
-            "file": "correction29-production-normal-562bc18-20261002-1-launcher-private.json",
-            "sha256": "7ff76b6f47479b54f07c2d61146a468c97409df1c75e1f61a4780fa3e1bbeb09"
-          }
-        ],
-        "superseded_checkpoint": "2026-10-02T12:41:53.496736+08:00 562bc18 原生产owned apply和完整批准业务投影实际核验通过，17表保护保持；新鲜备份/独立61表恢复已通过。当前正常无参数EXE及生产Edge/240/18门尚待完成，不能提前申报工程完成。 target_met/safe_to_merge/route_approved仍false。"
-      },
-      "current_production_screenshot_inspection": {
-        "file": "correction29-b5-production-screenshot-inspection-20261002-private.json",
-        "sha256": "32842cc14368e9b2c568a3774116bf893b98346724203fef1a770c518f7f8c16",
-        "actual_files_viewed": 5
-      },
-      "current_contract": "correction29-production-562bc18-20261002-1-contract-private.json"
+      "current_copy_label": "correction29-copy-b84ed7d-1",
+      "current_semantic_manifest": "correction29-b6-semantic-readmission-20261002-manifest-private.json",
+      "current_copy_pipeline": "correction29-b6-copy-pipeline-20261002-1-continuation-private.json"
     },
     "revision_review_97": {
       "comment_id": 4155396620,
@@ -2537,16 +2482,210 @@
       "implementation_plan": "correction29-review102-implementation-plan-20261002-private.json",
       "implementation_plan_sha256": "b7867ffcf8d77a10b03c10ecb93f2402a75cea9bab94a4939f9562926e01ccd7",
       "thread_count": 102,
-      "status": "frozen_current_affected_validation_pending",
+      "status": "actual_current_affected_validation_passed_full_copy_ready",
       "current_completion_withdrawn": true,
       "historical_b5_18_gates_preserved": true,
-      "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
-      "registered_source_files": 15,
-      "source_carry_forward": "correction29-b6-source-carry-forward-20261002-private.json",
+      "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+      "registered_source_files": 16,
+      "source_carry_forward": "correction29-b6-source-carry-forward-20261002-3-private.json",
       "actual_development_pg_api_passed": 17,
       "actual_registered_contract_development_passed": 25,
       "additional_full_invocations": 0,
-      "new_provider_calls": 0
+      "new_provider_calls": 0,
+      "validation": "correction29-post-full-b84ed7d-20261002-1-validation-private.json",
+      "current_full_copy_pending": true,
+      "current_production_pending": true,
+      "byte_pinned_counterfactual": {
+        "file": "correction29-review102-byte-pinned-counterfactual-20261002-private.json",
+        "sha256": "b9e565b271b03253acf92fb3b9313eb4f8047962a7401eed2e45bb37d9bdbfde",
+        "historical_git_module_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+        "original_test_bytes_verified": true,
+        "same_original_working_module_bytes_claimed": false,
+        "historical_counts": {
+          "passed": 1,
+          "failed": 3,
+          "skipped": 0
+        },
+        "current_counts": {
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        },
+        "production_writes": 0
+      }
+    },
+    "historical_post_full_562bc18": {
+      "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+      "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+      "superseded_candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+      "registry": "docs/state/production-pixiv-a2-post-full-fix.json",
+      "status": "current_source_copy_production_and_contract_passed",
+      "registered_source_files": 13,
+      "additional_full_invocations": 0,
+      "behavior_neutral_claimed": false,
+      "source_carry_forward": "correction29-b5-source-carry-forward-20261002-private.json",
+      "actual_prior_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+      "prior_failure_logs_preserved": true,
+      "new_provider_calls": 0,
+      "validation": "correction29-post-full-562bc18-20261002-1-validation-private.json",
+      "verification": {
+        "focused": {
+          "passed": 836,
+          "failed": 0,
+          "skipped": 3,
+          "errors": 0,
+          "source_head": "562bc18b2178883e3a604b2d9e6bc01454d37080"
+        },
+        "postgresql": {
+          "passed": 125,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0,
+          "source_head": "562bc18b2178883e3a604b2d9e6bc01454d37080"
+        },
+        "non_e2e": {
+          "passed": 5268,
+          "failed": 1,
+          "skipped": 22,
+          "errors": 0,
+          "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+          "collected_node_count": 5291,
+          "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
+          "known_historical_failures": 1,
+          "validation_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+          "post_full_fix": {
+            "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+            "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+            "registered_files": [
+              "docs/state/production-pixiv-a2-approved-projection.json",
+              "docs/state/production-pixiv-a2-required-tests.json",
+              "scripts/check_production_pixiv_a2.py",
+              "scripts/production_pixiv_a2_evidence.py",
+              "scripts/production_pixiv_a2_full_suite.py",
+              "scripts/production_pixiv_a2_post_full_fix.py",
+              "scripts/trusted_git.py",
+              "scripts/violet_production_control.py",
+              "tests/test_production_launcher_control.py",
+              "tests/test_production_pixiv_a2.py",
+              "tests/test_production_pixiv_a2_evidence.py",
+              "tests/test_production_pixiv_a2_post_full_fix.py",
+              "tests/test_trusted_git.py"
+            ],
+            "registry_sha256": "dc1e50c75c47e587a1aa4da9a3fdc9a68091bd030e1d98304cc45a7edd055092",
+            "affected_verification": {
+              "focused": {
+                "passed": 836,
+                "failed": 0,
+                "skipped": 3,
+                "errors": 0
+              },
+              "postgresql": {
+                "passed": 125,
+                "failed": 0,
+                "skipped": 0,
+                "errors": 0
+              },
+              "historical": {
+                "passed": 88,
+                "failed": 0,
+                "skipped": 0,
+                "errors": 0
+              }
+            },
+            "additional_full_invocations": 0,
+            "behavior_neutral_claimed": false,
+            "coverage_scope": "registered source delta and affected verification"
+          }
+        },
+        "historical_non_e2e": {
+          "passed": 4541,
+          "failed": 89,
+          "skipped": 15,
+          "errors": 0,
+          "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
+          "known_historical_failures": 1,
+          "resolved_initial_failures": 88
+        }
+      },
+      "focused_passed": 836,
+      "focused_skipped": 3,
+      "focused_warnings": 3,
+      "postgresql_passed": 125,
+      "postgresql_skipped": 0,
+      "postgresql_warnings": 0,
+      "historical_passed": 88,
+      "historical_skipped": 0,
+      "historical_warnings": 0,
+      "current_copy_label": "correction29-copy-562bc18-1",
+      "current_semantic_manifest": "correction29-b5-semantic-readmission-20261002-manifest-private.json",
+      "current_copy_pipeline": "correction29-b5-copy-pipeline-20261002-4-continuation-private.json",
+      "current_native_source_and_graph_checkpoint": "correction29-b5-copy-native-graph-checkpoint-20261002-private.json",
+      "current_native_source_and_graph_passed": true,
+      "current_native_copy_step_checkpoints": {
+        "apply": "correction29-b5-copy-apply-checkpoint-20261002-private.json",
+        "replay": "correction29-b5-copy-replay-checkpoint-20261002-private.json",
+        "rollback": "correction29-b5-copy-rollback-checkpoint-20261002-private.json",
+        "repeated-rollback": "correction29-b5-copy-repeated-rollback-checkpoint-20261002-private.json",
+        "reapply": "correction29-b5-copy-reapply-checkpoint-20261002-private.json"
+      },
+      "current_native_copy_lifecycle_completed": {
+        "file": "correction29-copy-562bc18-1-lifecycle-private.json",
+        "sha256": "c249a1231e2410c039626c0bb151c35096b18cc73e6f9836b3806c08503263f5",
+        "provider_calls": 0,
+        "whole_copy_quality_passed_claimed": false
+      },
+      "current_copy_screenshot_inspection": {
+        "file": "correction29-b5-copy-screenshot-inspection-20261002-private.json",
+        "sha256": "4ba5036831697eacc7e28258903d32191fa53538bb4c44ab2e908a1035957a1c",
+        "actual_files_viewed": 5
+      },
+      "current_copy_quality_checkpoint": {
+        "file": "correction29-b5-copy-quality-checkpoint-20261002-private.json",
+        "sha256": "696dea67e676fccd627bb66938f5887d4317794f8bd0c28da752165c0d100268"
+      },
+      "fresh_backup": "correction29-fresh-production-backup-20261002-562bc18-1-private.json",
+      "current_release_preparation": "correction29-release-preparation-562bc18-20261002-1-resume-4-continuation-private.json",
+      "current_runtime_preparation": "correction29-release-preparation-562bc18-20261002-1-runtime-preparation-private.json",
+      "current_original_sequence": "correction29-original-562bc18-20261002-1-sequence-private.json",
+      "current_original_checkpoint": {
+        "at": "2026-10-02T12:47:26.887266+08:00",
+        "stage": "normal-entry",
+        "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+        "evidence": [
+          {
+            "file": "correction29-original-562bc18-20261002-1-sequence-private.json",
+            "sha256": "373563897fea384cfaa6150994abba1d57f2397d65142dc041fffae28f0985cf"
+          },
+          {
+            "file": "correction29-fresh-production-backup-20261002-562bc18-1-private.json",
+            "sha256": "a6278b5cb6503c6d0b952bfa18ab826b589fa48222a97fb8b2a524b93e38a582"
+          },
+          {
+            "file": "correction29-copy-562bc18-1-contract-private.json",
+            "sha256": "3a950998a26100490c5c6d970b219b1ebb750a57149e3e935a014d2f9c216f4a"
+          },
+          {
+            "file": "correction29-production-normal-562bc18-20261002-1-launcher-private.json",
+            "sha256": "7ff76b6f47479b54f07c2d61146a468c97409df1c75e1f61a4780fa3e1bbeb09"
+          }
+        ],
+        "superseded_checkpoint": "2026-10-02T12:41:53.496736+08:00 562bc18 原生产owned apply和完整批准业务投影实际核验通过，17表保护保持；新鲜备份/独立61表恢复已通过。当前正常无参数EXE及生产Edge/240/18门尚待完成，不能提前申报工程完成。 target_met/safe_to_merge/route_approved仍false。"
+      },
+      "current_production_screenshot_inspection": {
+        "file": "correction29-b5-production-screenshot-inspection-20261002-private.json",
+        "sha256": "32842cc14368e9b2c568a3774116bf893b98346724203fef1a770c518f7f8c16",
+        "actual_files_viewed": 5
+      },
+      "current_contract": "correction29-production-562bc18-20261002-1-contract-private.json"
+    },
+    "reviews103104": {
+      "implementation_plan": "correction29-reviews103104-implementation-plan-20261002-private.json",
+      "implementation_plan_sha256": "1b0fdfd1d812e4561a9bb4df41520e1bb7b95767d28b488daeefb08ac6b6a9ad",
+      "thread_count": 104,
+      "status": "bounded_counterexample_and_fix_pending",
+      "before_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+      "historical_b6_impact_validation_preserved": true,
+      "copy_interruption": "correction29-b6-readonly-source-interruption-reviews103104-20261002-private.json"
     }
   },
   "historical_completed_checkpoints_before_correction29": [

@@ -2,8 +2,12 @@
   "schema_version": "violet.production-pixiv-a2.post-full-fix.v1",
   "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
   "authorization": "owner-20260929-section-2.2-impact-verification",
-  "scope": "verified-launcher-runtime-metadata-live-source-revision-owned-business-chip-and-literal-component-boundary",
+  "scope": "verified-launcher-runtime-metadata-live-source-revision-owned-business-chip-literal-component-and-source-git-release-gates",
   "files": {
+    "backend/app/services/production_pixiv_release_provenance.py": {
+      "before_sha256": "2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10",
+      "after_sha256": "de99dbc8cc2dc2e8e17be9bfe44d83a4943f955c39f4464e13a2f0b89f7841af"
+    },
     "backend/app/services/source_concept_search_service.py": {
       "before_sha256": "fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd",
       "after_sha256": "2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f"
@@ -18,7 +22,7 @@
     },
     "docs/state/production-pixiv-a2-required-tests.json": {
       "before_sha256": "2340d627b0f16cd124f539a340816cfa84255f68d38d1ccd195606135d13e238",
-      "after_sha256": "a7a4540a90c83f892ed80b4a817cdd997923a53a9872a1958169d44ad2000a98"
+      "after_sha256": "6b659a18f784804cb8e193c08be16c50b8215702b503780cc40967df2cc45dba"
     },
     "scripts/check_production_pixiv_a2.py": {
       "before_sha256": "0e580d2dc3e4d34b7eaee020aad879bffb15e8f175c57a48ba2e80c3afc490b2",
@@ -34,11 +38,11 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "08a4a3d7aceb93be66902c3f94bace280df95851c3c47f96c8f5667ee4ba6323"
+      "after_sha256": "2540a38c74ae1e20e48762cef665c5926793e097ca9d96e17f88ff09ff615395"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
-      "after_sha256": "3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1"
+      "after_sha256": "8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8"
     },
     "scripts/violet_production_control.py": {
       "before_sha256": "d0c51d6cb5a8122d4610b1daa458920b4e0894931c0d375567338e37c6aef69f",
@@ -62,11 +66,15 @@
     },
     "tests/test_production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "7831134d3f9c7db3b204717482753f1f1ab02c53467831d506d9b8ce5f153bd9"
+      "after_sha256": "75ecc06c7c537bb3e09f8e3f92c64a0e1c38b3ae853ea27bf59bb6afdcbdba45"
+    },
+    "tests/test_production_pixiv_adjudication.py": {
+      "before_sha256": "797bb70fd86cf43fb017ffcbeae051537678b03f4ed2300d35f7279281cd1b52",
+      "after_sha256": "0c40d0370a792917c632bd7dbd6682bd9f3b21ee6b5ca59f578c656e206ea0b0"
     },
     "tests/test_trusted_git.py": {
       "before_sha256": "ba1d17d23ba2c1cc68b652c7f01fa0e2114337913388914f19ef27223cd43078",
-      "after_sha256": "541d481cb98e2f69c843563ee01061add2579aeddf6decb6d9aaf5e4ae760da0"
+      "after_sha256": "b095851cfb8403918aca2f28e667ae2c17470a1b466b7bbd3ed3f23c27187497"
     }
   }
 }

@@ -957,12 +957,15 @@ def _classify_untracked(repo_root: Path, path: str, *, ignored: bool = False) ->
 
 def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
     """Local launcher and A1 evidence share the same candidate drift boundary."""
-    def git(*args):
-        return subprocess.check_output(['git', '-C', str(repo_root), *args],
-            text=True, encoding='utf-8', stderr=subprocess.DEVNULL, timeout=10).strip()
     try:
         if not re.fullmatch('[0-9a-f]{40}', candidate):
             return False
+        trusted = resolve_trusted_git_executable(repo_root=repo_root)
+        def git(*args):
+            result = run_trusted_git_text(repo_root, args, git=trusted, timeout=10)
+            if result.returncode != 0:
+                raise TrustedGitError('candidate_carry_git_operation_failed')
+            return result.stdout.strip()
         if git('rev-parse', candidate+'^{commit}') != candidate or git('merge-base',candidate,'HEAD') != candidate:
             return False
         changed = git('diff', '--name-only', '-z', candidate).split('\0')
@@ -981,7 +984,7 @@ def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
         runtime=None
         if _lexically_within(Path(sys.executable),repo_root):
             runtime=verify_approved_python_runtime(Path(sys.executable),repo_root=repo_root)
-        drift=inspect_worktree_drift(resolve_trusted_git_executable(repo_root=repo_root),repo_root,
+        drift=inspect_worktree_drift(trusted,repo_root,
             approved_python_runtime=runtime,approved_artifacts=registry,approved_candidate=candidate)
         if any((drift.behavior_untracked_count,drift.uncertain_untracked_count,
                 drift.behavior_ignored_count,drift.uncertain_ignored_count)):
@@ -991,8 +994,8 @@ def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
                 return False
             # An otherwise ordinary artifact explicitly loaded by application
             # code is behavior input, regardless of its docs/ placement.
-            referenced = subprocess.run(['git','-C',str(repo_root),'grep','-l','-F',path,'--',
-                'backend','frontend','scripts','run.py'], capture_output=True, timeout=10)
+            referenced = run_trusted_git_text(repo_root, ['grep','-l','-F',path,'--',
+                'backend','frontend','scripts','run.py'], git=trusted, timeout=10)
             if referenced.returncode != 1:
                 return False
         return True

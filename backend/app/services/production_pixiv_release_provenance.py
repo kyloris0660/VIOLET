@@ -390,7 +390,7 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
         response=source.get('budget_response')
         if response:
             call=calls.get(response['reservation'])
-            if (not call or call['status']!='success' or call['key']!=response['key']
+            if (not call or call['status']!='success' or call.get('business_valid',True) is not True or call['key']!=response['key']
                 or call['key'] not in expected_keys):
                 raise ValueError('semantic_judgment_attempt_not_settled')
             if call.get('usage_known') and call['usage']!={k:response['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
@@ -400,7 +400,7 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
             # successful call for this exact original input establishes a
             # reusable source; unrelated or ambiguous tickets cannot fill it.
             matches=[call for key in expected_keys for call in calls_by_key[key]
-                     if call['status']=='success']
+                     if call['status']=='success' and call.get('business_valid',True) is True]
             if len(matches)!=1:
                 raise ValueError('semantic_legacy_judgment_source_attempt_missing_or_ambiguous')
             call=matches[0]

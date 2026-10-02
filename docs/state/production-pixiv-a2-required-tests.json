@@ -4,6 +4,7 @@
     "tests/test_production_pixiv_precision_evidence.py",
     "tests/test_production_pixiv_a2_contract.py",
     "tests/test_production_pixiv_review60.py",
+    "tests/test_production_pixiv_adjudication.py",
     "tests/test_production_pixiv_corrections.py",
     "tests/test_production_pixiv_role_coverage.py",
     "tests/test_production_pixiv_correction_gates.py",

@@ -1,3 +1,9 @@
+# A2 当前已授权发布门禁修复计划
+
+当前处理第103/104条发布门禁意见：最终配对来源缺少business_valid精确校验，候选差异中的部分Git命令仍由PATH解析。B6副本在只读来源阶段中止，未执行该候选plan/apply；原始失败、partial和B6补测证据保留。现有B5生产服务保持运行，其历史18门不冒称新候选通过。target_met、safe_to_merge、route_approved均false。沿用原A2执行授权，不新增provider或完整全套；修复后继续完整副本与原生产收口。
+
+## 第103/104条之前的精确历史版本
+
 # A2 当前已授权影响修复计划
 
 当前A2新增102号复审已在真实隔离PostgreSQL复现：unknown occurrence通过needs_review链接/概念跨入另一active alias的直接证据召回，3失败/1通过。当前`target_met=false`，`safe_to_merge=false`、`route_approved=false`。现有B5生产保持可用，其18门完成记录作为精确历史保存；新修复及对应副本/生产验证完成前不申报当前工程通过。101号所称ab41b890 squash提交在实际仓库未发现，实际f0fe49e继承562bc18，原生文档校验与完整Git证明均通过；仍会保存当前远端与独立复算。

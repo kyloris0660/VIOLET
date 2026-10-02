@@ -2,7 +2,8 @@
 
 The full run remains evidence for its actual source. This contract permits only
 the registered launcher, live source-revision, complete owned-business, and
-concept-chip evidence and review102 literal-component boundary corrections.
+concept-chip evidence, review102 literal-component boundary, and reviews103104
+business-valid source and trusted candidate Git corrections.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -12,10 +13,18 @@ from pathlib import Path
 
 BASELINE = 'd26bd0c5cde6865a2760a8c59b749a9fb4652ace'
 REGISTRY = 'docs/state/production-pixiv-a2-post-full-fix.json'
-REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-live-source-revision-owned-business-chip-and-literal-component-boundary'
+REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-live-source-revision-owned-business-chip-literal-component-and-source-git-release-gates'
 LITERAL_QUERY_FILE = 'backend/app/services/source_concept_search_service.py'
 LITERAL_QUERY_BEFORE_SHA256 = 'fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd'
 LITERAL_QUERY_AFTER_SHA256 = '2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f'
+RELEASE_GATE_SOURCE_DELTAS = {
+    'backend/app/services/production_pixiv_release_provenance.py': {
+        'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10',
+        'after_sha256': 'de99dbc8cc2dc2e8e17be9bfe44d83a4943f955c39f4464e13a2f0b89f7841af'},
+    'scripts/trusted_git.py': {
+        'before_sha256': '3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1',
+        'after_sha256': '8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8'},
+}
 ALLOWED_FILES = frozenset({
     'scripts/trusted_git.py', 'scripts/production_pixiv_a2_full_suite.py',
     'scripts/production_pixiv_a2_post_full_fix.py', 'scripts/check_production_pixiv_a2.py',
@@ -26,6 +35,8 @@ ALLOWED_FILES = frozenset({
     'scripts/violet_production_control.py', 'tests/test_production_launcher_control.py',
     LITERAL_QUERY_FILE, 'tests/test_production_pixiv_a2_api.py',
     'docs/state/production-pixiv-a2-ignored-inputs.json',
+    'backend/app/services/production_pixiv_release_provenance.py',
+    'tests/test_production_pixiv_adjudication.py',
 })
 SOURCE_REPLAY_HEAD = '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f'
 REPLAY_SOURCE_FILES = frozenset({
@@ -33,6 +44,7 @@ REPLAY_SOURCE_FILES = frozenset({
     'scripts/run_production_pixiv_a2_product.py', 'scripts/check_python_env.py', 'scripts/trusted_git.py',
 })
 REPLAY_GATE_FILES = frozenset({
+    'docs/state/production-pixiv-a2-required-tests.json',
     'scripts/check_production_pixiv_a2.py', 'scripts/production_pixiv_a2_evidence.py',
     'scripts/production_pixiv_a2_post_full_fix.py', 'tests/test_production_pixiv_a2.py',
     'tests/test_production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2_post_full_fix.py',
@@ -40,6 +52,8 @@ REPLAY_GATE_FILES = frozenset({
     'scripts/violet_production_control.py', 'tests/test_production_launcher_control.py',
     LITERAL_QUERY_FILE, 'tests/test_production_pixiv_a2_api.py',
     'docs/state/production-pixiv-a2-ignored-inputs.json',
+    'scripts/trusted_git.py', 'backend/app/services/production_pixiv_release_provenance.py',
+    'tests/test_production_pixiv_adjudication.py',
 })
 
 
@@ -60,9 +74,24 @@ def verify_literal_query_delta(before, after):
             'current_query_and_precision_verification_required': True}
 
 
+def verify_release_gate_source_delta(name, before, after):
+    """Pin the two bounded release-gate corrections as complete source modules.
+
+    Actual B3 evidence keeps its historical validator identity. A current full
+    native replay must apply the stricter validity and trusted Git checks again.
+    """
+    from scripts.check_production_pixiv_a2 import require
+    digest = lambda value: hashlib.sha256(value).hexdigest()
+    require(name in RELEASE_GATE_SOURCE_DELTAS, 'source_replay_unregistered_release_gate')
+    hashes = {'before_sha256': digest(before), 'after_sha256': digest(after)}
+    require(hashes == RELEASE_GATE_SOURCE_DELTAS[name], 'source_replay_release_gate_delta')
+    return {'file': name, **hashes, 'behavior_neutral_claimed': False,
+            'current_full_native_readmission_required': True}
+
+
 def verify_source_replay_carry_forward(root, *, candidate, prior_head, command, manifest,
                                      approved_identity, ledger_sha256):
-    """Keep B3's actual source receipt while admitting unchanged inputs to B4.
+    """Keep B3's actual source receipt while admitting exact bounded gate fixes.
 
     This validates only unchanged source computation and input identity. The
     current product loader must still perform its real full source verification.
@@ -106,8 +135,12 @@ def verify_source_replay_carry_forward(root, *, candidate, prior_head, command, 
     query_delta = verify_literal_query_delta(
         operation('show', prior_head + ':' + LITERAL_QUERY_FILE),
         operation('show', candidate + ':' + LITERAL_QUERY_FILE))
+    gate_deltas = {name: verify_release_gate_source_delta(name,
+        operation('show', prior_head + ':' + name), operation('show', candidate + ':' + name))
+        for name in sorted(RELEASE_GATE_SOURCE_DELTAS)}
     blobs = {}
-    for name in sorted((backend - {LITERAL_QUERY_FILE}) | REPLAY_SOURCE_FILES):
+    for name in sorted(((backend - {LITERAL_QUERY_FILE}) | REPLAY_SOURCE_FILES)
+                       - RELEASE_GATE_SOURCE_DELTAS.keys()):
         before = operation('rev-parse', prior_head + ':' + name).decode().strip()
         after = operation('rev-parse', candidate + ':' + name).decode().strip()
         require(before == after, 'source_replay_semantic_blob_changed')
@@ -115,7 +148,8 @@ def verify_source_replay_carry_forward(root, *, candidate, prior_head, command, 
     return {'schema_version': 'violet.production-pixiv-a2.source-replay-carry-forward.v1',
             'actual_source_head': prior_head, 'candidate_head': candidate,
             'unchanged_source_blobs': blobs, 'changed_gate_paths': sorted(changed),
-            'exact_query_only_source_delta': query_delta,
+            'exact_literal_query_source_delta': query_delta,
+            'exact_release_gate_source_deltas': gate_deltas,
             'input_identity': approved_identity, 'ledger_sha256': ledger_sha256,
             'original_invocation_not_relabelled': True, 'current_full_native_readmission_required': True,
             'new_provider_calls': 0, 'additional_full_suite_invocations': 0}
@@ -160,6 +194,9 @@ def verify_registered_delta(root, baseline, candidate):
                 'post_full_delta_digest')
         if name == LITERAL_QUERY_FILE:
             verify_literal_query_delta(before, after)
+        if name in RELEASE_GATE_SOURCE_DELTAS:
+            require(digest(after) == RELEASE_GATE_SOURCE_DELTAS[name]['after_sha256'],
+                    'post_full_release_gate_source_delta')
         _assert_no_alias_components(root / name)
         # Working-tree CRLF conversion is permitted only when Git's normalized
         # source is still the registered candidate blob.

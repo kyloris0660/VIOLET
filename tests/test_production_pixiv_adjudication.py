@@ -86,6 +86,55 @@ def test_first_semantic_reuse_binds_current_occurrence_and_replays_offline(tmp_p
     assert provider.calls==1
 
 
+@pytest.mark.parametrize('legacy',[False,True])
+def test_release_rejects_actual_recovered_business_invalid_success(tmp_path,monkeypatch,legacy):
+    from pathlib import Path
+    from app.services.source_concept_budget import AdjudicationBudget
+    from app.services.production_pixiv_release_provenance import verify_selected_judgment_sources
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path);rows,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    path=tmp_path/'budget.json';ledger=json.loads(path.read_text());call=ledger['calls'][0]
+    budget=AdjudicationBudget(path,model=cfg.model_label,cap_usd=cfg.max_budget_usd,
+        input_per_million=cfg.input_price_per_million,output_per_million=cfg.output_price_per_million)
+    budget.recover_response(key=call['key'],usage=call['usage'],business_valid=False,reservation=call['id'])
+    ledger=json.loads(path.read_text());invalid=ledger['calls'][0]
+    assert invalid['status']=='success' and invalid['business_valid'] is False
+    assert invalid['charged_microusd']==call['charged_microusd'] and invalid['usage']==call['usage']
+    if legacy:
+        record_path=Path(cfg.durable_cache_dir)/'records'/(rows[0]['cache_key']+'.json')
+        record=json.loads(record_path.read_text());record.pop('budget_response')
+        record_path.write_text(json.dumps(record),encoding='utf-8')
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:pytest.fail('release must remain offline'))
+    before=path.read_bytes()
+    with pytest.raises(ValueError,match='semantic_.*attempt'):
+        verify_selected_judgment_sources(edges,signals,rows,cfg,ledger)
+    assert provider.calls==1 and path.read_bytes()==before
+
+
+@pytest.mark.parametrize('legacy',[False,True])
+@pytest.mark.parametrize('validity',['absent',True,False,None,0,1,'true'])
+def test_release_source_requires_exact_business_validity_with_legacy_absence(tmp_path,monkeypatch,legacy,validity):
+    from pathlib import Path
+    from app.services.production_pixiv_release_provenance import verify_selected_judgment_sources
+    signals,edges=_eligible_llm_edges(1);provider=MeteredProvider()
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:(provider,{}))
+    cfg=config(tmp_path);rows,_=service.run_bounded_llm_adjudication(edges,signals=signals,config=cfg)
+    ledger=json.loads((tmp_path/'budget.json').read_text())
+    if validity=='absent':ledger['calls'][0].pop('business_valid')
+    else:ledger['calls'][0]['business_valid']=validity
+    if legacy:
+        path=Path(cfg.durable_cache_dir)/'records'/(rows[0]['cache_key']+'.json')
+        record=json.loads(path.read_text());record.pop('budget_response');path.write_text(json.dumps(record),encoding='utf-8')
+    monkeypatch.setattr(service,'primary_openai_provider_from_settings',lambda:pytest.fail('release must remain offline'))
+    if validity=='absent' or validity is True:
+        assert verify_selected_judgment_sources(edges,signals,rows,cfg,ledger)['sources'][0]['source_attempt_id']==ledger['calls'][0]['id']
+    else:
+        with pytest.raises(ValueError,match='semantic_.*attempt'):
+            verify_selected_judgment_sources(edges,signals,rows,cfg,ledger)
+    assert provider.calls==1
+
+
 @pytest.mark.parametrize('failure_point',['record','pair_index','settlement'])
 @pytest.mark.parametrize('reuse',['exact','same_input'])
 def test_valid_provider_response_survives_local_cache_or_settlement_failure(tmp_path,monkeypatch,failure_point,reuse):
