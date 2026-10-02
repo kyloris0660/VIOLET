@@ -163,6 +163,23 @@ def test_role_release_rejects_actual_failed_or_recovered_invalid_call(tmp_path, 
             return settle(self, reservation, usage, success=False)
         monkeypatch.setattr(AdjudicationBudget, 'settle', settle_failed)
     value, vocabulary, facts, provider, budget = successful_role_facts(tmp_path)
+    if outcome == 'failed':
+        # The current producer correctly refuses to publish a failed unit.
+        # Reconstruct the historical retained fact from its real saved answer
+        # so this release test exercises source rejection rather than no facts.
+        from app.services import production_pixiv_role_extraction as roles
+        from app.services.source_name_candidate_extraction_service import validate_extraction_record
+        assert not facts['records'] and facts['summary']['remaining_units'] == 1
+        units, _ = roles.plan_role_extraction(value, vocabulary)
+        assert len(units) == 1
+        saved = json.loads(next((tmp_path / 'roles' / 'raw').glob('*.json')).read_text())
+        rows = json.loads(saved['content'])['records']
+        assert len(rows) == 1 and rows[0]['group_key'] == units[0].unit_group.group_key
+        verdict, candidates, *_ = validate_extraction_record(rows[0], units[0].unit_group)
+        retained_fact = roles._record(units[0], saved['model'], verdict, candidates,
+                                     origin='existing_f7a_extractor_primary_model')
+        facts['records'] = {units[0].extraction_key: retained_fact}
+    assert len(facts['records']) == 1
     before = json.loads(budget.path.read_text())
     assert len(before['calls']) == len(provider.calls) == 1
     call = before['calls'][0]

@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+  "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -176,22 +176,13 @@
     }
   },
   "post_full_fix": {
-    "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+    "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
     "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-    "registered_source_files": 26,
-    "status": "actual_frozen_affected_validation_passed_current_role_source_blocked",
+    "registered_source_files": 32,
+    "status": "frozen_b12_current_affected_validation_and_native_role_replay_pending",
     "additional_full_invocations": 0,
     "new_provider_calls": 0,
-    "behavior_neutral_claimed": false,
-    "validation": "correction29-post-full-20d9419-20261002-1-validation-private.json",
-    "registered_files": 26,
-    "current_counts": {
-      "focused_passed": 1003,
-      "focused_skipped": 3,
-      "focused_warnings": 3,
-      "postgresql_passed": 142,
-      "historical_passed": 88
-    }
+    "behavior_neutral_claimed": false
   },
   "reviews103104": {
     "implementation_plan": "correction29-reviews103104-implementation-plan-20261002-private.json",
@@ -585,7 +576,7 @@
     "historical_clean_rerun_passed": 88
   },
   "reviews107109": {
-    "status": "ordinary_review_fixes_in_development_current_frozen_checks_pending",
+    "status": "implemented_frozen_current_checks_pending",
     "thread_count": 109,
     "comments": [
       4167310188,
@@ -598,6 +589,35 @@
     "original_6110_rows_full_field_guard": true,
     "role_partial_source_complete_cache_rejected": true,
     "exact_original_historical_nodes": 88,
-    "target_met": false
+    "target_met": false,
+    "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
+    "development": {
+      "command": "correction29-reviews107109-development-20261003-5-command-private.json",
+      "xml": "correction29-reviews107109-development-20261003-5.xml",
+      "log": "correction29-reviews107109-development-20261003-5.log",
+      "passed": 176,
+      "first_before_regressions": {
+        "xml": "correction29-reviews107109-before-20261003-1.xml",
+        "failed": 14,
+        "passed": 2
+      },
+      "preserved_development_failures": [
+        {
+          "label": "correction29-reviews107109-development-20261003-1",
+          "failed": 2
+        },
+        {
+          "label": "correction29-reviews107109-development-20261003-3",
+          "failed": 37
+        },
+        {
+          "label": "correction29-reviews107109-development-20261003-4",
+          "failed": 4
+        }
+      ],
+      "new_provider_calls": 0,
+      "new_full_suite_invocations": 0,
+      "original_role_source_gap_not_repaired": true
+    }
   }
 }
