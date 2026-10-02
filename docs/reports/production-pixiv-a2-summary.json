@@ -621,12 +621,20 @@
   },
   "review_package": {
     "kind": "failure_delivery_current_role_source_blocked",
-    "archive": "correction29-source-blocked-review105-final-20261002-1.zip",
-    "build_receipt": "correction29-source-blocked-review105-final-20261002-1-build-private.json",
-    "clean_verification_receipt": "correction29-source-blocked-review105-final-20261002-1-clean-verification-private.json",
-    "offline_replays_receipt": "correction29-source-blocked-review105-final-20261002-1-offline-replays-private.json",
+    "archive": "correction29-source-blocked-review105-final-20261002-2.zip",
+    "build_receipt": "correction29-source-blocked-review105-final-20261002-2-build-private.json",
+    "clean_verification_receipt": "correction29-source-blocked-review105-final-20261002-2-clean-verification-private.json",
+    "offline_replays_receipt": "correction29-source-blocked-review105-final-20261002-2-offline-replays-private.json",
     "claim_rule": "Only actual size/SHA and successful fresh extraction/replay receipts authorize delivery completion; no current A2 engineering acceptance.",
     "maximum_bytes": 100000000,
     "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json"
+  },
+  "review_package_size_failure": {
+    "first_archive": "correction29-source-blocked-review105-final-20261002-1.zip",
+    "bytes": 115724350,
+    "sha256": "4127557257252faba632811c8232dc0fb210018529bc52c080dd0496845ec40b",
+    "size_passed": false,
+    "original_failed_archive_preserved": true,
+    "next": "exact stronger compression and measured non-decisive repeated visual context; current/unfavorable inputs retained"
   }
 }

@@ -118,7 +118,7 @@
     "2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。",
     "2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。",
     "2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。",
-    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史节点通过。完整原生角色来源拒绝9543记录，输入/18434缓存/原账本不变，0新增provider；18项契约实际9通过/2失败/7依赖受阻未执行，target/safe/route均false。B5原worker22852保留，继续105线程及≤100 MB独立单包；范围外角色修复需具体新裁决。"
+    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史通过；原生角色拒绝9543，18槽位9通过/2失败/7未执行，0新provider/生产写。105线程及6文档已冻结推送93ab18a；初版完整ZIP实际115724350字节超过硬上限，原包/失败保留，当前继续压缩去重与独立单包验证。B5 worker22852保留，target/safe/route均false。"
   ],
   "next_required_checkpoint": "owner_specific_role_provenance_scope_ruling_after_single_portable_failure_delivery",
   "durable_links": [
@@ -3112,6 +3112,16 @@
     "historical_role_source_records_verified_before_review105": 15824,
     "review_package": {
       "kind": "failure_delivery_current_role_source_blocked",
+      "archive": "correction29-source-blocked-review105-final-20261002-2.zip",
+      "build_receipt": "correction29-source-blocked-review105-final-20261002-2-build-private.json",
+      "clean_verification_receipt": "correction29-source-blocked-review105-final-20261002-2-clean-verification-private.json",
+      "offline_replays_receipt": "correction29-source-blocked-review105-final-20261002-2-offline-replays-private.json",
+      "claim_rule": "Only actual size/SHA and successful fresh extraction/replay receipts authorize delivery completion; no current A2 engineering acceptance.",
+      "maximum_bytes": 100000000,
+      "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json"
+    },
+    "historical_oversize_review_package": {
+      "kind": "failure_delivery_current_role_source_blocked",
       "archive": "correction29-source-blocked-review105-final-20261002-1.zip",
       "build_receipt": "correction29-source-blocked-review105-final-20261002-1-build-private.json",
       "clean_verification_receipt": "correction29-source-blocked-review105-final-20261002-1-clean-verification-private.json",
@@ -3119,6 +3129,14 @@
       "claim_rule": "Only actual size/SHA and successful fresh extraction/replay receipts authorize delivery completion; no current A2 engineering acceptance.",
       "maximum_bytes": 100000000,
       "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json"
+    },
+    "review_package_size_failure": {
+      "first_archive": "correction29-source-blocked-review105-final-20261002-1.zip",
+      "bytes": 115724350,
+      "sha256": "4127557257252faba632811c8232dc0fb210018529bc52c080dd0496845ec40b",
+      "size_passed": false,
+      "original_failed_archive_preserved": true,
+      "next": "exact stronger compression and measured non-decisive repeated visual context; current/unfavorable inputs retained"
     }
   },
   "historical_completed_checkpoints_before_correction29": [
