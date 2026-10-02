@@ -534,7 +534,7 @@
     "thread_count": 111
   },
   "review_package": {
-    "archive": "correction29-source-blocked-review111-final-20261003-1.zip",
+    "archive": "correction29-source-blocked-review111-final-20261003-2.zip",
     "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
     "maximum_bytes": 100000000,
     "external_final_receipt": "correction29-b14-final-private-delivery-20261003-private.json",
@@ -700,5 +700,13 @@
     "inputs_ledger_and_cache_unchanged": true,
     "network_connections": 0,
     "scope_binding": "correction29-b14-role-scope-binding-20261003-private.json"
+  },
+  "review111_first_archive_oversize": {
+    "file": "correction29-source-blocked-review111-final-20261003-1-build-private.json",
+    "bytes": 102020195,
+    "sha256": "e01d51af70c8f4a1a96b261d12a0bab2a4cf79d0c6e3d85d914e54b1e2ce398c",
+    "original_archive_retained_locally": true,
+    "current_size_passed": false,
+    "next_encoding": "additional exact original text stream; no negative records or screenshots omitted"
   }
 }
