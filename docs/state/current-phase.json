@@ -118,7 +118,7 @@
     "2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。",
     "2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。",
     "2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。",
-    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史通过；原生角色拒绝9543，18槽位9通过/2失败/7未执行，0新provider/生产写。105线程及6文档已冻结推送93ab18a；初版完整ZIP实际115724350字节超过硬上限，原包/失败保留，当前继续压缩去重与独立单包验证。B5 worker22852保留，target/safe/route均false。 第106条six-before-fail/six-after-pass、166运行路径及156契约开发回归通过；缓存账本准入集中冻结20d94190bfa4c4896398ee320c5d553fae98fc7e，26文件注册，当前正式验证和角色完整门待验；旧B5未动。 后续正式检查：2026-10-02 review106修复冻结20d9419：1003 focused通过/3跳过/3警告，142真实PG/API通过；历史首轮86通过/2环境控制拒绝失败，原日志保留，清除PYTEST_ADDOPTS后88节点全通过。26文件源码差量/80Git对象验证通过。完整原生角色9543缺口未变，18槽位9通过/2失败/7未执行；0新调用，原生产同PID保留。"
+    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史通过；原生角色拒绝9543，18槽位9通过/2失败/7未执行，0新provider/生产写。105线程及6文档已冻结推送93ab18a；初版完整ZIP实际115724350字节超过硬上限，原包/失败保留，当前继续压缩去重与独立单包验证。B5 worker22852保留，target/safe/route均false。 第106条six-before-fail/six-after-pass、166运行路径及156契约开发回归通过；缓存账本准入集中冻结20d94190bfa4c4896398ee320c5d553fae98fc7e，26文件注册，当前正式验证和角色完整门待验；旧B5未动。 后续正式检查：2026-10-02 review106修复冻结20d9419：1003 focused通过/3跳过/3警告，142真实PG/API通过；历史首轮86通过/2环境控制拒绝失败，原日志保留，清除PYTEST_ADDOPTS后88节点全通过。26文件源码差量/80Git对象验证通过。完整原生角色9543缺口未变，18槽位9通过/2失败/7未执行；0新调用，原生产同PID保留。 当前B11首版ZIP实际101902344字节超限，失败原包保留；4份当前决定性证据已对包内旧原件做精确COPY/literal编码并实际逐字节复原，原件、失败及9543分母均不删。第二个独占ZIP仍以实际大小/干净重放收据判定交付。"
   ],
   "next_required_checkpoint": "owner_specific_role_provenance_scope_ruling_after_single_portable_failure_delivery",
   "durable_links": [
@@ -3012,14 +3012,15 @@
     "historical_role_source_records_verified_before_review105": 15824,
     "review_package": {
       "kind": "failure_delivery_current_role_source_blocked",
-      "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
-      "build_receipt": "correction29-source-blocked-review106-final-20261002-1-build-private.json",
-      "clean_verification_receipt": "correction29-source-blocked-review106-final-20261002-1-clean-verification-private.json",
-      "offline_replays_receipt": "correction29-source-blocked-review106-final-20261002-1-offline-replays-private.json",
+      "archive": "correction29-source-blocked-review106-final-20261002-2.zip",
+      "build_receipt": "correction29-source-blocked-review106-final-20261002-2-build-private.json",
+      "clean_verification_receipt": "correction29-source-blocked-review106-final-20261002-2-clean-verification-private.json",
+      "offline_replays_receipt": "correction29-source-blocked-review106-final-20261002-2-offline-replays-private.json",
       "claim_rule": "Only actual size/SHA and successful fresh extraction/replay receipts authorize delivery completion; no current A2 engineering acceptance.",
       "maximum_bytes": 100000000,
       "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json",
-      "current_scope_binding": "correction29-b11-role-scope-binding-20261002-private.json"
+      "current_scope_binding": "correction29-b11-role-scope-binding-20261002-private.json",
+      "lossless_current_byte_delta_index": "correction29-review106-exact-byte-delta-20261002-1-index.json"
     },
     "historical_oversize_review_package": {
       "kind": "failure_delivery_current_role_source_blocked",
@@ -3032,12 +3033,17 @@
       "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json"
     },
     "review_package_size_failure": {
-      "first_archive": "correction29-source-blocked-review105-final-20261002-1.zip",
-      "bytes": 115724350,
-      "sha256": "4127557257252faba632811c8232dc0fb210018529bc52c080dd0496845ec40b",
+      "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
+      "bytes": 101902344,
+      "sha256": "6e4a8794597e837f543aa68b2a9856bae0df5dac2159633d79039dbafb4d3600",
+      "maximum_bytes": 100000000,
       "size_passed": false,
-      "original_failed_archive_preserved": true,
-      "next": "exact stronger compression and measured non-decisive repeated visual context; current/unfavorable inputs retained"
+      "physical_files": 3625,
+      "logical_aliases": 754,
+      "delivery_head": "2b47c805358eeb0f36b9b22e6ad598405c231129",
+      "business_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+      "clean_extraction_verified": false,
+      "driver_sha256": "4364ddb0801ae6c30ae46a59f64fab437350c15b5618b3f7617bc214352a77a4"
     },
     "reviews106": {
       "thread_id": "PRRT_kwDOSTBMB86oXKyD",
@@ -3190,6 +3196,19 @@
       "current_native_role_readmission": "correction29-review105-native-b3ce5aa-role-20261002-2-command-private.json",
       "current_native_role_readmission_sha256": "e48d1855d7135f3797139808db3b175ddae66da88e55699eb2a79b040ed612e1",
       "actual_native_missing_records": 9543
+    },
+    "review106_first_archive_oversize": {
+      "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
+      "bytes": 101902344,
+      "sha256": "6e4a8794597e837f543aa68b2a9856bae0df5dac2159633d79039dbafb4d3600",
+      "maximum_bytes": 100000000,
+      "size_passed": false,
+      "physical_files": 3625,
+      "logical_aliases": 754,
+      "delivery_head": "2b47c805358eeb0f36b9b22e6ad598405c231129",
+      "business_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+      "clean_extraction_verified": false,
+      "driver_sha256": "4364ddb0801ae6c30ae46a59f64fab437350c15b5618b3f7617bc214352a77a4"
     }
   },
   "historical_completed_checkpoints_before_correction29": [

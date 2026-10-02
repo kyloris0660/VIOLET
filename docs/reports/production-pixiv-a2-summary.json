@@ -524,22 +524,28 @@
   },
   "review_package": {
     "kind": "failure_delivery_current_role_source_blocked",
-    "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
-    "build_receipt": "correction29-source-blocked-review106-final-20261002-1-build-private.json",
-    "clean_verification_receipt": "correction29-source-blocked-review106-final-20261002-1-clean-verification-private.json",
-    "offline_replays_receipt": "correction29-source-blocked-review106-final-20261002-1-offline-replays-private.json",
+    "archive": "correction29-source-blocked-review106-final-20261002-2.zip",
+    "build_receipt": "correction29-source-blocked-review106-final-20261002-2-build-private.json",
+    "clean_verification_receipt": "correction29-source-blocked-review106-final-20261002-2-clean-verification-private.json",
+    "offline_replays_receipt": "correction29-source-blocked-review106-final-20261002-2-offline-replays-private.json",
     "claim_rule": "Only actual size/SHA and successful fresh extraction/replay receipts authorize delivery completion; no current A2 engineering acceptance.",
     "maximum_bytes": 100000000,
     "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json",
-    "current_scope_binding": "correction29-b11-role-scope-binding-20261002-private.json"
+    "current_scope_binding": "correction29-b11-role-scope-binding-20261002-private.json",
+    "lossless_current_byte_delta_index": "correction29-review106-exact-byte-delta-20261002-1-index.json"
   },
   "review_package_size_failure": {
-    "first_archive": "correction29-source-blocked-review105-final-20261002-1.zip",
-    "bytes": 115724350,
-    "sha256": "4127557257252faba632811c8232dc0fb210018529bc52c080dd0496845ec40b",
+    "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
+    "bytes": 101902344,
+    "sha256": "6e4a8794597e837f543aa68b2a9856bae0df5dac2159633d79039dbafb4d3600",
+    "maximum_bytes": 100000000,
     "size_passed": false,
-    "original_failed_archive_preserved": true,
-    "next": "exact stronger compression and measured non-decisive repeated visual context; current/unfavorable inputs retained"
+    "physical_files": 3625,
+    "logical_aliases": 754,
+    "delivery_head": "2b47c805358eeb0f36b9b22e6ad598405c231129",
+    "business_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+    "clean_extraction_verified": false,
+    "driver_sha256": "4364ddb0801ae6c30ae46a59f64fab437350c15b5618b3f7617bc214352a77a4"
   },
   "reviews106": {
     "thread_id": "PRRT_kwDOSTBMB86oXKyD",
