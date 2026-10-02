@@ -529,9 +529,9 @@
   },
   "current_status": "PRODUCTION_PIXIV_A2_CORRECTION29_CURRENT_ROLE_SOURCE_BLOCKED",
   "current_review_dispositions": {
-    "file": "correction29-review111-current-source-blocked-20261003-review-dispositions-private.json",
-    "sha256": "578aa731f7a45c25e96e58d14e593415fdf91b2bed1a82d80b372c3785c163ec",
-    "thread_count": 111
+    "file": "correction29-review112-current-source-blocked-20261003-review-dispositions-private.json",
+    "sha256": "94c0047e4d67b8174681bdffdf1b96667ac2acb3b36d40b595eec5ec97b11661",
+    "thread_count": 112
   },
   "review_package": {
     "archive": "correction29-source-blocked-review111-final-20261003-2.zip",
@@ -708,5 +708,13 @@
     "original_archive_retained_locally": true,
     "current_size_passed": false,
     "next_encoding": "additional exact original text stream; no negative records or screenshots omitted"
+  },
+  "review112_live_ancestry": {
+    "file": "correction29-review112-live-ancestry-20261003-private.json",
+    "sha256": "621b70d6e827278a709deb38c319ea59bf2eb2741e0685207dbab6f17c83cae8",
+    "actual_live_merge_base": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
+    "source_changed": false,
+    "resolved": false,
+    "current_runtime_accepted": false
   }
 }
