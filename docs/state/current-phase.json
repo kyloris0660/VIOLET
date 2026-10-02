@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+  "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -118,9 +118,9 @@
     "2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。",
     "2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。",
     "2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。",
-    "2026-10-02T14:04:44.060576+08:00 562bc18实际完整来源、副本、原生产owned apply和普通无参数EXE、生产80/80及独立精度、系统Edge/240 HTTP/720来源层与18项完整注册契约通过；target_met=true，safe_to_merge/route_approved及Owner验收保持false。 同阶段最新对账：2026-10-02 推送后第100条P1已用真实Git原件和原生门禁复核：B5提交中旧F9字段确被拒绝，当前工作树B5/实际18门及两次文档检查通过；仅补齐六文档投影和100线程对账，不改业务/重跑全套/重做apply。旧99对账、提交前交付包装中断及两次采集器断言失败完整保留。；2026-10-02新增102号在隔离PG复现3失败/1通过，当前target_met撤回为false；保留B5原生产及全部历史完成证据，按当前A2授权修复unknown待审组件边界。"
+    "2026-10-02T14:04:44.060576+08:00 562bc18实际完整来源、副本、原生产owned apply和普通无参数EXE、生产80/80及独立精度、系统Edge/240 HTTP/720来源层与18项完整注册契约通过；target_met=true，safe_to_merge/route_approved及Owner验收保持false。 同阶段最新对账：2026-10-02 推送后第100条P1已用真实Git原件和原生门禁复核：B5提交中旧F9字段确被拒绝，当前工作树B5/实际18门及两次文档检查通过；仅补齐六文档投影和100线程对账，不改业务/重跑全套/重做apply。旧99对账、提交前交付包装中断及两次采集器断言失败完整保留。；2026-10-02新增102号在隔离PG复现3失败/1通过，当前target_met撤回为false；保留B5原生产及全部历史完成证据，按当前A2授权修复unknown待审组件边界。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。"
   ],
-  "next_required_checkpoint": "102号真实隔离PG复现3种unknown待审组件跨界；先完成查询修复/当前影响补测与完整副本，再按既有条件授权验证新生产、102线程和单ZIP。",
+  "next_required_checkpoint": "B6当前frozen focused/真实PG/API/历史节点、完整副本和质量/15门；通过后新备份恢复/原生产/正常EXE/18门，再102线程与单ZIP。",
   "durable_links": [
     {
       "label": "A2实施方案",
@@ -374,7 +374,7 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-10-02T15:48:21.717061+08:00",
+  "updated_at": "2026-10-02T16:18:42.390764+08:00",
   "production_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
   "correction17_progress": {
     "current_execution": {
@@ -2537,9 +2537,16 @@
       "implementation_plan": "correction29-review102-implementation-plan-20261002-private.json",
       "implementation_plan_sha256": "b7867ffcf8d77a10b03c10ecb93f2402a75cea9bab94a4939f9562926e01ccd7",
       "thread_count": 102,
-      "status": "counterexample_reproduced_plan_authorized_by_current_A2_instruction",
+      "status": "frozen_current_affected_validation_pending",
       "current_completion_withdrawn": true,
-      "historical_b5_18_gates_preserved": true
+      "historical_b5_18_gates_preserved": true,
+      "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
+      "registered_source_files": 15,
+      "source_carry_forward": "correction29-b6-source-carry-forward-20261002-private.json",
+      "actual_development_pg_api_passed": 17,
+      "actual_registered_contract_development_passed": 25,
+      "additional_full_invocations": 0,
+      "new_provider_calls": 0
     }
   },
   "historical_completed_checkpoints_before_correction29": [

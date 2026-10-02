@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+  "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -194,6 +194,8 @@
     "current_completion_withdrawn": true,
     "actual_before_command": "correction29-review102-before-real-pg-20261002-1-command-private.json",
     "historical_b5_full_contract_only": true,
-    "new_candidate_validation_pending": true
+    "new_candidate_validation_pending": true,
+    "candidate_head": "c12dd3f5e70a5f2665e89cce172e60642d071b8b",
+    "stage": "frozen_current_affected_validation_pending"
   }
 }

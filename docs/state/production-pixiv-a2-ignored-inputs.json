@@ -14,7 +14,7 @@
   "private_files": {},
   "candidate_profile": {
     "private_file": "production_launcher/production-profile.json",
-    "previous_full_sha256": "868c5fb6017b7c4b76754cf8c8212cf4b68216f09c8e50789c4ae1a9e8e3d9f9",
+    "previous_full_sha256": "c60152b86cd5c985a1dfd2dc9f435ec2ba9c7942cae526d0b47d20832da2587e",
     "stable_fields_sha256": "755f75d1df925e363aad23f930cef26ca62cc45e7ef25134c00f2f2f29632d61"
   }
 }
