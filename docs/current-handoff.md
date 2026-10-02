@@ -4,7 +4,7 @@
 
 当前状态以 docs/state/current-phase.json 为准。
 
-- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_CORRECTION29_REVIEW105_ROLE_SOURCE_REMEDIATION`。
+- 阶段：`PRODUCTION-PIXIV-A2`；状态：`PRODUCTION_PIXIV_A2_CORRECTION29_CURRENT_ROLE_SOURCE_BLOCKED`。
 - 分支：`codex/production-pixiv-a2`；PR：`153`。
 - 已接受并合并基线：PR #152 / `2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d`。
 - 工程目标完成：`False`；负责人接受：`pending_project_lead_review`。
@@ -72,7 +72,7 @@
 - 2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。
 - 2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。
 - 2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。
-- 2026-10-02 冻结6b807c8 focused实际929通过/6失败/3跳过/3警告；六失败属于两个旧正向来源/逻辑键测试使用实际failed批次，新角色准入正确拒绝。先保存原源码/日志/收据再修复正向夹具，新增review68精确测试登记，生产源码/原账本不改；PG/88尚未执行，原B5服务保持。
+- 2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史节点通过。完整原生角色来源拒绝9543记录，输入/18434缓存/原账本不变，0新增provider；18项契约实际9通过/2失败/7依赖受阻未执行，target/safe/route均false。B5原worker22852保留，继续105线程及≤100 MB独立单包；范围外角色修复需具体新裁决。
 
 ## 后续执行
 
@@ -103,7 +103,7 @@
 - 不合并、不推main、不触发额外reviewer、不进入A3。
 - 自动验证、负责人接受及产品用户体验分别记账。
 
-下一检查点：修复103/104的业务有效性与可信Git门禁，冻结后补测及全量来源/完整副本，再按已有授权完成原生产、正常EXE、Edge/240/18门和单ZIP。
+下一检查点：owner_specific_role_provenance_scope_ruling_after_single_portable_failure_delivery
 
 ## 持久入口
 
