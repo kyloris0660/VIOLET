@@ -680,7 +680,9 @@ verification under the owner's 2026-09-29 section 2.2 instruction, with zero
 additional full runs; it is not documentation-only carry-forward or full-suite
 coverage of the new candidate. Current semantic, copy and production contracts
 still require the new candidate. Lead and Owner acceptance remain separate.
-The current exact registered twenty-one-file set includes the final projection collector,
+The current exact registered set is enumerated by
+`docs/state/production-pixiv-a2-post-full-fix.json` (33 files at B14 8b42ed3).
+It includes the final projection collector,
 Git-protected approved business fingerprints, and real PostgreSQL drift and
 revision-trigger regressions. Updated source records cannot
 contribute retained stale binding rows to valid support; raw physical binding
@@ -689,13 +691,22 @@ reconstructed in one actual snapshot and compared with independent protected
 approval. Browser chips bind their DOM concept IDs and visible name to the raw
 detail API, current media support, actual query and complete result pagination.
 The former seven-file, nine-file, eleven-file, thirteen-file and sixteen-file registries are historical and do not
-authorize this extended delta.
+authorize this extended delta. Current historical verification requires the exact
+88 original unique nodes, approved Python/cwd, ordered argv and matching JUnit.
+The original 6110 typed debit records are immutable except one-way trust
+revocation and independently sealed legacy backfills. Actual charges exceeding
+a reservation or task cap remain failed business-invalid paid evidence, including
+repeated settlement and native envelope/legacy cache checks.
 
 `violet.production-pixiv-a2.source-replay-carry-forward.v1` preserves the actual
 B3 cache command and its source HEAD. It permits reuse only after exact Git
-proof that all backend and source entry blobs are unchanged except the three
-whole-module hash-pinned corrections: literal component query boundaries,
-business-valid selected source checks, and trusted candidate Git transport.
+proof that all backend and source entry blobs are unchanged except the exact
+whole-module hash-pinned literal query and release-gate corrections registered
+in `RELEASE_GATE_SOURCE_DELTAS`. These include original paid-call admission,
+immutable budget fields and historical lifetimes, complete role-cache publication,
+actual reservation/cap overruns, trusted Git transport and canonical launcher
+root verification. Current whole native role-source readmission is mandatory;
+the historical B3 success cannot bypass a current refusal.
 The bounded delta contains only these registered corrections and evidence gates,
 the approved semantic identity and
 budget ledger are unchanged, and the actual cache command finished successfully

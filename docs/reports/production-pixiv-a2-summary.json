@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
+  "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -22,7 +22,7 @@
     "status": "existing_b5_service_preserved_current_candidate_not_deployed",
     "startup_business_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
     "worker_pid": 22852,
-    "observation": "correction29-b11-source-blocked-closeout-20261002-1-availability-private.json",
+    "observation": "correction29-b14-source-blocked-precloseout-20261003-1-availability-private.json",
     "current_production_acceptance": false
   },
   "budget": {
@@ -52,18 +52,18 @@
   },
   "validation": {
     "focused": {
-      "passed": 1003,
+      "passed": 1061,
       "failed": 0,
       "skipped": 3,
       "errors": 0,
-      "source_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e"
+      "source_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7"
     },
     "postgresql": {
       "passed": 142,
       "failed": 0,
       "skipped": 0,
       "errors": 0,
-      "source_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e"
+      "source_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7"
     },
     "non_e2e": {
       "passed": 5268,
@@ -74,22 +74,25 @@
       "collected_node_count": 5291,
       "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
       "known_historical_failures": 1,
-      "validation_candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+      "validation_candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
       "post_full_fix": {
         "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-        "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+        "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
         "registered_files": [
           "backend/app/services/production_pixiv_release_provenance.py",
+          "backend/app/services/production_pixiv_role_extraction.py",
           "backend/app/services/source_concept_budget.py",
           "backend/app/services/source_concept_resolver_service.py",
           "backend/app/services/source_concept_search_service.py",
           "docs/state/production-pixiv-a2-approved-projection.json",
+          "docs/state/production-pixiv-a2-budget-prefix-compatibility.json",
           "docs/state/production-pixiv-a2-ignored-inputs.json",
           "docs/state/production-pixiv-a2-required-tests.json",
           "scripts/check_production_pixiv_a2.py",
           "scripts/production_pixiv_a2_evidence.py",
           "scripts/production_pixiv_a2_full_suite.py",
           "scripts/production_pixiv_a2_post_full_fix.py",
+          "scripts/production_pixiv_budget_authority.py",
           "scripts/trusted_git.py",
           "scripts/violet_production_control.py",
           "tests/test_production_launcher_control.py",
@@ -103,13 +106,17 @@
           "tests/test_production_pixiv_release_inputs.py",
           "tests/test_production_pixiv_review60.py",
           "tests/test_production_pixiv_review68.py",
+          "tests/test_production_pixiv_reviews107_109.py",
+          "tests/test_production_pixiv_reviews110_111.py",
+          "tests/test_production_pixiv_role_coverage.py",
+          "tests/test_production_pixiv_role_extraction.py",
           "tests/test_source_concept_task_budget.py",
           "tests/test_trusted_git.py"
         ],
-        "registry_sha256": "8384c0121eadb62c9b90c3a316badbab69e96b0a9605823ccbe59a0f9feb6906",
+        "registry_sha256": "0beee7e47fc52994d93ffab65a14f6c5db870da6de84ea86fd00194f1d54e53f",
         "affected_verification": {
           "focused": {
-            "passed": 1003,
+            "passed": 1061,
             "failed": 0,
             "skipped": 3,
             "errors": 0
@@ -176,21 +183,25 @@
     }
   },
   "post_full_fix": {
-    "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
+    "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
     "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-    "registered_source_files": 32,
-    "status": "frozen_b13_current_affected_validation_and_native_role_replay_pending",
+    "registered_source_files": 33,
+    "status": "actual_frozen_affected_validation_passed_current_role_source_blocked",
     "additional_full_invocations": 0,
     "new_provider_calls": 0,
     "behavior_neutral_claimed": false,
     "formal_progress": {
-      "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
-      "focused_passed": 1040,
+      "status": "finished",
+      "sequence": "correction29-post-full-8b42ed3-20261003-2-sequence-private.json"
+    },
+    "validation": "correction29-post-full-8b42ed3-20261003-2-validation-private.json",
+    "registered_files": 33,
+    "current_counts": {
+      "focused_passed": 1061,
       "focused_skipped": 3,
       "focused_warnings": 3,
       "postgresql_passed": 142,
-      "historical_status": "actual_running_not_yet_accepted",
-      "sequence": "correction29-post-full-a64c77e-20261003-1-sequence-private.json"
+      "historical_passed": 88
     }
   },
   "reviews103104": {
@@ -342,10 +353,10 @@
     "current_contract_closeout": "correction29-b10-current-source-blocked-20261002-1-contract-private.json"
   },
   "current_contract_closeout": {
-    "file": "correction29-b11-current-source-blocked-20261002-1-contract-private.json",
+    "file": "correction29-b14-current-source-blocked-20261003-1-contract-private.json",
     "counts": {
-      "passed": 9,
       "failed": 2,
+      "passed": 9,
       "blocked_unexecuted": 7
     },
     "current_complete_runtime_claimed": false
@@ -518,21 +529,16 @@
   },
   "current_status": "PRODUCTION_PIXIV_A2_CORRECTION29_CURRENT_ROLE_SOURCE_BLOCKED",
   "current_review_dispositions": {
-    "file": "correction29-review106-current-source-blocked-20261002-review-dispositions-private.json",
-    "sha256": "a43c098934a3bd4dec8e76f8f0bb737ca0edd3ab25d6bd60e2814798ff48a91d",
-    "thread_count": 106
+    "file": "correction29-review111-current-source-blocked-20261003-review-dispositions-private.json",
+    "sha256": "578aa731f7a45c25e96e58d14e593415fdf91b2bed1a82d80b372c3785c163ec",
+    "thread_count": 111
   },
   "review_package": {
-    "kind": "failure_delivery_current_role_source_blocked",
-    "archive": "correction29-source-blocked-review106-final-20261002-2.zip",
-    "build_receipt": "correction29-source-blocked-review106-final-20261002-2-build-private.json",
-    "clean_verification_receipt": "correction29-source-blocked-review106-final-20261002-2-clean-verification-private.json",
-    "offline_replays_receipt": "correction29-source-blocked-review106-final-20261002-2-offline-replays-private.json",
-    "claim_rule": "Only actual size/SHA and successful fresh extraction/replay receipts authorize delivery completion; no current A2 engineering acceptance.",
+    "archive": "correction29-source-blocked-review111-final-20261003-1.zip",
+    "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
     "maximum_bytes": 100000000,
-    "scope_ruling_packet": "correction29-role-provenance-scope-ruling-20261002-private.json",
-    "current_scope_binding": "correction29-b11-role-scope-binding-20261002-private.json",
-    "lossless_current_byte_delta_index": "correction29-review106-exact-byte-delta-20261002-1-index.json"
+    "external_final_receipt": "correction29-b14-final-private-delivery-20261003-private.json",
+    "source_and_runtime_acceptance": false
   },
   "review_package_size_failure": {
     "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
@@ -585,7 +591,7 @@
     "historical_clean_rerun_passed": 88
   },
   "reviews107109": {
-    "status": "implemented_frozen_current_checks_pending",
+    "status": "current_affected_checks_passed_original_role_source_still_blocked",
     "thread_count": 109,
     "comments": [
       4167310188,
@@ -635,7 +641,11 @@
       "passed": 65,
       "failed": 0,
       "scope": "Retained original failed-call proof plus reviews107-109; prior full bounded development176 retained separately."
-    }
+    },
+    "formal_validation": "correction29-post-full-8b42ed3-20261003-2-validation-private.json",
+    "native_role_invocation": "correction29-review111-native-8b42ed3-role-20261003-1-command-private.json",
+    "whole_role_missing_records": 9543,
+    "current_runtime_accepted": false
   },
   "b12_focused_negative_history": {
     "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
@@ -657,7 +667,7 @@
     "runtime_oracle_weakened": false
   },
   "reviews110111": {
-    "status": "implemented_development_passed_current_freeze_pending",
+    "status": "current_affected_checks_passed_original_role_source_still_blocked",
     "thread_count": 111,
     "development": {
       "command": "correction29-reviews110111-development-20261003-2-command-private.json",
@@ -671,6 +681,24 @@
     "preservation_and_plan": "correction29-reviews110111-preservation-and-plan-20261003-private.json",
     "actual_reservation_overruns_in_original_ledger": 0,
     "new_provider_calls": 0,
-    "production_restarted": false
+    "production_restarted": false,
+    "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
+    "native_role_invocation": "correction29-review111-native-8b42ed3-role-20261003-1-command-private.json",
+    "whole_role_missing_records": 9543,
+    "current_runtime_accepted": false,
+    "formal_validation": "correction29-post-full-8b42ed3-20261003-2-validation-private.json",
+    "actual_before_failed": 16,
+    "actual_before_passed": 1,
+    "development_passed": 286,
+    "initial_formal_post_guard_refusal": "correction29-post-full-8b42ed3-20261003-1-sequence-private.json"
+  },
+  "current_native_role_readmission": {
+    "file": "correction29-review111-native-8b42ed3-role-20261003-1-command-private.json",
+    "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
+    "actual_exit_code": 1,
+    "missing_records": 9543,
+    "inputs_ledger_and_cache_unchanged": true,
+    "network_connections": 0,
+    "scope_binding": "correction29-b14-role-scope-binding-20261003-private.json"
   }
 }

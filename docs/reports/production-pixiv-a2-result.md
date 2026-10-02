@@ -1,3 +1,41 @@
+# VIOLET A2 当前纠偏结果（2026-10-03）
+
+当前业务/测试 HEAD 为 `8b42ed3afc1912d7ba9bb7b1756486af9c0953f7`，分支 `codex/production-pixiv-a2`，PR #153 OPEN、非 Draft。A2 当前阻断为完整角色原始来源准入失败；target_met、safe_to_merge、route_approved、Owner 验收均 false。
+
+当前正式验证：1061 focused 通过、3 跳过、3 警告；142 真实隔离 PostgreSQL/API 通过；原精确 88 个历史失败节点通过。33 项源码差量登记，85 个原始 Git 对象、21 个祖先提交、34 份源码/注册表导出。当前仅做影响补测，未新增完整全套。唯一授权新增 non-E2E 仍绑定 B1 d26bd0c：5291 收集、5268 通过、1 原历史 AI 执行证据失败、22 跳过、15 警告；原 acc28ad 4541/89/15 保留，不扩大 AI 例外。
+
+第107条修复完整角色缓存发布及全部快捷路径：必须接纳原问题实际已结算且业务有效的调用，再发布或复用完整单元。保留部分兄弟首答、raw 和费用为未准入证据，停止分母保留全部目标，不自动重问原问题。第108条要求精确88节点、argv顺序、批准Python/cwd及对应JUnit，替代节点与重复ID拒绝。第109条保护原6110调用的全部JSON类型和字段，仅允许单向撤销信任与1665条独立原问题回放证明固定的历史逻辑键补记；费用、既有寿命键及未知字段不能改写。历史补记不赋予角色业务来源资格。
+
+第107–109条修前16反例为14失败/2通过，完整有界开发回归176通过。B12 5578e7d正式1038通过/2失败/3跳过保留：严格获取器拒绝失败调用发布后，旧测试未带任何保留事实。B13 a64c77e仅修夹具，用真实失败raw重建历史记录验证来源拒绝；65相关开发节点及1040 focused/142 PG/原88通过。早期开发37/4项失败、路径错误和临时Git目录拒绝均有原日志；2151个本轮测试文件逐字节保留到本机临时目录，门禁未改。
+
+第110条修复正常EXE根目录推导：通过批准的可信Git、清洁环境、真实worktree及共享common-dir一致性确定canonical目录，拒绝PATH伪造的Git/EXE和继承GIT_DIR。第111条在发布成功前检查实际费用超出reservation或任务cap；真实费用保留为失败且business_valid=false，重复结算仍拒绝。历史“success”超预留缓存及总额超cap只读拒绝，同一类型规则覆盖原生角色/配对的envelope与legacy四分支。原18433调用实际超预留0，未修改原账本。
+
+第110–111条17反例修前16失败/1通过，最小修后17通过；完整有界开发第一次285通过/1失败（全模块新pin使旧测试placeholder不再合格），修正测试夹具后286通过，全部33登记源码及注册表前后hash相同。B14首次正式定向1061通过，但测试后门禁返回false，原收据及driver拒绝保留；独立诊断和第二正式序列原门禁通过。首次原因未捕获，不冒称已确认超时，不改门禁、不改原失败收据。
+
+本HEAD完整原生回放覆盖100285信号与18434缓存JSON，实际exit1，拒绝9543原记录：18 initial、7 contextual、7973 completion、1543 coverage、2 correction。全部输入、缓存、原账本SHA前后不变，回放期间socket连接0。原scope包与当前9543有序缺口逐项一致。9542缺少合格原调用，加1条错误借用不同问题的继承来源；有效继承回答本身未被伪造为失败。原首答、尝试、费用与固定分母保留。
+
+18个当前契约槽位实际9通过、2失败、7依赖受阻未执行。完整副本、当前精度/80例、新原生产apply、正常EXE、真实Edge和240工作量没有当前完整来源，尚未执行，旧B5成功收据属于历史。
+
+现状只读核验为B5服务worker22852、38114媒体、8623绑定媒体、66392有效支持、1 active run、0活动作业、0固定范围缺失/尾部新增，read ON/apply OFF。启动业务为562bc18；动态server git跟随工作树变化不能证明进程加载了B14。未停服或重启。累计18433调用、USD13.589429、cap USD30、余额USD16.410571、在途0；本轮新增metadata/LLM为0。全部111线程原评论完整分页保存并对账，未resolve或触发额外reviewer。
+
+## 剩余最小反例与裁决范围
+
+最小原记录source-extraction-unit:1275fbca456c678407c79504189ba206ca5e68b500ca9af9365f56f50c68e5ed，原问题2ca8e313e2849bdb129927ea9a258ecd6e8d613b88a415189996bb1de6a40174，原调用f5f35d3663884b9e96698350eac56b43。额外coverage问题8a8cf0798a96dd880e142d4bf8ee7ae597094033e10d70991b31db267e3f007b的失效直接原答，不能借不同问题的有效继承回答过门。当前31608配对来源仍业务有效，不能替代上游角色事实准入。
+
+完整9543缺口、原请求/原答、1162原尝试及47751逻辑目标在包内scope材料中。两个已三次耗尽目标继续禁止重问。记录数不等于新调用数，不从余额推定范围外角色权限。
+
+2026-09-29任务§2.1原文：“范围外新角色纠正或切换业务模型需要具体新裁决，不能包含在一般预算余量内。”普通工程、预算及唯一新增全套授权已执行，不再次申请。下一步需要Owner对范围外角色来源补证作具体裁决，再按原逻辑键、模型gpt-4.1-mini、fallback OFF做零调用寿命/成本准入。若保持当前接纳政策，须补齐合格原问题来源后再完成语义图、副本、精度、条件性新生产和18门；若考虑按单元接纳部分回答，需另行明确该证据政策，不能由工程实现自行赋权。
+
+## 可独立核验交付
+
+当前验证为correction29-post-full-8b42ed3-20261003-2-validation-private.json，全部argv/cwd/Python、JUnit和原日志随包；当前源码为correction29-b14-source-20261003-proof-private.json；原生失败为correction29-review111-native-8b42ed3-role-20261003-1-command-private.json及完整missing/log；18槽位为correction29-b14-current-source-blocked-20261003-1-contract-private.json；111线程为correction29-review111-current-source-blocked-20261003-review-dispositions-private.json；最新只读现场为correction29-b14-source-blocked-precloseout-20261003-1-availability-private.json。
+
+单ZIP硬上限100000000字节。127+82份大型原件与93742原始来源使用包内精确无损编码和SHA去重；当前原生文件只做COPY字节段/literal存储，解码后原字节不变。压缩实测、SHA、干净解压/全部引用/JSON/XML及逐项标准库重算必须实际通过，最终事实以同名外部交付收据为准，不用预报数字替代完成。
+
+完整数据库dump、凭据配置、源原图、旧超限ZIP和重复正向副本截图留本地并列明理由；当前失败、原始回答、费用、原生全量缺口、负面截图和失败命令日志完整交付。PR仅写公开摘要，不上传私有payload或凭据。未merge、未推main/force、未resolve、未触发reviewer、未进入A3、未改确认Entity/人工资产。Computer Use已退出，本轮交付不需接管桌面。
+
+## 历史版本记录（只对应各自旧HEAD，不构成当前通过）
+
 # VIOLET A2 当前纠偏收口：完整角色来源受阻（2026-10-02）
 
 当前业务/验证 HEAD 为 `20d94190bfa4c4896398ee320c5d553fae98fc7e`，分支 `codex/production-pixiv-a2`，PR #153 保持 OPEN、非 Draft。当前状态为角色原始来源准入失败；`target_met`、`safe_to_merge`、`route_approved`、Owner 验收均 false，A3 未启动。
