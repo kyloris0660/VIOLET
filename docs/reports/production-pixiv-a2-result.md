@@ -1,8 +1,8 @@
-# VIOLET A2 2026-09-29 / 2026-10-01 纠偏执行记录（当前影响补测通过，完整来源与副本继续）
+# VIOLET A2 2026-10-02 当前纠偏记录（正常启动时间解析修复，当前冻结验证继续）
 
-当前A2 / PR #153 / codex/production-pixiv-a2，最新业务HEAD 8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f。97号实时来源revision修复已冻结；当前784 focused通过/3跳过/3警告、107真实PostgreSQL/API通过、88历史节点通过。九文件受保护源码差量及完整Git ancestry/tree/blob链由独立标准库重算通过。原新增完整non-E2E仍为d26真实结果，不重跑全套、不冒称新HEAD全套通过。旧44正常生产保留；当前完整来源、副本、新生产及18门尚未完成。target_met=false、safe_to_merge=false、route_approved=false。
+PR #153 / codex/production-pixiv-a2：原F9完整副本及原库owned apply/17表保护已通过；真实正常EXE健康，但完成校验实际发现Windows JSON创建时间被旧DMTF解析器置null。修前4失败和原拒绝均保留，当前132通过/2跳过及18登记契约开发测试通过，正在冻结修复及绑定当前验证。target_met/safe_to_merge/route_approved均false，Lead及Owner验收未完成。
 
-真实隔离PG修前标题/作者/状态三项全部失败，修后开发与当前冻结PG回归均通过；实际revision trigger使旧支持失效，最终投影与身份/作者投影一致排除失效绑定，其他媒体和事务回滚恢复通过。原始物理绑定保留审计。旧e820600副本完成来源核验和计算后，在第一产品plan前由HEAD门安全拒绝；raw running标志与实际exit1/失败栈原样保留，未伪造完成、未写原生产。当前完整语义来源cache-only按序继续，账本SHA不变，0新provider调用。
+实际B3原始完整来源31,608判断/0缺口/0错误/0新调用通过；其原HEAD和全部收据保留。新候选仅通过精确Git源码/输入不变证明续接这些原输入，产品loader仍须执行当前完整native来源准入及实际图、恢复和质量。原B3的784 focused/107真实PG/API/88历史节点与唯一新增B1的5291节点原结果分别保留，不冒称新候选全套覆盖。
 
 远端最新97条线程中新增P1 4155396620：最终投影未过滤已更新来源的过期revision绑定，实际有效支持与收据可能同步失真。已确认查询缺陷，真实隔离PG反例与最小修复继续；原B2定向、缓存和未完成副本结果保留原HEAD，生产发布门关闭，旧44保持运行。没有新增完整全套或真实provider调用。
 

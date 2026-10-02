@@ -7,6 +7,7 @@ import subprocess
 import sys
 import time
 import asyncio
+import datetime as dt
 from types import SimpleNamespace
 from pathlib import Path
 
@@ -25,6 +26,41 @@ import backend.app.auth_middleware as auth_middleware  # noqa: E402
 from backend.app import main as app_main  # noqa: E402
 from backend.app.routes import health  # noqa: E402
 from backend.app.auth_middleware import AuthMiddleware  # noqa: E402
+
+
+@pytest.mark.parametrize("value", [
+    "/Date(1790898065934)/",
+    "/Date(1790898065934+0800)/",
+    "/Date(1790898065934-0500)/",
+])
+def test_windows_cim_json_datetime_preserves_actual_utc_epoch(value):
+    # Windows PowerShell 5.1 serializes the CIM DateTime as this JSON value.
+    expected = dt.datetime(2026, 10, 1, 23, 41, 5, 934000,
+                           tzinfo=dt.timezone.utc).timestamp()
+    assert control._parse_windows_cim_datetime(value) == pytest.approx(expected, rel=0, abs=0.00001)
+
+
+@pytest.mark.parametrize("value", [
+    "/Date(NaN)/", "/Date(1790898065934)junk/",
+    "/Date(1790898065934+080)/", "/Date(999999999999999999999999)/",
+    "/Date(1790898065934+2400)/", "/Date(1790898065934+0860)/",
+])
+def test_windows_cim_json_datetime_rejects_malformed_or_out_of_range(value):
+    assert control._parse_windows_cim_datetime(value) is None
+
+
+def test_windows_process_snapshot_binds_json_creation_time(monkeypatch):
+    payload = {"ProcessId": 12296, "ParentProcessId": 24808,
+               "CommandLine": "python.exe run.py", "ExecutablePath": "python.exe",
+               "CreationDate": "/Date(1790898065934)/"}
+    monkeypatch.setattr(control, "process_exists", lambda pid: pid == 12296)
+    monkeypatch.setattr(control.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(control.subprocess, "run", lambda *args, **kwargs:
+                        SimpleNamespace(stdout=json.dumps(payload), returncode=0))
+    snapshot = control.process_snapshot(12296)
+    assert snapshot.parent_pid == 24808
+    assert snapshot.command_line == "python.exe run.py"
+    assert snapshot.create_time == pytest.approx(1790898065.934, rel=0, abs=0.00001)
 
 
 def test_file_entrypoint_resolves_pinned_candidate_package_without_pythonpath(tmp_path):

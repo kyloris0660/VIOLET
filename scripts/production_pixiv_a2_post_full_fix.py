@@ -20,6 +20,7 @@ ALLOWED_FILES = frozenset({
     'docs/state/production-pixiv-a2-required-tests.json',
     'scripts/production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2.py',
     'tests/test_production_pixiv_a2_evidence.py', 'docs/state/production-pixiv-a2-approved-projection.json',
+    'scripts/violet_production_control.py', 'tests/test_production_launcher_control.py',
 })
 SOURCE_REPLAY_HEAD = '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f'
 REPLAY_SOURCE_FILES = frozenset({
@@ -31,6 +32,7 @@ REPLAY_GATE_FILES = frozenset({
     'scripts/production_pixiv_a2_post_full_fix.py', 'tests/test_production_pixiv_a2.py',
     'tests/test_production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2_post_full_fix.py',
     'docs/state/production-pixiv-a2-approved-projection.json', REGISTRY,
+    'scripts/violet_production_control.py', 'tests/test_production_launcher_control.py',
 })
 
 

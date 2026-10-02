@@ -104,7 +104,7 @@
     "errors": 0,
     "frozen_evidence": false
   },
-  "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+  "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
   "working_tree_changes_not_frozen": false,
   "approved_run": {
     "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
@@ -578,32 +578,38 @@
     "baseline_normal_entry": "correction29-restored-baseline-normal-20261001-1-launcher-private.json"
   },
   "post_full_fix": {
-    "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+    "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
     "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-    "superseded_candidate_head": "e820600f0e546f05f9b8497f4b646a34dfc5601a",
+    "superseded_candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
     "registry": "docs/state/production-pixiv-a2-post-full-fix.json",
-    "status": "bounded_gate_fix_materialized_impact_validation_pending",
+    "status": "actual_fresh_backup_61_restore_passed_original_plan_building",
+    "registered_source_files": 11,
     "additional_full_invocations": 0,
     "behavior_neutral_claimed": false,
-    "development_revision_pg_passed": 3,
-    "development_evidence_passed": 61,
+    "development_materialized_passed": 136,
+    "development_boundaries_passed": 38,
+    "development_source_contract_passed": 18,
+    "source_carry_forward": "correction29-b4-source-carry-forward-20261002-private.json",
+    "actual_prior_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
     "prior_failure_logs_preserved": true,
     "production_baseline_healthy": true,
-    "validation": "correction29-post-full-8aeefb5-1-validation-private.json",
+    "new_provider_calls": 0,
+    "frozen_evidence": "correction29-review98-99-frozen-20261002-private.json",
+    "validation": "correction29-post-full-f9ffe6e-20261002-1-validation-private.json",
     "verification": {
       "focused": {
-        "passed": 784,
+        "passed": 826,
         "failed": 0,
         "skipped": 3,
         "errors": 0,
-        "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+        "source_head": "f9ffe6e416436922cd92d8eed33395ed4442292a"
       },
       "postgresql": {
-        "passed": 107,
+        "passed": 125,
         "failed": 0,
         "skipped": 0,
         "errors": 0,
-        "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+        "source_head": "f9ffe6e416436922cd92d8eed33395ed4442292a"
       },
       "non_e2e": {
         "passed": 5268,
@@ -614,11 +620,12 @@
         "collected_node_count": 5291,
         "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
         "known_historical_failures": 1,
-        "validation_candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+        "validation_candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
         "post_full_fix": {
           "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-          "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+          "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
           "registered_files": [
+            "docs/state/production-pixiv-a2-approved-projection.json",
             "docs/state/production-pixiv-a2-required-tests.json",
             "scripts/check_production_pixiv_a2.py",
             "scripts/production_pixiv_a2_evidence.py",
@@ -626,19 +633,20 @@
             "scripts/production_pixiv_a2_post_full_fix.py",
             "scripts/trusted_git.py",
             "tests/test_production_pixiv_a2.py",
+            "tests/test_production_pixiv_a2_evidence.py",
             "tests/test_production_pixiv_a2_post_full_fix.py",
             "tests/test_trusted_git.py"
           ],
-          "registry_sha256": "de5a76fbd84b06183669f156c8c6bfa1984ce27de3c77284ddbdec8a73cb4678",
+          "registry_sha256": "e8b7c7cf998e126029365618526bef39a6c1f601d0537051b17da63a7ec49e44",
           "affected_verification": {
             "focused": {
-              "passed": 784,
+              "passed": 826,
               "failed": 0,
               "skipped": 3,
               "errors": 0
             },
             "postgresql": {
-              "passed": 107,
+              "passed": 125,
               "failed": 0,
               "skipped": 0,
               "errors": 0
@@ -665,20 +673,92 @@
         "resolved_initial_failures": 88
       }
     },
-    "focused_passed": 784,
+    "focused_passed": 826,
     "focused_skipped": 3,
     "focused_warnings": 3,
-    "postgresql_passed": 107,
+    "postgresql_passed": 125,
+    "postgresql_skipped": 0,
+    "postgresql_warnings": 0,
     "historical_passed": 88,
-    "source_delta_offline_replay": "correction29-review97-offline-delta-test.log",
-    "registered_source_files": 9,
-    "current_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
-    "current_old_production_availability": "correction29-owned-gui-close-old-production-20261001-1-availability-private.json",
-    "current_release_preparation": "correction29-release-preparation-8aeefb5-20261001-1-continuation-private.json",
-    "cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
-    "current_semantic_manifest": "correction29-frozen-8aeefb5-cache-20261001-1-semantic-manifest-private.json",
-    "selected_pairs": 31608,
-    "new_provider_calls": 0
+    "historical_skipped": 0,
+    "historical_warnings": 0,
+    "current_copy_label": "correction29-copy-f9ffe6e-2",
+    "current_semantic_manifest": "correction29-b4-semantic-readmission-20261002-manifest-private.json",
+    "current_native_source_and_graph": {
+      "evidence": "correction29-copy-f9ffe6e-1-lifecycle-private.json",
+      "actual_source_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+      "full_source_verification": {
+        "started_at": "2026-10-01T17:22:08.799629+00:00",
+        "finished_at": "2026-10-01T18:06:19.197218+00:00",
+        "semantic_input_identity": {
+          "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+          "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+          "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+          "role_facts": "8baa79c1cf2af2b9375ee43a673cf50a9d83ce89b098f1d14b878c905df24845",
+          "judgments": "c06f9fcdb1e517704e6d80aeb6c8c0727cf2ebfe37365a17696502c22d4954a6",
+          "versions": {
+            "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+            "role_schema": "violet.production-pixiv-role-result.v1",
+            "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+            "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+            "extraction_schema": "source_name_candidate_extraction_compact_v2",
+            "completion": "production_pixiv_residual_roles_v1",
+            "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+            "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+            "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+            "cache_policy": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+            "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+            "model": "gpt-4.1-mini",
+            "fallback": false
+          }
+        },
+        "run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda"
+      },
+      "initial_plan": "correction29-copy-f9ffe6e-1-initial-plan-plan-private.json",
+      "initial_plan_sha256": "5524625dd4c05138f98505b65e24e392bdf30f6bf49bbcf5efa333022f0b9294",
+      "counts": {
+        "cluster_count": 17497,
+        "member_signal_count": 65956,
+        "candidate_disposition_count": 595157,
+        "ambiguity_record_count": 65978,
+        "must_link_count": 488132,
+        "cannot_link_count": 63509,
+        "deferred_nonblocking_count": 43516
+      },
+      "full_copy_lifecycle_claimed": false,
+      "production_mutation": false
+    },
+    "original_source_cache_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+    "retry_preparation": "correction29-b4-copy-retry2-preparation-20261002-private.json",
+    "preserved_stopped_copy": "correction29-copy-f9ffe6e-1-sequence-private.json",
+    "actual_finished_native_lifecycle": "correction29-copy-f9ffe6e-2-lifecycle-private.json",
+    "actual_finished_native_lifecycle_sha256": "a57d011e0cf283096f749a6e848ee25833da03056b1e59f557034c1c4b03be54",
+    "actual_completed_lifecycle_carry_precheck": "correction29-b4-completed-lifecycle-carry-precheck-20261002-1-command-private.json",
+    "batch_source_quality_and_production_pending": true,
+    "current_copy_recovery": "correction29-copy-f9ffe6e-2-recovery-private.json",
+    "current_copy_candidate": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+    "original_surface_native_rejection": "correction29-supported-chip-recovery-checkpoint-20261002-1-diagnostic-private.json",
+    "original_unfavorable_surface_label": "correction29-copy-f9ffe6e-2-surfaces",
+    "current_copy_surface_label": "correction29-copy-f9ffe6e-2-supported-chip-surfaces",
+    "current_quality_status": "actual_current_candidate_passed",
+    "current_copy_contract": "correction29-copy-f9ffe6e-2-contract-private.json",
+    "current_nonproduction_passed_gates": 15,
+    "current_copy_launch": "correction29-copy-f9ffe6e-2-supported-chip-server-launch-private.json",
+    "fresh_backup": "correction29-fresh-production-backup-20261002-f9ffe6e-1-private.json",
+    "fresh_backup_sha256": "746f9915975d08345ab0806a2b75d04375e4482525ff60ba02f74186e2396e17",
+    "current_release_preparation": "correction29-release-preparation-f9ffe6e-20261002-5-continuation-private.json",
+    "current_runtime_preparation": "correction29-release-preparation-f9ffe6e-20261002-5-runtime-preparation-private.json",
+    "current_original_sequence": "correction29-original-f9ffe6e-20261002-1-sequence-private.json",
+    "current_private_exclusions": "correction29-b4-private-exclusions-20261002-private.json",
+    "current_original_checkpoint": {
+      "at": "2026-10-02T07:34:41.928009+08:00",
+      "stage": "finished",
+      "evidence": "correction29-original-f9ffe6e-20261002-1-postcheck-resume-2-sequence-private.json",
+      "superseded_checkpoint": "2026-10-02T07:30:03.180700+08:00 f9ffe6e 原库owned apply已提交，后置原生门禁布尔拒绝原件保留；直接精确复核通过且0行为/不确定漂移，原内部原因未知。只接续完整投影、写后17表及快照核验，原apply不重做。 target_met/safe_to_merge/route_approved仍false。",
+      "original_apply_repeated": false
+    }
   },
   "revision_review_97": {
     "comment_id": 4155396620,
@@ -818,7 +898,7 @@
     "current_semantic_manifest": "correction29-frozen-e820600-cache-20261001-1-semantic-manifest-private.json"
   },
   "reviews_98_99": {
-    "status": "bounded_gate_fix_materialized_impact_validation_pending",
+    "status": "implemented_current_frozen_affected_validation_passed",
     "remote": "correction29-current-8aeefb5-20261001-1-remote-private.json",
     "thread_count": 99,
     "comment_ids": [
@@ -847,8 +927,140 @@
     "independent_approved_projection_draft": "correction29-approved-full-business-projection-proposed-20261001.json",
     "complete_raw_projection": "correction29-approved-full-business-projection-20261001-private.json",
     "complete_raw_projection_bytes": 2256361636,
-    "frozen_business_fix": false,
+    "frozen_business_fix": true,
     "materialization": "correction29-b4-materialization-20261002-private.json",
-    "complete_b3_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json"
+    "complete_b3_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+    "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+    "materialized_development_passed": 136,
+    "source_carry_forward_contract_passed": 18,
+    "source_carry_forward": "correction29-b4-source-carry-forward-20261002-private.json",
+    "validation": "correction29-post-full-f9ffe6e-20261002-1-validation-private.json"
+  },
+  "historical_post_full_8aeefb5": {
+    "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+    "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "superseded_candidate_head": "e820600f0e546f05f9b8497f4b646a34dfc5601a",
+    "registry": "docs/state/production-pixiv-a2-post-full-fix.json",
+    "status": "bounded_gate_fix_materialized_impact_validation_pending",
+    "additional_full_invocations": 0,
+    "behavior_neutral_claimed": false,
+    "development_revision_pg_passed": 3,
+    "development_evidence_passed": 61,
+    "prior_failure_logs_preserved": true,
+    "production_baseline_healthy": true,
+    "validation": "correction29-post-full-8aeefb5-1-validation-private.json",
+    "verification": {
+      "focused": {
+        "passed": 784,
+        "failed": 0,
+        "skipped": 3,
+        "errors": 0,
+        "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+      },
+      "postgresql": {
+        "passed": 107,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0,
+        "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+      },
+      "non_e2e": {
+        "passed": 5268,
+        "failed": 1,
+        "skipped": 22,
+        "errors": 0,
+        "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+        "collected_node_count": 5291,
+        "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
+        "known_historical_failures": 1,
+        "validation_candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+        "post_full_fix": {
+          "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+          "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+          "registered_files": [
+            "docs/state/production-pixiv-a2-required-tests.json",
+            "scripts/check_production_pixiv_a2.py",
+            "scripts/production_pixiv_a2_evidence.py",
+            "scripts/production_pixiv_a2_full_suite.py",
+            "scripts/production_pixiv_a2_post_full_fix.py",
+            "scripts/trusted_git.py",
+            "tests/test_production_pixiv_a2.py",
+            "tests/test_production_pixiv_a2_post_full_fix.py",
+            "tests/test_trusted_git.py"
+          ],
+          "registry_sha256": "de5a76fbd84b06183669f156c8c6bfa1984ce27de3c77284ddbdec8a73cb4678",
+          "affected_verification": {
+            "focused": {
+              "passed": 784,
+              "failed": 0,
+              "skipped": 3,
+              "errors": 0
+            },
+            "postgresql": {
+              "passed": 107,
+              "failed": 0,
+              "skipped": 0,
+              "errors": 0
+            },
+            "historical": {
+              "passed": 88,
+              "failed": 0,
+              "skipped": 0,
+              "errors": 0
+            }
+          },
+          "additional_full_invocations": 0,
+          "behavior_neutral_claimed": false,
+          "coverage_scope": "registered source delta and affected verification"
+        }
+      },
+      "historical_non_e2e": {
+        "passed": 4541,
+        "failed": 89,
+        "skipped": 15,
+        "errors": 0,
+        "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
+        "known_historical_failures": 1,
+        "resolved_initial_failures": 88
+      }
+    },
+    "focused_passed": 784,
+    "focused_skipped": 3,
+    "focused_warnings": 3,
+    "postgresql_passed": 107,
+    "historical_passed": 88,
+    "source_delta_offline_replay": "correction29-review97-offline-delta-test.log",
+    "registered_source_files": 9,
+    "current_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+    "current_old_production_availability": "correction29-owned-gui-close-old-production-20261001-1-availability-private.json",
+    "current_release_preparation": "correction29-release-preparation-8aeefb5-20261001-1-continuation-private.json",
+    "cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+    "current_semantic_manifest": "correction29-frozen-8aeefb5-cache-20261001-1-semantic-manifest-private.json",
+    "selected_pairs": 31608,
+    "new_provider_calls": 0
+  },
+  "launcher_json_date_repair_20261002": {
+    "status": "development_passed_frozen_validation_pending",
+    "prior_candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+    "root_cause": "Windows PowerShell 5.1 CIM CreationDate JSON /Date(milliseconds)/ was parsed only as legacy DMTF, leaving owned launcher pid_create_time null",
+    "original_collector_failure": "correction29-production-normal-f9ffe6e-20261002-1-collect.log",
+    "traced_failure": "correction29-production-normal-f9ffe6e-20261002-1-collect-retry-1-private.json",
+    "actual_pre_fix_failed": 4,
+    "actual_pre_fix_passed": 4,
+    "actual_launcher_and_boundary_passed": 132,
+    "actual_launcher_and_boundary_skipped": 2,
+    "actual_registered_delta_development_passed": 18,
+    "additional_full_invocations": 0,
+    "new_provider_calls": 0,
+    "plan": [
+      "freeze exact controller/test and registered-delta source changes",
+      "repair missing owned runtime creation-time metadata from measured process identity without stopping the healthy service",
+      "run frozen affected validation, current native source/copy/quality gates",
+      "fresh original plan and owned idempotent apply, actual no-argument EXE and production Edge/240/18 gates",
+      "deliver truthful documents and one independently verified ZIP at most 100000000 bytes"
+    ],
+    "approval_source": "persistent owner full execution of 20260929 Markdown and owned-window/normal-EXE authorization",
+    "original_apply_repeated_by_this_freeze": false,
+    "prior_copy_and_original_evidence_preserved": true
   }
 }

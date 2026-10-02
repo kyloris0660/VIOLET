@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+  "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -110,9 +110,17 @@
     "2026-10-01T23:38:03.623681+08:00 远端当前99线程：98完整产品/core实时投影和99来源chip实际概念绑定两项P1已用14真实PG行漂移及1导航反例全部复现；原生产未改。仅取消未开子操作的三个旧候选等待器，保留B3来源缓存producer。实施具体影响修复，不新增完整全套或付费调用。",
     "2026-10-02 98/99号开发修复补充38项边界验证全部通过，含真实隔离PG同步改写报告仍拒绝、原始详情API/chip身份/当前媒体支持/完整分页绑定及合法空格/引号/分组控制。完整原业务投影已只读采集；原B3来源重放保留，尚未冻结B4或排队生产停止/apply。",
     "2026-10-02 8aeefb5完整31608判断及来源实际缓存重放通过，账本SHA保持；98/99号审查修复仍待冻结验证，原B3副本/发布等待器已取消，旧44生产保持运行。",
-    "2026-10-02 B3完整缓存实际exit0后，98/99号两项修复已集中写入工作树；新增保护完整业务投影与真实chip概念/媒体/分页绑定，7项源码及受保护批准文件修改。尚未冻结或启动当前完整副本/生产发布；唯一新增全套仍为d26，零新provider。"
+    "2026-10-02 B3完整缓存实际exit0后，98/99号两项修复已集中写入工作树；新增保护完整业务投影与真实chip概念/媒体/分页绑定，7项源码及受保护批准文件修改。尚未冻结或启动当前完整副本/生产发布；唯一新增全套仍为d26，零新provider。",
+    "2026-10-02T00:49:55.634550+08:00：98/99号集中修复冻结于f9ffe6e416436922cd92d8eed33395ed4442292a；15修前失败/15首轮通过、38边界、136正式开发及18源码续接契约测试通过。十一文件精确影响差量已登记，B3原始缓存收据保留不改标；当前影响验证/完整副本/原生产及18门待实际完成。",
+    "2026-10-02T00:57:57.382497+08:00：冻结门禁因工作树新建的凭据备份JSON被当作不确定运行输入而拒绝；已按原字节保存为同一私有目录的普通文本备份，原生门禁重新通过。未修改/绕过guard、未改变业务HEAD或旧生产；原拒绝、精确诊断及恢复证明全部保留。",
+    "2026-10-02T01:10:42.232881+08:00：当前f9ffe6e416436922cd92d8eed33395ed4442292a正式影响验证实际通过：focused 826 / 3跳过，真实PG/API 125，历史88节点通过；十一文件差量及原B1唯一新增全套对账通过，零新增全套。继续实际当前完整副本/精度/Edge/240与发布前契约，旧44生产保持。",
+    "2026-10-02T01:17:01.799391+08:00：当前f9ffe6e正式影响验证通过后，串行开始当前完整恢复副本；原B3收据不改标，当前loader仍实际重放全部来源、构建完整图并运行有序生命周期/分批/来源恢复。旧44保持，无原生产停服或写入排队。",
+    "2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。",
+    "2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。",
+    "2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。",
+    "2026-10-02T08:02:00.710889+08:00：正常EXE实际Start健康，但原生完成门因pid_create_time=null拒绝；Windows JSON时间格式解析缺陷已复现4失败并修复，132通过/2跳过及18登记契约开发测试通过。旧F9副本、原库apply及全部不利证据保留，当前新冻结验证未完成，三完成标志仍false。"
   ],
-  "next_required_checkpoint": "真实隔离PG复现97号过期来源支持反例；最小修复及精确差量/影响补测；当前完整副本、生产正常入口、18项契约和单ZIP重放。",
+  "next_required_checkpoint": "冻结Windows JSON时间解析修复，实际当前影响验证/副本/正常EXE/生产18门与唯一ZIP；不新增全套或Provider。",
   "durable_links": [
     {
       "label": "A2实施方案",
@@ -366,7 +374,7 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-10-02T00:33:25.648911+08:00",
+  "updated_at": "2026-10-02T08:02:00.710889+08:00",
   "production_candidate_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
   "correction17_progress": {
     "current_execution": {
@@ -963,7 +971,7 @@
     "computer_use_reacquired": true,
     "production_candidate_applied": false,
     "preflight_evidence": "correction29-preflight-private.json",
-    "stage": "bounded_gate_fix_materialized_impact_validation_pending",
+    "stage": "launcher_json_date_repair_development_passed_freezing",
     "role_denominator_replayed": true,
     "requested_role_targets": 49227,
     "role_aggregates": 8288,
@@ -1080,7 +1088,7 @@
       "resolver_run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda",
       "resolver_version": "source_concept_resolver_core_v7_alias_union_approval"
     },
-    "business_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+    "business_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
     "frozen_validation_progress": {
       "focused": {
         "passed": 679,
@@ -1578,32 +1586,38 @@
       "background_resume": "correction29-background-resume-20261001-private.json"
     },
     "post_full_fix": {
-      "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+      "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
       "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-      "superseded_candidate_head": "e820600f0e546f05f9b8497f4b646a34dfc5601a",
+      "superseded_candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
       "registry": "docs/state/production-pixiv-a2-post-full-fix.json",
-      "status": "bounded_gate_fix_materialized_impact_validation_pending",
+      "status": "actual_fresh_backup_61_restore_passed_original_plan_building",
+      "registered_source_files": 11,
       "additional_full_invocations": 0,
       "behavior_neutral_claimed": false,
-      "development_revision_pg_passed": 3,
-      "development_evidence_passed": 61,
+      "development_materialized_passed": 136,
+      "development_boundaries_passed": 38,
+      "development_source_contract_passed": 18,
+      "source_carry_forward": "correction29-b4-source-carry-forward-20261002-private.json",
+      "actual_prior_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
       "prior_failure_logs_preserved": true,
       "production_baseline_healthy": true,
-      "validation": "correction29-post-full-8aeefb5-1-validation-private.json",
+      "new_provider_calls": 0,
+      "frozen_evidence": "correction29-review98-99-frozen-20261002-private.json",
+      "validation": "correction29-post-full-f9ffe6e-20261002-1-validation-private.json",
       "verification": {
         "focused": {
-          "passed": 784,
+          "passed": 826,
           "failed": 0,
           "skipped": 3,
           "errors": 0,
-          "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+          "source_head": "f9ffe6e416436922cd92d8eed33395ed4442292a"
         },
         "postgresql": {
-          "passed": 107,
+          "passed": 125,
           "failed": 0,
           "skipped": 0,
           "errors": 0,
-          "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+          "source_head": "f9ffe6e416436922cd92d8eed33395ed4442292a"
         },
         "non_e2e": {
           "passed": 5268,
@@ -1614,11 +1628,12 @@
           "collected_node_count": 5291,
           "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
           "known_historical_failures": 1,
-          "validation_candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+          "validation_candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
           "post_full_fix": {
             "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-            "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+            "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
             "registered_files": [
+              "docs/state/production-pixiv-a2-approved-projection.json",
               "docs/state/production-pixiv-a2-required-tests.json",
               "scripts/check_production_pixiv_a2.py",
               "scripts/production_pixiv_a2_evidence.py",
@@ -1626,19 +1641,20 @@
               "scripts/production_pixiv_a2_post_full_fix.py",
               "scripts/trusted_git.py",
               "tests/test_production_pixiv_a2.py",
+              "tests/test_production_pixiv_a2_evidence.py",
               "tests/test_production_pixiv_a2_post_full_fix.py",
               "tests/test_trusted_git.py"
             ],
-            "registry_sha256": "de5a76fbd84b06183669f156c8c6bfa1984ce27de3c77284ddbdec8a73cb4678",
+            "registry_sha256": "e8b7c7cf998e126029365618526bef39a6c1f601d0537051b17da63a7ec49e44",
             "affected_verification": {
               "focused": {
-                "passed": 784,
+                "passed": 826,
                 "failed": 0,
                 "skipped": 3,
                 "errors": 0
               },
               "postgresql": {
-                "passed": 107,
+                "passed": 125,
                 "failed": 0,
                 "skipped": 0,
                 "errors": 0
@@ -1665,20 +1681,115 @@
           "resolved_initial_failures": 88
         }
       },
-      "focused_passed": 784,
+      "focused_passed": 826,
       "focused_skipped": 3,
       "focused_warnings": 3,
-      "postgresql_passed": 107,
+      "postgresql_passed": 125,
+      "postgresql_skipped": 0,
+      "postgresql_warnings": 0,
       "historical_passed": 88,
-      "source_delta_offline_replay": "correction29-review97-offline-delta-test.log",
-      "registered_source_files": 9,
-      "current_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
-      "current_old_production_availability": "correction29-owned-gui-close-old-production-20261001-1-availability-private.json",
-      "current_release_preparation": "correction29-release-preparation-8aeefb5-20261001-1-continuation-private.json",
-      "cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
-      "current_semantic_manifest": "correction29-frozen-8aeefb5-cache-20261001-1-semantic-manifest-private.json",
-      "selected_pairs": 31608,
-      "new_provider_calls": 0
+      "historical_skipped": 0,
+      "historical_warnings": 0,
+      "current_copy_label": "correction29-copy-f9ffe6e-2",
+      "current_semantic_manifest": "correction29-b4-semantic-readmission-20261002-manifest-private.json",
+      "current_native_source_and_graph": {
+        "evidence": "correction29-copy-f9ffe6e-1-lifecycle-private.json",
+        "actual_source_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+        "full_source_verification": {
+          "started_at": "2026-10-01T17:22:08.799629+00:00",
+          "finished_at": "2026-10-01T18:06:19.197218+00:00",
+          "semantic_input_identity": {
+            "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+            "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+            "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+            "role_facts": "8baa79c1cf2af2b9375ee43a673cf50a9d83ce89b098f1d14b878c905df24845",
+            "judgments": "c06f9fcdb1e517704e6d80aeb6c8c0727cf2ebfe37365a17696502c22d4954a6",
+            "versions": {
+              "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+              "role_schema": "violet.production-pixiv-role-result.v1",
+              "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+              "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+              "extraction_schema": "source_name_candidate_extraction_compact_v2",
+              "completion": "production_pixiv_residual_roles_v1",
+              "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+              "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+              "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+              "cache_policy": "source_concept_llm_adjudication_cache_v1",
+              "decision_schema": "source_concept_pair_decision_schema_v1",
+              "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+              "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+              "model": "gpt-4.1-mini",
+              "fallback": false
+            }
+          },
+          "run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda"
+        },
+        "initial_plan": "correction29-copy-f9ffe6e-1-initial-plan-plan-private.json",
+        "initial_plan_sha256": "5524625dd4c05138f98505b65e24e392bdf30f6bf49bbcf5efa333022f0b9294",
+        "counts": {
+          "cluster_count": 17497,
+          "member_signal_count": 65956,
+          "candidate_disposition_count": 595157,
+          "ambiguity_record_count": 65978,
+          "must_link_count": 488132,
+          "cannot_link_count": 63509,
+          "deferred_nonblocking_count": 43516
+        },
+        "full_copy_lifecycle_claimed": false,
+        "production_mutation": false
+      },
+      "original_source_cache_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+      "retry_preparation": "correction29-b4-copy-retry2-preparation-20261002-private.json",
+      "preserved_stopped_copy": "correction29-copy-f9ffe6e-1-sequence-private.json",
+      "actual_finished_native_lifecycle": "correction29-copy-f9ffe6e-2-lifecycle-private.json",
+      "actual_finished_native_lifecycle_sha256": "a57d011e0cf283096f749a6e848ee25833da03056b1e59f557034c1c4b03be54",
+      "actual_completed_lifecycle_carry_precheck": "correction29-b4-completed-lifecycle-carry-precheck-20261002-1-command-private.json",
+      "batch_source_quality_and_production_pending": true,
+      "current_copy_recovery": "correction29-copy-f9ffe6e-2-recovery-private.json",
+      "current_copy_candidate": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+      "original_surface_native_rejection": "correction29-supported-chip-recovery-checkpoint-20261002-1-diagnostic-private.json",
+      "original_unfavorable_surface_label": "correction29-copy-f9ffe6e-2-surfaces",
+      "current_copy_surface_label": "correction29-copy-f9ffe6e-2-supported-chip-surfaces",
+      "current_quality_status": "actual_current_candidate_passed",
+      "current_copy_contract": "correction29-copy-f9ffe6e-2-contract-private.json",
+      "current_nonproduction_passed_gates": 15,
+      "current_copy_launch": "correction29-copy-f9ffe6e-2-supported-chip-server-launch-private.json",
+      "fresh_backup": "correction29-fresh-production-backup-20261002-f9ffe6e-1-private.json",
+      "fresh_backup_sha256": "746f9915975d08345ab0806a2b75d04375e4482525ff60ba02f74186e2396e17",
+      "current_release_preparation": "correction29-release-preparation-f9ffe6e-20261002-5-continuation-private.json",
+      "current_runtime_preparation": "correction29-release-preparation-f9ffe6e-20261002-5-runtime-preparation-private.json",
+      "current_original_sequence": "correction29-original-f9ffe6e-20261002-1-postcheck-resume-2-sequence-private.json",
+      "current_private_exclusions": "correction29-b4-private-exclusions-20261002-private.json",
+      "current_original_checkpoint": {
+        "at": "2026-10-02T07:18:23.721140+08:00",
+        "stage": "apply-committed",
+        "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+        "evidence": [
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-sequence-private.json",
+            "sha256": "d82bb349df20e40b75d57b60f5b6d5356956a1e13a9f5c47877f2b8d067145b0"
+          },
+          {
+            "file": "correction29-fresh-production-backup-20261002-f9ffe6e-1-private.json",
+            "sha256": "746f9915975d08345ab0806a2b75d04375e4482525ff60ba02f74186e2396e17"
+          },
+          {
+            "file": "correction29-copy-f9ffe6e-2-contract-private.json",
+            "sha256": "89f23ee661d436f875660bbf57259c951761e352dc729bdeacb4d24facaac70a"
+          },
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-apply-apply-private.json",
+            "sha256": "b8f8aeda8e8a79a210a8587ea19ba97fade2e4f669357cea834aaffb45fa35e9"
+          }
+        ],
+        "superseded_checkpoint": "2026-10-02T07:04:55.856902+08:00 f9ffe6e 原库新只读plan及切换前现场核验通过，精确停止本应用旧44服务并保存17表写前快照；owned apply及完整批准业务投影核验正在执行。新鲜备份与61表恢复保持通过，正常EXE和生产18门尚待完成。 target_met/safe_to_merge/route_approved仍false。"
+      },
+      "current_original_postcheck_failure": {
+        "file": "correction29-original-f9ffe6e-20261002-1-driver.log",
+        "sha256": "6f4ce8adad2ee76fdc3db454810c94bda845b73495e02071057a6871c0d67253",
+        "untraced_cause": "unknown",
+        "traced_revalidation": "correction29-original-postcheck-guard-diagnostic-20261002-1-private.json"
+      }
     },
     "revision_review_97": {
       "comment_id": 4155396620,
@@ -1819,7 +1930,7 @@
     },
     "superseded_copy_safe_boundary": "correction29-superseded-e820600-copy-safe-boundary-20261001-private.json",
     "reviews_98_99": {
-      "status": "bounded_gate_fix_materialized_impact_validation_pending",
+      "status": "implemented_current_frozen_affected_validation_passed",
       "remote": "correction29-current-8aeefb5-20261001-1-remote-private.json",
       "thread_count": 99,
       "comment_ids": [
@@ -1848,9 +1959,238 @@
       "independent_approved_projection_draft": "correction29-approved-full-business-projection-proposed-20261001.json",
       "complete_raw_projection": "correction29-approved-full-business-projection-20261001-private.json",
       "complete_raw_projection_bytes": 2256361636,
-      "frozen_business_fix": false,
+      "frozen_business_fix": true,
       "materialization": "correction29-b4-materialization-20261002-private.json",
-      "complete_b3_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json"
+      "complete_b3_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+      "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+      "materialized_development_passed": 136,
+      "source_carry_forward_contract_passed": 18,
+      "source_carry_forward": "correction29-b4-source-carry-forward-20261002-private.json",
+      "validation": "correction29-post-full-f9ffe6e-20261002-1-validation-private.json",
+      "current_native_copy_business_and_chip_verified": true,
+      "actual_native_copy_contract": "correction29-copy-f9ffe6e-2-contract-private.json",
+      "production_acceptance_claimed": false
+    },
+    "historical_post_full_8aeefb5": {
+      "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+      "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+      "superseded_candidate_head": "e820600f0e546f05f9b8497f4b646a34dfc5601a",
+      "registry": "docs/state/production-pixiv-a2-post-full-fix.json",
+      "status": "bounded_gate_fix_materialized_impact_validation_pending",
+      "additional_full_invocations": 0,
+      "behavior_neutral_claimed": false,
+      "development_revision_pg_passed": 3,
+      "development_evidence_passed": 61,
+      "prior_failure_logs_preserved": true,
+      "production_baseline_healthy": true,
+      "validation": "correction29-post-full-8aeefb5-1-validation-private.json",
+      "verification": {
+        "focused": {
+          "passed": 784,
+          "failed": 0,
+          "skipped": 3,
+          "errors": 0,
+          "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+        },
+        "postgresql": {
+          "passed": 107,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0,
+          "source_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f"
+        },
+        "non_e2e": {
+          "passed": 5268,
+          "failed": 1,
+          "skipped": 22,
+          "errors": 0,
+          "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+          "collected_node_count": 5291,
+          "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
+          "known_historical_failures": 1,
+          "validation_candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+          "post_full_fix": {
+            "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+            "candidate_head": "8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f",
+            "registered_files": [
+              "docs/state/production-pixiv-a2-required-tests.json",
+              "scripts/check_production_pixiv_a2.py",
+              "scripts/production_pixiv_a2_evidence.py",
+              "scripts/production_pixiv_a2_full_suite.py",
+              "scripts/production_pixiv_a2_post_full_fix.py",
+              "scripts/trusted_git.py",
+              "tests/test_production_pixiv_a2.py",
+              "tests/test_production_pixiv_a2_post_full_fix.py",
+              "tests/test_trusted_git.py"
+            ],
+            "registry_sha256": "de5a76fbd84b06183669f156c8c6bfa1984ce27de3c77284ddbdec8a73cb4678",
+            "affected_verification": {
+              "focused": {
+                "passed": 784,
+                "failed": 0,
+                "skipped": 3,
+                "errors": 0
+              },
+              "postgresql": {
+                "passed": 107,
+                "failed": 0,
+                "skipped": 0,
+                "errors": 0
+              },
+              "historical": {
+                "passed": 88,
+                "failed": 0,
+                "skipped": 0,
+                "errors": 0
+              }
+            },
+            "additional_full_invocations": 0,
+            "behavior_neutral_claimed": false,
+            "coverage_scope": "registered source delta and affected verification"
+          }
+        },
+        "historical_non_e2e": {
+          "passed": 4541,
+          "failed": 89,
+          "skipped": 15,
+          "errors": 0,
+          "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
+          "known_historical_failures": 1,
+          "resolved_initial_failures": 88
+        }
+      },
+      "focused_passed": 784,
+      "focused_skipped": 3,
+      "focused_warnings": 3,
+      "postgresql_passed": 107,
+      "historical_passed": 88,
+      "source_delta_offline_replay": "correction29-review97-offline-delta-test.log",
+      "registered_source_files": 9,
+      "current_cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+      "current_old_production_availability": "correction29-owned-gui-close-old-production-20261001-1-availability-private.json",
+      "current_release_preparation": "correction29-release-preparation-8aeefb5-20261001-1-continuation-private.json",
+      "cache_command": "correction29-frozen-8aeefb5-cache-20261001-1-command-private.json",
+      "current_semantic_manifest": "correction29-frozen-8aeefb5-cache-20261001-1-semantic-manifest-private.json",
+      "selected_pairs": 31608,
+      "new_provider_calls": 0
+    },
+    "preserved_checkpoint_before_supported_chip_gates": "2026-10-02 当前 f9ffe6e 完整副本原生来源校验、有序生命周期、逆序分批、来源更新/删除恢复和17表保护通过；当前真实质量、Edge和240工作量继续，旧44生产保持。；后续实际核验：2026-10-01T21:00:00.345603+00:00 f9ffe6e完整副本及原真实80例/240/Edge采集保留；原默认点击历史GenshinImpact的本轮来源记录支持为空，实际原生门禁准确拒绝。修正私有采集器选择完整有本地记录支持的DOM概念组，正在新开自身只读server重跑真实表面及15门禁；未改冻结源码、批准语义或原始收据，旧44生产保持，三个许可字段false。",
+    "preserved_fifteen_gate_checkpoint_before_fresh_restore": "2026-10-02 当前 f9ffe6e 副本80例、独立精度、完整 owned 业务投影、实际来源chip/详情API/分页、真实Edge及240工作量通过，15项发布前门禁实际成立；继续新鲜备份、原库plan和正常EXE，target_met仍false。",
+    "actual_original_operational_checkpoints_20261002": [
+      {
+        "at": "2026-10-02T06:58:52.168891+08:00",
+        "stage": "plan-ready",
+        "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+        "evidence": [
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-sequence-private.json",
+            "sha256": "fa47178327eac2d20b22feb998ec841451954545056caee8df257e79bec7d568"
+          },
+          {
+            "file": "correction29-fresh-production-backup-20261002-f9ffe6e-1-private.json",
+            "sha256": "746f9915975d08345ab0806a2b75d04375e4482525ff60ba02f74186e2396e17"
+          },
+          {
+            "file": "correction29-copy-f9ffe6e-2-contract-private.json",
+            "sha256": "89f23ee661d436f875660bbf57259c951761e352dc729bdeacb4d24facaac70a"
+          },
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-plan-plan-private.json",
+            "sha256": "178b5e2562a0aca7e225c99ebd2bf51823d29263eba6a8af90fcfb0b2b3d2b44"
+          }
+        ],
+        "superseded_checkpoint": "2026-10-02T06:14:57.151102+08:00 f9ffe6e完整副本、重新绑定真实source chip的80/80、精度、Edge/240和15项发布前门禁通过；当前完整业务投影标准库复算及无损hash recipes通过。新鲜生产dump与独立61表恢复全部一致，旧44身份/无活动任务/无尾部及缺失核验通过，原库完整来源和独立plan正在计算；实际apply和正常EXE仍未执行，三个许可字段false。"
+      },
+      {
+        "at": "2026-10-02T07:04:55.856902+08:00",
+        "stage": "applying",
+        "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+        "evidence": [
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-sequence-private.json",
+            "sha256": "6876470f2f7f45328307aa837d969270da4bbd7ea30a958294b52c6c356a1fdc"
+          },
+          {
+            "file": "correction29-fresh-production-backup-20261002-f9ffe6e-1-private.json",
+            "sha256": "746f9915975d08345ab0806a2b75d04375e4482525ff60ba02f74186e2396e17"
+          },
+          {
+            "file": "correction29-copy-f9ffe6e-2-contract-private.json",
+            "sha256": "89f23ee661d436f875660bbf57259c951761e352dc729bdeacb4d24facaac70a"
+          },
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-stopped-before-apply-availability-private.json",
+            "sha256": "a2f744153ae98bde1859b6b6d9546dc1330dd44f116955da87a60ee2b9ae80dd"
+          },
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-before-preservation-private.json",
+            "sha256": "4c6125a3a9eda1da398080e0531322150a240af3122a858e472d1607457d336f"
+          }
+        ],
+        "superseded_checkpoint": "2026-10-02T06:58:52.168891+08:00 f9ffe6e 原库完整来源与目标专属只读plan通过，plan前后原投影一致；旧44服务仍运行。新鲜备份及61表恢复、当前完整副本和15门保持通过；准备持续授权范围内的正常EXE操作，尚未原库apply。 target_met/safe_to_merge/route_approved仍false。"
+      },
+      {
+        "at": "2026-10-02T07:18:23.721140+08:00",
+        "stage": "apply-committed",
+        "candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+        "evidence": [
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-sequence-private.json",
+            "sha256": "d82bb349df20e40b75d57b60f5b6d5356956a1e13a9f5c47877f2b8d067145b0"
+          },
+          {
+            "file": "correction29-fresh-production-backup-20261002-f9ffe6e-1-private.json",
+            "sha256": "746f9915975d08345ab0806a2b75d04375e4482525ff60ba02f74186e2396e17"
+          },
+          {
+            "file": "correction29-copy-f9ffe6e-2-contract-private.json",
+            "sha256": "89f23ee661d436f875660bbf57259c951761e352dc729bdeacb4d24facaac70a"
+          },
+          {
+            "file": "correction29-original-f9ffe6e-20261002-1-apply-apply-private.json",
+            "sha256": "b8f8aeda8e8a79a210a8587ea19ba97fade2e4f669357cea834aaffb45fa35e9"
+          }
+        ],
+        "superseded_checkpoint": "2026-10-02T07:04:55.856902+08:00 f9ffe6e 原库新只读plan及切换前现场核验通过，精确停止本应用旧44服务并保存17表写前快照；owned apply及完整批准业务投影核验正在执行。新鲜备份与61表恢复保持通过，正常EXE和生产18门尚待完成。 target_met/safe_to_merge/route_approved仍false。"
+      },
+      {
+        "at": "2026-10-02T07:30:03.180700+08:00",
+        "stage": "resuming",
+        "evidence": "correction29-original-f9ffe6e-20261002-1-postcheck-resume-2-sequence-private.json",
+        "superseded_checkpoint": "2026-10-02T07:18:23.721140+08:00 f9ffe6e 原库owned apply已实际通过并提交，1个active run/66392支持/8623媒体；完整批准业务投影及17表写后核验仍在执行。正常入口anchor尚未切换，正常EXE和生产18门尚待完成，不提前申报工程完成。 target_met/safe_to_merge/route_approved仍false。",
+        "original_apply_repeated": false
+      },
+      {
+        "at": "2026-10-02T07:34:41.928009+08:00",
+        "stage": "finished",
+        "evidence": "correction29-original-f9ffe6e-20261002-1-postcheck-resume-2-sequence-private.json",
+        "superseded_checkpoint": "2026-10-02T07:30:03.180700+08:00 f9ffe6e 原库owned apply已提交，后置原生门禁布尔拒绝原件保留；直接精确复核通过且0行为/不确定漂移，原内部原因未知。只接续完整投影、写后17表及快照核验，原apply不重做。 target_met/safe_to_merge/route_approved仍false。",
+        "original_apply_repeated": false
+      }
+    ],
+    "launcher_json_date_repair_20261002": {
+      "status": "development_passed_frozen_validation_pending",
+      "prior_candidate_head": "f9ffe6e416436922cd92d8eed33395ed4442292a",
+      "root_cause": "Windows PowerShell 5.1 CIM CreationDate JSON /Date(milliseconds)/ was parsed only as legacy DMTF, leaving owned launcher pid_create_time null",
+      "original_collector_failure": "correction29-production-normal-f9ffe6e-20261002-1-collect.log",
+      "traced_failure": "correction29-production-normal-f9ffe6e-20261002-1-collect-retry-1-private.json",
+      "actual_pre_fix_failed": 4,
+      "actual_pre_fix_passed": 4,
+      "actual_launcher_and_boundary_passed": 132,
+      "actual_launcher_and_boundary_skipped": 2,
+      "actual_registered_delta_development_passed": 18,
+      "additional_full_invocations": 0,
+      "new_provider_calls": 0,
+      "plan": [
+        "freeze exact controller/test and registered-delta source changes",
+        "repair missing owned runtime creation-time metadata from measured process identity without stopping the healthy service",
+        "run frozen affected validation, current native source/copy/quality gates",
+        "fresh original plan and owned idempotent apply, actual no-argument EXE and production Edge/240/18 gates",
+        "deliver truthful documents and one independently verified ZIP at most 100000000 bytes"
+      ],
+      "approval_source": "persistent owner full execution of 20260929 Markdown and owned-window/normal-EXE authorization",
+      "original_apply_repeated_by_this_freeze": false,
+      "prior_copy_and_original_evidence_preserved": true
     }
   },
   "historical_completed_checkpoints_before_correction29": [

@@ -26,11 +26,19 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "e640938af4a160981ae43771fbbd4c65222b0cf033981203e7970a204ead118a"
+      "after_sha256": "a3de2683fb5170aeaccf335ee956463f251790d5fa7f050754c3242135eecffe"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
       "after_sha256": "3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1"
+    },
+    "scripts/violet_production_control.py": {
+      "before_sha256": "d0c51d6cb5a8122d4610b1daa458920b4e0894931c0d375567338e37c6aef69f",
+      "after_sha256": "cef1cefa49c5e890fdcd06cedb53f72848af5928e20da53b39702c10bbb4708e"
+    },
+    "tests/test_production_launcher_control.py": {
+      "before_sha256": "a173941d085e4326d54625cfda23e32e0722c0c53f60e5523cbe32d2c45991d6",
+      "after_sha256": "30258ba45ca1df45b50ebb0273cebe3e396cbabb6326462d423971055b4109f3"
     },
     "tests/test_production_pixiv_a2.py": {
       "before_sha256": "59689ff3747349dd0e274365a3005eb3b7f24b07461cfc1167fb2272eec96f08",
