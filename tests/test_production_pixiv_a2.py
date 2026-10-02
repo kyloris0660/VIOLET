@@ -476,6 +476,84 @@ def test_accepted_alias_recalls_untyped_literal_tags_without_identity_union(data
         include_evidence_fallback=True,include_production_alias_evidence=True)['combined']
 
 
+def _seed_untyped_alias_occurrence(database, *, cannot_link=False):
+    from dataclasses import replace
+    from app.models import SourceConceptSignal,SourceConceptEvidence
+    consumer=production_consumer(build_canonical_pixiv_aggregates_from_session(database))
+    consumer=replace(consumer,signals=tuple(replace(s,role_hint='work',trust_tier='strong',status='active',work_context_key=None)
+        if s.origin_type=='pixiv_tag_observation' and s.evidence_payload['work_id']!='910000003' else s for s in consumer.signals))
+    initial=build_production_clustering(consumer)
+    typed=[s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation' and s.role_hint=='work']
+    judgments=[{'left_signal_key':typed[0].signal_key,'right_signal_key':typed[1].signal_key,
+        'decision':'must_link','confidence':.99,'cache_key':'untyped-component-regression-alias'}]
+    if cannot_link:
+        unknown=next(s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation'
+            and s.role_hint=='unknown' and s.canonical_key=='sunpetal')
+        judgments.append({'left_signal_key':unknown.signal_key,'right_signal_key':typed[0].signal_key,
+            'decision':'cannot_link','confidence':.99,'cache_key':'untyped-component-regression-separation'})
+    run=build_production_clustering(consumer,judgments=judgments)
+    apply(database,run,scope_for(database))
+    signal=database.query(SourceConceptSignal).filter_by(created_by_run_id=run.resolution.run_id,
+        canonical_key='sunpetal',role_hint='unknown').one()
+    evidence=database.query(SourceConceptEvidence).filter_by(signal_id=signal.id).first()
+    assert evidence is not None
+    return run,signal,evidence
+
+
+@pytest.mark.parametrize('concept_status,link_status',[
+    ('active','active'),('needs_review','active'),('active','needs_review'),('needs_review','needs_review'),
+    ('withdrawn','needs_review'),('needs_review','withdrawn')])
+def test_untyped_alias_occurrence_respects_other_visible_component(database,concept_status,link_status):
+    from app.models import SourceConcept,SourceConceptSignalLink
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    run,signal,evidence=_seed_untyped_alias_occurrence(database)
+    before=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert 4 not in before['identity'] and 4 in before['evidence_fallback']
+    concept=SourceConcept(concept_key='other-unknown-constraint-component',primary_display_name='Held fixture occurrence',
+        concept_type_hint='unknown',status=concept_status,created_by_run_id=run.resolution.run_id)
+    database.add(concept);database.flush()
+    database.add(SourceConceptSignalLink(signal_id=signal.id,concept_id=concept.id,link_status=link_status,
+        run_id=evidence.run_id,resolver_version='isolated-constraint-regression',resolution_reason_code='cannot_link_review_control'))
+    database.flush()
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert (4 in observed['combined']) is ('withdrawn' in (concept_status,link_status))
+
+
+@pytest.mark.parametrize('change',['literal_singleton','literal_corroboration','missing_reason','missing_guard','typed_component','extra_member'])
+def test_untyped_alias_placeholder_requires_exact_singleton_qualification(database,change):
+    from app.models import SourceConcept,SourceConceptSignal,SourceConceptSignalLink
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    _,signal,_=_seed_untyped_alias_occurrence(database)
+    link=database.query(SourceConceptSignalLink).filter_by(signal_id=signal.id).one()
+    concept=database.get(SourceConcept,link.concept_id)
+    assert link.link_status==concept.status=='needs_review' and concept.concept_type_hint=='unknown'
+    if change=='literal_corroboration':link.resolution_reason_code='unknown_role_requires_corroboration'
+    elif change=='missing_reason':link.resolution_reason_code=None
+    elif change=='missing_guard':link.negative_reason_code=None
+    elif change=='typed_component':concept.concept_type_hint='work'
+    elif change=='extra_member':
+        peer=database.query(SourceConceptSignal).filter(SourceConceptSignal.id!=signal.id).first()
+        database.add(SourceConceptSignalLink(signal_id=peer.id,concept_id=concept.id,link_status='needs_review',run_id=link.run_id,
+            resolver_version='isolated-constraint-regression',resolution_reason_code='constraint_component_member'))
+    database.flush()
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert (4 in observed['combined']) is change.startswith('literal_')
+
+
+def test_untyped_alias_cannot_link_from_real_resolver_remains_separate(database):
+    from app.models import SourceConceptSignalLink
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    _,signal,_=_seed_untyped_alias_occurrence(database,cannot_link=True)
+    link=database.query(SourceConceptSignalLink).filter_by(signal_id=signal.id).one()
+    assert link.resolution_reason_code=='llm_cannot_link_source_layer_guard'
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert 4 not in observed['combined']
+
+
 def test_batch_order_and_resume_receipts_do_not_change_business_identity(database):
     aggregates=build_canonical_pixiv_aggregates_from_session(database)
     initial=build_production_clustering(production_consumer(aggregates))

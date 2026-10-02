@@ -1,3 +1,11 @@
+# VIOLET A2 当前纠偏：第102条组件召回边界
+
+当前A2新增102号复审已在真实隔离PostgreSQL复现：unknown occurrence通过needs_review链接/概念跨入另一active alias的直接证据召回，3失败/1通过。当前`target_met=false`，`safe_to_merge=false`、`route_approved=false`。现有B5生产保持可用，其18门完成记录作为精确历史保存；新修复及对应副本/生产验证完成前不申报当前工程通过。101号所称ab41b890 squash提交在实际仓库未发现，实际f0fe49e继承562bc18，原生文档校验与完整Git证明均通过；仍会保存当前远端与独立复算。
+
+本轮沿用9月29日已授权A2纠偏范围，零provider、不重复完整non-E2E、不更改固定分母或已接受oracle；只修复已复现边界，并在最新候选上重新完成影响验证与既有条件性生产流程。
+
+## 第102条之前的精确历史版本
+
 # VIOLET A2 2026-09-29 / 2026-10-02 纠偏收口（工程通过，Lead/Owner待验收）
 
 当前A2 / PR #153 / `codex/production-pixiv-a2`。业务及当前影响补测HEAD为`562bc18b2178883e3a604b2d9e6bc01454d37080`；原生产已实际部署该候选，18项完整注册契约全部通过。`target_met=true`、`safe_to_merge=false`、`route_approved=false`。Lead复审与Owner本人体验尚未完成；最终交付HEAD由六份文档提交、PR正文及外部封包收据绑定，业务证据保留原HEAD，通过已测试的文档续接契约关联交付提交。

@@ -2,7 +2,7 @@
 
 The full run remains evidence for its actual source. This contract permits only
 the registered launcher, live source-revision, complete owned-business, and
-concept-chip evidence corrections.
+concept-chip evidence and review102 literal-component boundary corrections.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -12,7 +12,10 @@ from pathlib import Path
 
 BASELINE = 'd26bd0c5cde6865a2760a8c59b749a9fb4652ace'
 REGISTRY = 'docs/state/production-pixiv-a2-post-full-fix.json'
-REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-live-source-revision-owned-business-and-chip-concept'
+REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-live-source-revision-owned-business-chip-and-literal-component-boundary'
+LITERAL_QUERY_FILE = 'backend/app/services/source_concept_search_service.py'
+LITERAL_QUERY_BEFORE_SHA256 = 'fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd'
+LITERAL_QUERY_AFTER_SHA256 = '2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f'
 ALLOWED_FILES = frozenset({
     'scripts/trusted_git.py', 'scripts/production_pixiv_a2_full_suite.py',
     'scripts/production_pixiv_a2_post_full_fix.py', 'scripts/check_production_pixiv_a2.py',
@@ -21,6 +24,7 @@ ALLOWED_FILES = frozenset({
     'scripts/production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2.py',
     'tests/test_production_pixiv_a2_evidence.py', 'docs/state/production-pixiv-a2-approved-projection.json',
     'scripts/violet_production_control.py', 'tests/test_production_launcher_control.py',
+    LITERAL_QUERY_FILE, 'tests/test_production_pixiv_a2_api.py',
 })
 SOURCE_REPLAY_HEAD = '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f'
 REPLAY_SOURCE_FILES = frozenset({
@@ -33,7 +37,25 @@ REPLAY_GATE_FILES = frozenset({
     'tests/test_production_pixiv_a2_evidence.py', 'tests/test_production_pixiv_a2_post_full_fix.py',
     'docs/state/production-pixiv-a2-approved-projection.json', REGISTRY,
     'scripts/violet_production_control.py', 'tests/test_production_launcher_control.py',
+    LITERAL_QUERY_FILE, 'tests/test_production_pixiv_a2_api.py',
 })
+
+
+def verify_literal_query_delta(before, after):
+    """Admit only the exact isolated-PG/API-verified query correction.
+
+    These hashes pin the whole old/new module, not a selected function summary.
+    Full source loaders and current query/precision gates still run natively.
+    This does not make the query correction behavior-neutral.
+    """
+    from scripts.check_production_pixiv_a2 import require
+    digest = lambda value: hashlib.sha256(value).hexdigest()
+    require(digest(before) == LITERAL_QUERY_BEFORE_SHA256
+            and digest(after) == LITERAL_QUERY_AFTER_SHA256,
+            'post_full_unregistered_literal_query_delta')
+    return {'file': LITERAL_QUERY_FILE, 'before_sha256': digest(before),
+            'after_sha256': digest(after), 'behavior_neutral_claimed': False,
+            'current_query_and_precision_verification_required': True}
 
 
 def verify_source_replay_carry_forward(root, *, candidate, prior_head, command, manifest,
@@ -79,8 +101,11 @@ def verify_source_replay_carry_forward(root, *, candidate, prior_head, command, 
     backend = set(filter(None, operation('ls-tree', '-r', '--name-only', prior_head, '--', 'backend').decode().splitlines()))
     require(backend and backend == set(filter(None, operation('ls-tree', '-r', '--name-only', candidate, '--', 'backend').decode().splitlines())),
             'source_replay_backend_inventory')
+    query_delta = verify_literal_query_delta(
+        operation('show', prior_head + ':' + LITERAL_QUERY_FILE),
+        operation('show', candidate + ':' + LITERAL_QUERY_FILE))
     blobs = {}
-    for name in sorted(backend | REPLAY_SOURCE_FILES):
+    for name in sorted((backend - {LITERAL_QUERY_FILE}) | REPLAY_SOURCE_FILES):
         before = operation('rev-parse', prior_head + ':' + name).decode().strip()
         after = operation('rev-parse', candidate + ':' + name).decode().strip()
         require(before == after, 'source_replay_semantic_blob_changed')
@@ -88,6 +113,7 @@ def verify_source_replay_carry_forward(root, *, candidate, prior_head, command, 
     return {'schema_version': 'violet.production-pixiv-a2.source-replay-carry-forward.v1',
             'actual_source_head': prior_head, 'candidate_head': candidate,
             'unchanged_source_blobs': blobs, 'changed_gate_paths': sorted(changed),
+            'exact_query_only_source_delta': query_delta,
             'input_identity': approved_identity, 'ledger_sha256': ledger_sha256,
             'original_invocation_not_relabelled': True, 'current_full_native_readmission_required': True,
             'new_provider_calls': 0, 'additional_full_suite_invocations': 0}
@@ -130,6 +156,8 @@ def verify_registered_delta(root, baseline, candidate):
         digest = lambda value: hashlib.sha256(value).hexdigest() if value is not None else None
         require(digest(before) == evidence['before_sha256'] and digest(after) == evidence['after_sha256'],
                 'post_full_delta_digest')
+        if name == LITERAL_QUERY_FILE:
+            verify_literal_query_delta(before, after)
         _assert_no_alias_components(root / name)
         # Working-tree CRLF conversion is permitted only when Git's normalized
         # source is still the registered candidate blob.

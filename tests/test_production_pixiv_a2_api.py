@@ -3,6 +3,30 @@ from app.models import SourceConceptProductRun,SourceConceptProductMediaBinding,
 from app.services import pixiv_product_integration_service as product
 from test_production_pixiv_a1 import real_api,ids
 from test_production_pixiv_a2 import scope_for,build,apply,seed_historical_partial
+from test_production_pixiv_a2 import _seed_untyped_alias_occurrence
+
+
+@pytest.mark.parametrize('case',['constraint','typed_review','extra_member','unassigned_literal'])
+def test_untyped_alias_real_api_keeps_component_boundary_and_set_algebra(real_api,case):
+    from app.models import SourceConcept,SourceConceptSignal,SourceConceptSignalLink
+    client,factory,_,_=real_api
+    with factory() as db:
+        _,signal,_=_seed_untyped_alias_occurrence(db,cannot_link=case=='constraint')
+        if case in {'typed_review','extra_member'}:
+            link=db.query(SourceConceptSignalLink).filter_by(signal_id=signal.id).one()
+            concept=db.get(SourceConcept,link.concept_id)
+            if case=='typed_review':concept.concept_type_hint='work'
+            else:
+                peer=db.query(SourceConceptSignal).filter(SourceConceptSignal.id!=signal.id).first()
+                db.add(SourceConceptSignalLink(signal_id=peer.id,concept_id=concept.id,link_status='needs_review',run_id=link.run_id,
+                    resolver_version='isolated-constraint-regression',resolution_reason_code='constraint_component_member'))
+        db.commit()
+    expected={1,2,3,4} if case=='unassigned_literal' else {1,2,3}
+    assert ids(client,'MoonPetal')==expected
+    literal_and_alias=ids(client,'SunPetal')
+    assert literal_and_alias=={1,2,3,4}
+    assert ids(client,'MoonPetal SunPetal')==expected&literal_and_alias
+    assert ids(client,'SunPetal -MoonPetal')==literal_and_alias-expected
 
 
 def test_completion_non_name_withdraws_source_search_support(real_api,tmp_path):

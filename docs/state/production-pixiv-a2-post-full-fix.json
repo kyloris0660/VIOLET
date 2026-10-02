@@ -2,8 +2,12 @@
   "schema_version": "violet.production-pixiv-a2.post-full-fix.v1",
   "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
   "authorization": "owner-20260929-section-2.2-impact-verification",
-  "scope": "verified-launcher-runtime-metadata-live-source-revision-owned-business-and-chip-concept",
+  "scope": "verified-launcher-runtime-metadata-live-source-revision-owned-business-chip-and-literal-component-boundary",
   "files": {
+    "backend/app/services/source_concept_search_service.py": {
+      "before_sha256": "fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd",
+      "after_sha256": "2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f"
+    },
     "docs/state/production-pixiv-a2-approved-projection.json": {
       "before_sha256": null,
       "after_sha256": "6173b47634370f1dae565b0e2a1e1835877da6a5603ba5d12477b07dc1405eef"
@@ -26,7 +30,7 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "a3de2683fb5170aeaccf335ee956463f251790d5fa7f050754c3242135eecffe"
+      "after_sha256": "9524b774bc467895318b022033e5c659ddb4a9e17dbe5bf1f7d4ff6ab9579004"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
@@ -42,7 +46,11 @@
     },
     "tests/test_production_pixiv_a2.py": {
       "before_sha256": "59689ff3747349dd0e274365a3005eb3b7f24b07461cfc1167fb2272eec96f08",
-      "after_sha256": "06980658af8cb99d6db6644eb5010980e2d4dc6d0b5f66c2a2c72082b4eba5b2"
+      "after_sha256": "3ace2725ded449967409849fe6b22f09ea485a94548e77f66329412f3a919b31"
+    },
+    "tests/test_production_pixiv_a2_api.py": {
+      "before_sha256": "a6ea06fd5c74fbd3721bd15b929ef7a6f9ecd52e86b58e93678023c047b3fc66",
+      "after_sha256": "94c15ddc09c657674af9f7221d99cf1b00bbe7dacaf388617604ba254d46a338"
     },
     "tests/test_production_pixiv_a2_evidence.py": {
       "before_sha256": "9349d7186bd6c2e01dd57be066bd3210375098ca1181f956a522629cd160953a",
@@ -50,7 +58,7 @@
     },
     "tests/test_production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "1a803292a92905b3e235ab52af01f8ff16d07ea47366986ec91913d26b26b8b0"
+      "after_sha256": "7831134d3f9c7db3b204717482753f1f1ab02c53467831d506d9b8ce5f153bd9"
     },
     "tests/test_trusted_git.py": {
       "before_sha256": "ba1d17d23ba2c1cc68b652c7f01fa0e2114337913388914f19ef27223cd43078",

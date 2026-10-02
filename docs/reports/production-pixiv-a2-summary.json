@@ -1,6 +1,6 @@
 {
   "contract_id": "production_pixiv_a2_v1",
-  "target_met": true,
+  "target_met": false,
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
@@ -188,5 +188,12 @@
     "historical_http_spacing_evidence": "Lead accepted task 43 exception; not reconstructable",
     "historical_command_gaps_below_two_seconds": 1594,
     "historical_minimum_command_gap_seconds": 1.740068
+  },
+  "review102": {
+    "thread_count": 102,
+    "current_completion_withdrawn": true,
+    "actual_before_command": "correction29-review102-before-real-pg-20261002-1-command-private.json",
+    "historical_b5_full_contract_only": true,
+    "new_candidate_validation_pending": true
   }
 }

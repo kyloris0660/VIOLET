@@ -372,11 +372,24 @@ def _production_alias_direct_evidence_media_ids(db: Session, concept_ids: Sequen
     if not names:return set()
     binding=SourceConceptProductMediaBinding
     other_link=aliased(SourceConceptSignalLink);other_concept=aliased(SourceConcept)
+    peer_link=aliased(SourceConceptSignalLink)
+    other_member=exists().where(and_(
+        peer_link.concept_id==other_link.concept_id,peer_link.run_id==other_link.run_id,
+        peer_link.signal_id!=SourceConceptSignal.id,
+        peer_link.link_status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES),
+    )).correlate(other_link,SourceConceptSignal)
+    unassigned_placeholder=and_(
+        other_link.link_status=='needs_review',other_concept.status=='needs_review',
+        other_concept.concept_type_hint=='unknown',
+        func.coalesce(other_link.resolution_reason_code,'').in_(('single_signal_component','unknown_role_requires_corroboration')),
+        func.coalesce(other_link.negative_reason_code,'')=='unknown_role_guard',
+        ~other_member,
+    )
     accepted_elsewhere=exists().where(and_(
         other_link.signal_id==SourceConceptSignal.id,
         other_link.run_id==SourceConceptEvidence.run_id,
         other_link.concept_id==other_concept.id,other_link.concept_id.notin_(concept_ids),
-        other_link.link_status=='active',other_concept.status=='active',
+        other_link.link_status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES),other_concept.status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES),~unassigned_placeholder,
     )).correlate(SourceConceptSignal,SourceConceptEvidence)
     return {int(row[0]) for row in db.query(binding.media_id).join(
         SourceConceptEvidence,SourceConceptEvidence.id==binding.evidence_id).join(

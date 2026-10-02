@@ -2,11 +2,25 @@
 import hashlib
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from scripts import production_pixiv_a2_post_full_fix as contract
 from scripts.trusted_git import resolve_trusted_git_executable, trusted_git_environment
+
+
+def _literal_query_sources():
+    after = (Path(__file__).resolve().parents[1] / contract.LITERAL_QUERY_FILE).read_bytes().replace(b'\r\n', b'\n')
+    start = after.index(b'    peer_link=aliased(SourceConceptSignalLink)\n')
+    end = after.index(b'    accepted_elsewhere=exists().where(and_(', start)
+    before = after[:start] + after[end:]
+    before = before.replace(
+        b'other_link.link_status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES),other_concept.status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES),~unassigned_placeholder,',
+        b"other_link.link_status=='active',other_concept.status=='active',")
+    assert hashlib.sha256(before).hexdigest() == contract.LITERAL_QUERY_BEFORE_SHA256
+    assert hashlib.sha256(after).hexdigest() == contract.LITERAL_QUERY_AFTER_SHA256
+    return before, after
 
 
 def _fixture(tmp_path, monkeypatch, semantic_files=False):
@@ -21,7 +35,7 @@ def _fixture(tmp_path, monkeypatch, semantic_files=False):
     before = {}
     for name in contract.ALLOWED_FILES:
         path = repo / name; path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b'original source\n')
+        path.write_bytes(_literal_query_sources()[0] if name == contract.LITERAL_QUERY_FILE else b'original source\n')
         before[name] = hashlib.sha256(path.read_bytes()).hexdigest()
     if semantic_files:
         for name in contract.REPLAY_SOURCE_FILES | {'backend/app/semantic_fixture.py'}:
@@ -33,16 +47,37 @@ def _fixture(tmp_path, monkeypatch, semantic_files=False):
     base = run('rev-parse', 'HEAD'); monkeypatch.setattr(contract, 'BASELINE', base)
     files = {}
     for name in contract.ALLOWED_FILES:
-        path = repo / name; path.write_bytes(b'bounded corrected source\n')
+        path = repo / name; path.write_bytes(_literal_query_sources()[1] if name == contract.LITERAL_QUERY_FILE else b'bounded corrected source\n')
         files[name] = {'before_sha256': before[name],
                        'after_sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
     registry = {'schema_version': 'violet.production-pixiv-a2.post-full-fix.v1',
         'baseline_head': base, 'authorization': 'owner-20260929-section-2.2-impact-verification',
         'scope': contract.REGISTRY_SCOPE, 'files': files}
+    if semantic_files:
+        # The recorded source replay predates the new query correction.
+        source = repo / contract.LITERAL_QUERY_FILE
+        source.write_bytes(_literal_query_sources()[0])
+        registry['files'][contract.LITERAL_QUERY_FILE]['after_sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
     registry_path = repo / contract.REGISTRY
     registry_path.write_text(json.dumps(registry), encoding='utf-8')
     run('add', '.'); run('commit', '-qm', 'registered correction')
     return repo, run, base, run('rev-parse', 'HEAD'), registry, registry_path
+
+
+@pytest.mark.parametrize('change',['none','before','after','extra_runtime','missing_pending_guard','missing_placeholder_member_guard'])
+def test_literal_query_delta_pins_the_entire_verified_module(change):
+    before,after = _literal_query_sources()
+    if change == 'before': before += b'\n# changed baseline\n'
+    elif change == 'after': after += b'\n# changed result\n'
+    elif change == 'extra_runtime': after += b'\nexec("unregistered")\n'
+    elif change == 'missing_pending_guard': after = after.replace(b'other_link.link_status.in_(VISIBLE_SOURCE_CONCEPT_STATUSES)', b"other_link.link_status=='active'")
+    elif change == 'missing_placeholder_member_guard': after = after.replace(b'        ~other_member,', b'        True,')
+    if change == 'none':
+        result = contract.verify_literal_query_delta(before,after)
+        assert not result['behavior_neutral_claimed'] and result['current_query_and_precision_verification_required']
+    else:
+        with pytest.raises(ValueError,match='literal_query_delta'):
+            contract.verify_literal_query_delta(before,after)
 
 
 def test_post_full_source_contract_preserves_actual_full_baseline(tmp_path, monkeypatch):
@@ -82,10 +117,14 @@ def test_post_full_source_contract_rejects_unregistered_or_changed_inputs(tmp_pa
         contract.verify_registered_delta(repo, base, candidate)
 
 
-@pytest.mark.parametrize('change', ['none', 'unfinished', 'wrong_head', 'provider', 'ledger', 'identity', 'runtime_blob'])
+@pytest.mark.parametrize('change', ['none', 'unfinished', 'wrong_head', 'provider', 'ledger', 'identity', 'runtime_blob', 'query_blob'])
 def test_source_replay_receipt_requires_unchanged_real_git_source(tmp_path, monkeypatch, change):
     repo, run, base, prior, registry, registry_path = _fixture(tmp_path, monkeypatch, semantic_files=True)
     monkeypatch.setattr(contract, 'SOURCE_REPLAY_HEAD', prior)
+    query_source = repo / contract.LITERAL_QUERY_FILE
+    query_source.write_bytes(_literal_query_sources()[1])
+    if change == 'query_blob': query_source.write_bytes(query_source.read_bytes() + b'\n# unregistered query change\n')
+    registry['files'][contract.LITERAL_QUERY_FILE]['after_sha256'] = hashlib.sha256(query_source.read_bytes()).hexdigest()
     evidence = repo / 'scripts/production_pixiv_a2_evidence.py'
     evidence.write_bytes(b'new bounded evidence gate\n')
     registry['files']['scripts/production_pixiv_a2_evidence.py']['after_sha256'] = hashlib.sha256(evidence.read_bytes()).hexdigest()
