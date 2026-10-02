@@ -38,7 +38,7 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "2540a38c74ae1e20e48762cef665c5926793e097ca9d96e17f88ff09ff615395"
+      "after_sha256": "37895ddb968dc82c97053fb6be14036be41babbbc1f1f544e8ee581aebf2ec52"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",

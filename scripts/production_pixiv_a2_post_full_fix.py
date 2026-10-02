@@ -53,7 +53,7 @@ REPLAY_GATE_FILES = frozenset({
     LITERAL_QUERY_FILE, 'tests/test_production_pixiv_a2_api.py',
     'docs/state/production-pixiv-a2-ignored-inputs.json',
     'scripts/trusted_git.py', 'backend/app/services/production_pixiv_release_provenance.py',
-    'tests/test_production_pixiv_adjudication.py',
+    'tests/test_production_pixiv_adjudication.py', 'tests/test_trusted_git.py',
 })
 
 
