@@ -209,16 +209,23 @@ class AdjudicationBudget:
             if usage and not known:
                 raise AdjudicationBudgetBlocked('adjudication_usage_invalid')
             charged=self._cost(usage['prompt_tokens'],usage['completion_tokens']) if known else row['reserved_microusd']
-            outcome=dict(status='success' if success else 'failed',usage_known=known,
+            previous_charge=row.get('charged_microusd',row['reserved_microusd'])
+            projected=self._charged(state)-previous_charge+charged
+            exceeded=charged>row['reserved_microusd'] or projected>self.identity['cap_microusd']
+            outcome=dict(status='success' if success and not exceeded else 'failed',usage_known=known,
                          usage={key:usage[key] for key in ('prompt_tokens','completion_tokens')} if known else None,
                          charged_microusd=charged)
             if row['status']!='reserved':
+                if exceeded:
+                    raise AdjudicationBudgetBlocked('adjudication_usage_exceeded_conservative_reservation')
                 if any(row.get(k)!=v for k,v in outcome.items()):
                     raise ValueError('adjudication_settlement_outcome_changed')
                 return False
-            row.update(**outcome,business_valid=bool(success))
+            # Actual provider charges cannot be discarded. Persist an overrun
+            # as charged failure before any complete cache can be published.
+            row.update(**outcome,business_valid=bool(success) and not exceeded)
             self._write(state)
-            if charged>row['reserved_microusd']:
+            if exceeded:
                 raise AdjudicationBudgetBlocked('adjudication_usage_exceeded_conservative_reservation')
             return True
 
@@ -263,8 +270,18 @@ class AdjudicationBudget:
             if len(matches) != 1 or matches[0]['key'] != key:
                 raise AdjudicationBudgetBlocked('adjudication_cached_response_attempt_not_unique')
             row = matches[0]
-            if row['status'] != 'success' or row.get('business_valid', True) is not True:
+            if not self._eligible_cached_response(row):
                 raise AdjudicationBudgetBlocked('adjudication_cached_response_not_business_valid')
+            if self._charged(state)>self.identity['cap_microusd']:
+                raise AdjudicationBudgetBlocked('adjudication_cached_response_budget_exceeded')
+
+    @staticmethod
+    def _eligible_cached_response(row):
+        """One settled paid source; historical overrun success is not authority."""
+        charged=row.get('charged_microusd');reserved=row.get('reserved_microusd')
+        return (row.get('status')=='success' and row.get('business_valid',True) is True
+                and type(charged) is int and type(reserved) is int
+                and 0<=charged<=reserved)
 
     def response_identity(self, reservation):
         with self._locked() as state:

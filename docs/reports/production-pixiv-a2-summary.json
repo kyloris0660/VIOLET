@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
+  "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -176,13 +176,22 @@
     }
   },
   "post_full_fix": {
-    "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
+    "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
     "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
     "registered_source_files": 32,
-    "status": "frozen_b12_current_affected_validation_and_native_role_replay_pending",
+    "status": "frozen_b13_current_affected_validation_and_native_role_replay_pending",
     "additional_full_invocations": 0,
     "new_provider_calls": 0,
-    "behavior_neutral_claimed": false
+    "behavior_neutral_claimed": false,
+    "formal_progress": {
+      "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
+      "focused_passed": 1040,
+      "focused_skipped": 3,
+      "focused_warnings": 3,
+      "postgresql_passed": 142,
+      "historical_status": "actual_running_not_yet_accepted",
+      "sequence": "correction29-post-full-a64c77e-20261003-1-sequence-private.json"
+    }
   },
   "reviews103104": {
     "implementation_plan": "correction29-reviews103104-implementation-plan-20261002-private.json",
@@ -590,7 +599,7 @@
     "role_partial_source_complete_cache_rejected": true,
     "exact_original_historical_nodes": 88,
     "target_met": false,
-    "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
+    "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
     "development": {
       "command": "correction29-reviews107109-development-20261003-5-command-private.json",
       "xml": "correction29-reviews107109-development-20261003-5.xml",
@@ -618,6 +627,50 @@
       "new_provider_calls": 0,
       "new_full_suite_invocations": 0,
       "original_role_source_gap_not_repaired": true
+    },
+    "b13_fixture_development": {
+      "command": "correction29-b13-retained-source-fixture-development-20261003-1-command-private.json",
+      "log": "correction29-b13-retained-source-fixture-development-20261003-1.log",
+      "xml": "correction29-b13-retained-source-fixture-development-20261003-1.xml",
+      "passed": 65,
+      "failed": 0,
+      "scope": "Retained original failed-call proof plus reviews107-109; prior full bounded development176 retained separately."
     }
+  },
+  "b12_focused_negative_history": {
+    "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
+    "command": "correction29-post-full-5578e7d-20261003-1-focused-command-private.json",
+    "log": "correction29-post-full-5578e7d-20261003-1-focused.log",
+    "xml": "correction29-post-full-5578e7d-20261003-1-focused.xml",
+    "passed": 1038,
+    "failed": 2,
+    "skipped": 3,
+    "warnings": 3,
+    "failed_nodes": [
+      "tests.test_production_pixiv_release_inputs::test_role_release_rejects_actual_failed_or_recovered_invalid_call[failed-False]",
+      "tests.test_production_pixiv_release_inputs::test_role_release_rejects_actual_failed_or_recovered_invalid_call[failed-True]"
+    ],
+    "postgresql_executed": false,
+    "historical_executed": false,
+    "root_cause": "Strict producer admission prevents failed call publishing; old release fixture had no retained fact to verify.",
+    "fixture_fix": "tests/test_production_pixiv_release_inputs.py",
+    "runtime_oracle_weakened": false
+  },
+  "reviews110111": {
+    "status": "implemented_development_passed_current_freeze_pending",
+    "thread_count": 111,
+    "development": {
+      "command": "correction29-reviews110111-development-20261003-2-command-private.json",
+      "log": "correction29-reviews110111-development-20261003-2.log",
+      "xml": "correction29-reviews110111-development-20261003-2.xml",
+      "passed": 286,
+      "failed": 0,
+      "original_counterexamples_before_failed": 16,
+      "direct_counterexamples_after_passed": 17
+    },
+    "preservation_and_plan": "correction29-reviews110111-preservation-and-plan-20261003-private.json",
+    "actual_reservation_overruns_in_original_ledger": 0,
+    "new_provider_calls": 0,
+    "production_restarted": false
   }
 }

@@ -231,10 +231,19 @@ def verify_launcher_action(launch,repo,candidate):
 
 def configured_launcher_root(repo):
     """Use this repository's shared Git root, not a supplied receipt path."""
-    import subprocess
     from pathlib import Path
-    common=subprocess.check_output(['git','rev-parse','--path-format=absolute','--git-common-dir'],cwd=repo,text=True).strip()
-    return Path(common).resolve().parent
+    from scripts.trusted_git import resolve_trusted_git_executable,run_trusted_git_bytes
+    root=Path(repo).resolve(strict=True)
+    git=resolve_trusted_git_executable(repo_root=root)
+    def common_dir(worktree):
+        observed=run_trusted_git_bytes(worktree,['rev-parse','--path-format=absolute','--git-common-dir'],git=git)
+        if observed.returncode!=0:raise ValueError('a2_launcher_git_common_dir_invalid')
+        common=Path(observed.stdout.decode('utf-8').strip())
+        if not common.is_absolute() or not common.is_dir():raise ValueError('a2_launcher_git_common_dir_invalid')
+        return common.resolve(strict=True)
+    common=common_dir(root);canonical=common.parent
+    if common_dir(canonical)!=common:raise ValueError('a2_launcher_git_common_dir_changed')
+    return canonical
 
 
 def verify_normal_entry_provenance(launch,repo):

@@ -189,8 +189,9 @@ def test_source_replay_receipt_requires_unchanged_real_git_source(tmp_path, monk
             source.write_bytes(source.read_bytes() + b'\n# unregistered release gate\n')
         registry['files'][name]['after_sha256'] = hashlib.sha256(source.read_bytes()).hexdigest()
     evidence = repo / 'scripts/production_pixiv_a2_evidence.py'
-    evidence.write_bytes(b'new bounded evidence gate\n')
-    registry['files']['scripts/production_pixiv_a2_evidence.py']['after_sha256'] = hashlib.sha256(evidence.read_bytes()).hexdigest()
+    if 'scripts/production_pixiv_a2_evidence.py' not in contract.RELEASE_GATE_SOURCE_DELTAS:
+        evidence.write_bytes(b'new bounded evidence gate\n')
+        registry['files']['scripts/production_pixiv_a2_evidence.py']['after_sha256'] = hashlib.sha256(evidence.read_bytes()).hexdigest()
     if change == 'runtime_blob':
         (repo / 'backend/app/semantic_fixture.py').write_bytes(b'changed semantic source\n')
     registry_path.write_text(json.dumps(registry), encoding='utf-8')

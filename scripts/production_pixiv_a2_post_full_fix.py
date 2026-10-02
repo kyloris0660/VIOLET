@@ -9,6 +9,8 @@ Review106 adds strict settled-call admission before runtime exact, semantic,
 or legacy cache reuse, with the original paid ticket retained on migration.
 Reviews107-109 apply that admission to role units, bind the exact historical
 88 nodes and preserve every original debit field under the sealed backfill.
+Reviews110-111 bind the canonical launcher root to trusted Git and refuse
+actual reservation/cap overruns in settlement, cache and native source proof.
 It never describes that correction as documentation-only or as another full run.
 """
 import hashlib
@@ -22,13 +24,14 @@ REGISTRY_SCOPE = 'verified-launcher-runtime-metadata-live-source-revision-owned-
 LITERAL_QUERY_FILE = 'backend/app/services/source_concept_search_service.py'
 LITERAL_QUERY_BEFORE_SHA256 = 'fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd'
 LITERAL_QUERY_AFTER_SHA256 = '2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f'
-RELEASE_GATE_SOURCE_DELTAS = {'backend/app/services/production_pixiv_role_extraction.py': {'before_sha256': '286f861a58842384ce5b862fd67fc988c703ad3fbaaf73efc6a3a2f903ff87ca', 'after_sha256': '151e42935adb5f88e5e8b04acd3d54450a2cb4d181cb1610d764dcd6bf1d0a56'}, 'scripts/production_pixiv_budget_authority.py': {'before_sha256': '2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744', 'after_sha256': '27a20b36948d1cff9ef1c9ef4f9e5e7e109c697f1777212a657e8ed325b9686a'}, 'backend/app/services/source_concept_budget.py': {'before_sha256': '236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57', 'after_sha256': '45b732d3955f743ecf05941cc82b99d2e6fecd93f12d6a8fcdcce836586bfb10'}, 'backend/app/services/source_concept_resolver_service.py': {'before_sha256': 'b1639c8ee41001799a6bffc7d4a87cdb3b3223e7ac88c25d5145d736041f92e3', 'after_sha256': '138386e98b08b36834be643be79340f9a29e93ef052d54da26ae232116922ac9'}, 'backend/app/services/production_pixiv_release_provenance.py': {'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10', 'after_sha256': 'e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80'}, 'scripts/trusted_git.py': {'before_sha256': '3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1', 'after_sha256': '8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8'}}
+RELEASE_GATE_SOURCE_DELTAS = {'backend/app/services/production_pixiv_role_extraction.py': {'before_sha256': '286f861a58842384ce5b862fd67fc988c703ad3fbaaf73efc6a3a2f903ff87ca', 'after_sha256': '151e42935adb5f88e5e8b04acd3d54450a2cb4d181cb1610d764dcd6bf1d0a56'}, 'scripts/production_pixiv_budget_authority.py': {'before_sha256': '2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744', 'after_sha256': '27a20b36948d1cff9ef1c9ef4f9e5e7e109c697f1777212a657e8ed325b9686a'}, 'backend/app/services/source_concept_budget.py': {'before_sha256': '236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57', 'after_sha256': 'da798e3fbabad3412528d44f72a2944b8395acb86554a9a0c58bfb9aaf85209d'}, 'backend/app/services/source_concept_resolver_service.py': {'before_sha256': 'b1639c8ee41001799a6bffc7d4a87cdb3b3223e7ac88c25d5145d736041f92e3', 'after_sha256': '138386e98b08b36834be643be79340f9a29e93ef052d54da26ae232116922ac9'}, 'backend/app/services/production_pixiv_release_provenance.py': {'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10', 'after_sha256': '30e4b8effa83f6ed4d5b06282f9f78cc516c55cefd2b22ce07a1903ca90e11bb'}, 'scripts/trusted_git.py': {'before_sha256': '3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1', 'after_sha256': '8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8'}, 'scripts/production_pixiv_a2_evidence.py': {'before_sha256': 'cbbf71fe6594197e4503c30fd8cfc4f269659ce1350a79f2ed1ab84be15b8822', 'after_sha256': '57824ba98fba480009cd3a36a36c27e849f02f205084bff31108500f4f2e7be0'}}
 ALLOWED_FILES = frozenset({
     'backend/app/services/production_pixiv_role_extraction.py',
     'scripts/production_pixiv_budget_authority.py',
     'docs/state/production-pixiv-a2-budget-prefix-compatibility.json',
     'tests/test_production_pixiv_role_extraction.py', 'tests/test_production_pixiv_reviews107_109.py',
     'tests/test_production_pixiv_role_coverage.py',
+    'tests/test_production_pixiv_reviews110_111.py',
     'backend/app/services/source_concept_resolver_service.py',
     'backend/app/services/source_concept_budget.py', 'tests/test_source_concept_task_budget.py',
     'scripts/trusted_git.py', 'scripts/production_pixiv_a2_full_suite.py',
@@ -58,6 +61,7 @@ REPLAY_GATE_FILES = frozenset({
     'docs/state/production-pixiv-a2-budget-prefix-compatibility.json',
     'tests/test_production_pixiv_role_extraction.py', 'tests/test_production_pixiv_reviews107_109.py',
     'tests/test_production_pixiv_role_coverage.py',
+    'tests/test_production_pixiv_reviews110_111.py',
     'backend/app/services/source_concept_resolver_service.py',
     'backend/app/services/source_concept_budget.py', 'tests/test_source_concept_task_budget.py',
     'docs/state/production-pixiv-a2-required-tests.json',

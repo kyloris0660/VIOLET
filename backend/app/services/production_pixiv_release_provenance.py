@@ -10,6 +10,7 @@ from dataclasses import asdict
 from .pixiv_metadata_projection_service import canonical_fingerprint
 from . import source_concept_resolver_service as resolver
 from .production_pixiv_role_extraction import checked_cache_path
+from .source_concept_budget import AdjudicationBudget
 
 
 def replay_role_request_messages(groups):
@@ -155,7 +156,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             # Failed and revoked calls remain charged history. They cannot
             # supply answer evidence, including otherwise parseable siblings.
             # An independent valid retry must still prove the retained facts.
-            if call.get('status')!='success' or call.get('business_valid',True) is not True:
+            if not AdjudicationBudget._eligible_cached_response(call):
                 continue
             if call.get('usage_known') and call['usage']!={k:saved['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
                 raise ValueError('semantic_role_source_usage_changed')
@@ -166,7 +167,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             # a self-consistent question/answer file alone is insufficient.
             matching_calls=calls_by_key['role-extraction:'+fingerprint]
             source_attempts=[call['id'] for call in matching_calls
-                if call.get('status')=='success' and call.get('business_valid',True) is True
+                if AdjudicationBudget._eligible_cached_response(call)
                 and (not call.get('usage_known') or
                     call['usage']=={k:saved.get('usage',{}).get(k) for k in ('prompt_tokens','completion_tokens')})]
             if not source_attempts:
@@ -399,7 +400,7 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
         response=source.get('budget_response')
         if response:
             call=calls.get(response['reservation'])
-            if (not call or call['status']!='success' or call.get('business_valid',True) is not True or call['key']!=response['key']
+            if (not call or not AdjudicationBudget._eligible_cached_response(call) or call['key']!=response['key']
                 or call['key'] not in expected_keys):
                 raise ValueError('semantic_judgment_attempt_not_settled')
             if call.get('usage_known') and call['usage']!={k:response['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
@@ -409,7 +410,7 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
             # successful call for this exact original input establishes a
             # reusable source; unrelated or ambiguous tickets cannot fill it.
             matches=[call for key in expected_keys for call in calls_by_key[key]
-                     if call['status']=='success' and call.get('business_valid',True) is True]
+                     if AdjudicationBudget._eligible_cached_response(call)]
             if len(matches)!=1:
                 raise ValueError('semantic_legacy_judgment_source_attempt_missing_or_ambiguous')
             call=matches[0]
