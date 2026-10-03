@@ -129,7 +129,32 @@ def _production_messages(messages):
 
 
 def _unit_path(cache_dir,unit):
+    derived=_derived_unit_path(cache_dir,unit)
+    if derived.exists():return derived
     return checked_cache_path(cache_dir,Path(cache_dir)/'units'/f'{canonical_fingerprint(unit.extraction_key)}.json')
+
+
+def _derived_unit_path(cache_dir,unit):
+    from .production_pixiv_role_sources import DERIVED_CACHE_VERSION
+    return checked_cache_path(cache_dir,Path(cache_dir)/'derived-units'/DERIVED_CACHE_VERSION/
+        f'{canonical_fingerprint(unit.extraction_key)}.json')
+
+
+def _publish_derived_unit(cache_dir,unit,value):
+    """Versioned projection only; original raw and old unit bytes survive."""
+    import hashlib
+    previous_path=_unit_path(cache_dir,unit)
+    destination=_derived_unit_path(cache_dir,unit)
+    if previous_path.is_file():
+        previous=previous_path.read_bytes();digest=hashlib.sha256(previous).hexdigest()
+        if json.loads(previous)==value:return
+        history=checked_cache_path(cache_dir,Path(cache_dir)/'derived-unit-history'/f'{digest}.json')
+        history.parent.mkdir(parents=True,exist_ok=True)
+        if history.exists():
+            if history.read_bytes()!=previous:raise ValueError('role_previous_projection_backup_changed')
+        else:
+            with history.open('xb') as stream:stream.write(previous)
+    _atomic_write_json(destination,value)
 
 
 def _adapt_response_record(row,unit):
@@ -255,14 +280,15 @@ def _revalidate_cached_response(cached,unit):
         bundle=deterministic_bundle_for_unit(unit,run_id='production-pixiv-roles',run_label='production-pixiv-roles')
         return {**cached,'verdict':bundle.record_verdicts[0].extraction_verdict,
             'candidates':[asdict(candidate) for candidate in bundle.candidates]}
-    adapted=_adapt_response_record(previous,unit)
+    from .production_pixiv_role_sources import validate_answer_unit
+    admitted=validate_answer_unit(previous,unit.unit_group)
+    adapted=admitted['validated_response']
     # Cache metadata and a paid ticket do not authenticate the derived role.
     # Validate every read even when the adapter leaves the answer unchanged.
-    verdict,candidates,*_=validate_extraction_record(adapted,unit.unit_group)
-    projection=[asdict(candidate) for candidate in candidates]
-    if (adapted==previous and cached.get('verdict')==verdict.extraction_verdict
+    projection=admitted['candidates']
+    if (adapted==previous and cached.get('verdict')==admitted['verdict']
         and cached.get('candidates')==projection):return cached
-    return {**cached,'verdict':verdict.extraction_verdict,
+    return {**cached,'verdict':admitted['verdict'],
         'candidates':projection,
         'validated_response':adapted,'response_adapter_version':'production_tag_provenance_v2',
         'original_cached_response_fingerprint':canonical_fingerprint(previous)}
@@ -325,15 +351,15 @@ def _merge_valid_target_answers(unit,row,candidates,previous=None):
     protected=set(role_target_coverage(unit,previous)['outcomes']) if previous else set()
     old_valid,old_missing,old_error=checked(old,(previous or {}).get('candidates',[]))
     new_valid,new_missing,new_error=checked(row,[asdict(c) for c in candidates])
-    dispositions={**old_missing,**old_valid}
-    for name,answer in new_missing.items():
-        if name not in protected:dispositions.setdefault(name,answer)
+    dispositions=dict(old_valid)
     dispositions.update({name:answer for name,answer in new_valid.items() if name not in protected})
     incoming=[c for c in row.get('candidates',[])
         if not any(_context_candidate_matches(c,name) for name in protected)]
     return {**row,'candidates':list({canonical_fingerprint(c):c for c in
         [*old.get('candidates',[]),*incoming]}.values()),
         'target_dispositions':[dispositions[name] for name in sorted(dispositions)],
+        'target_disposition_diagnostics':[answer for name,answer in {**old_missing,**new_missing}.items()
+            if name not in dispositions],
         'target_dispositions_validation_error':old_error or new_error}
 
 
@@ -345,6 +371,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         self.cache_dir=Path(cache_dir);self.units={unit.unit_group.group_key:unit for unit in units}
         self.last_usage={};self.calls=0;self.raw_cache_hits=0;self.gate=gate or ExtractionDispatchGate()
         self.admitted_units={};self.publishing_response=None;self.retained_partials={}
+        self.admitted_sources=defaultdict(list);self.publishing_sources={}
 
     def is_available(self):return self.provider.is_available()
     def get_provider_name(self):return self.provider.get_provider_name()
@@ -352,22 +379,49 @@ class BudgetedExtractionProvider(BaseLLMProvider):
 
     def require_unit_source(self,unit,cached):
         if not unit.llm_required and cached.get('origin')=='existing_f7a_deterministic':return
-        response=cached.get('budget_response') or self.admitted_units.get(unit.unit_group.group_key)
-        if not response:
+        from .production_pixiv_role_sources import validate_record_projection
+        sources=self.admitted_sources.get(cached.get('input_fingerprint'),[])
+        if not sources:
             raise AdjudicationBudgetBlocked('role_unit_cache_original_source_not_admitted')
-        self.budget.require_cached_response(key=response['key'],reservation=response.get('reservation'))
+        validate_record_projection(cached,sources)
+
+    def _source_raw(self,saved):
+        fingerprint=saved.get('input_fingerprint','')
+        paths=[self.cache_dir/'raw'/f'{fingerprint}.json',
+            *(self.cache_dir/'raw'/'attempts').glob(fingerprint+'.*.json'),
+            *(self.cache_dir/'response-recovery').glob(fingerprint+'.*.json')]
+        for path in paths:
+            path=checked_cache_path(self.cache_dir,path)
+            if path.is_file():
+                raw=path.read_bytes()
+                if json.loads(raw)==json.loads(json.dumps(saved)):return path,raw
+        raise ValueError('role_unit_real_original_raw_required')
+
+    def _admit_saved(self,saved,groups):
+        from .production_pixiv_role_sources import RoleSourceContract
+        from .production_pixiv_release_provenance import _anchored_legacy_role_calls,_anchored_role_calls
+        path,raw=self._source_raw(saved)
+        with self.budget._locked() as current:
+            ledger=json.loads(json.dumps(current))
+        try:
+            admitted=RoleSourceContract(ledger,legacy_calls=lambda:_anchored_legacy_role_calls(self.cache_dir),
+                schema_history=lambda:_anchored_role_calls(self.cache_dir)).admit(
+                saved,groups,raw,path=str(path.relative_to(self.cache_dir)))
+        except ValueError as exc:
+            if str(exc).startswith('role_source_call_not_admitted:'):
+                raise AdjudicationBudgetBlocked('role_unit_cache_original_source_not_admitted:'+str(exc)) from exc
+            raise
+        self.publishing_sources={s['group'].group_key:s for s in admitted['sources']}
+        for source in admitted['sources']:
+            question=canonical_fingerprint(group_prompt_payload(source['group']))
+            if not any(s['unit_source_proof']==source['unit_source_proof'] for s in self.admitted_sources[question]):
+                self.admitted_sources[question].append(source)
+        return admitted
 
     @staticmethod
     def logical_keys(groups):
-        keys=[]
-        for group in groups:
-            targets=[tag.get('raw_tag','') for tag in group.tags]
-            if group.data_type_label and ': ' in group.data_type_label:
-                try:targets=json.loads(group.data_type_label.split(': ',1)[1])
-                except (ValueError,TypeError):pass
-            context=sorted(canonical_source_key(tag.get('raw_tag','')) for tag in group.tags)
-            keys.extend('role-target:'+canonical_fingerprint({'raw':canonical_source_key(raw),'context':context}) for raw in targets)
-        return sorted(set(keys))
+        from .production_pixiv_role_sources import role_logical_keys
+        return role_logical_keys(groups)
 
     def validate_saved(self,saved):
         """Rebuild the paid question, including groups absent from this resume batch."""
@@ -377,7 +431,8 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 'temperature':saved['temperature'],'max_tokens':saved['max_tokens']})
             if expected!=saved['input_fingerprint']:raise ValueError('role_raw_question_identity_mismatch')
             groups=[SourceCandidateInputGroup(**row) for row in saved['request_groups']]
-            current=_production_messages(extraction_messages(groups))
+            from .production_pixiv_release_provenance import replay_role_request_messages
+            current=replay_role_request_messages(groups)
             if current!=saved['request_messages']:raise ValueError('role_raw_current_prompt_mismatch')
         else:
             rows=json.loads(saved['content'])['records']
@@ -395,34 +450,28 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             by_key={row['group_key']:row for row in rows}
             if set(by_key)!={g.group_key for g in groups}:raise ValueError('role_response_group_identity')
             for group in groups:
-                row=_adapt_response_record(by_key[group.group_key],SimpleNamespace(unit_group=group))
-                verdict,candidates,*_=validate_extraction_record(row,group)
-                if verdict.extraction_verdict.startswith('extraction_error'):raise ValueError('role_response_error_verdict')
+                from .production_pixiv_role_sources import validate_answer_unit
+                answer=validate_answer_unit(by_key[group.group_key],group)
+                if answer['partial_validation_error']:raise ValueError(answer['partial_validation_error'])
                 if group.data_origin in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}:
-                    targets=json.loads(group.data_type_label.split(': ',1)[1])
-                    coverage=role_target_coverage(SimpleNamespace(raw_values=targets,unit_group=group),{
-                        'verdict':verdict.extraction_verdict,'candidates':[asdict(c) for c in candidates],
-                        'validated_response':row})
-                    if coverage['missing_raw_tags']:raise ValueError('role_response_missing_target_dispositions')
+                    if answer['coverage']['missing_raw_tags']:raise ValueError('role_response_missing_target_dispositions')
         except (ValueError,TypeError,KeyError,SourceNameCandidateExtractionError) as exc:error=str(exc)
         return groups,error
 
     def recover_saved(self,saved):
         groups,error=self.validate_saved(saved)
         response=saved.get('budget_response',{})
-        self.budget.recover_response(key=response.get('key','role-extraction:'+saved['input_fingerprint']),
-            reservation=response.get('reservation'),usage=saved.get('usage',{}),business_valid=error is None,
-            logical_keys=self.logical_keys(groups))
-        if error is not None:
-            # Retain the complete raw batch as evidence. An invalid whole
-            # source cannot publish complete siblings under the current
-            # release contract; it needs a separately accepted unit contract.
-            self.gate.reason='role_partial_batch_original_source_not_admitted'
-            self.publishing_response={**response,'key':response.get('key','role-extraction:'+saved['input_fingerprint'])}
-            self.save_units(saved['content'],partial_evidence_only=True)
-            raise AdjudicationBudgetBlocked(self.gate.reason)
-        self.budget.require_cached_response(key=response.get('key','role-extraction:'+saved['input_fingerprint']),
-            reservation=response.get('reservation'))
+        # Only a genuine interrupted reservation uses settlement recovery.
+        # Readmission never downgrades or upgrades already settled history.
+        with self.budget._locked() as state:
+            matches=[r for r in state['calls'] if (r['id']==response.get('reservation') if response.get('reservation')
+                else r['key']==response.get('key','role-extraction:'+saved['input_fingerprint']))]
+            interrupted=any(r['status']=='reserved' for r in matches)
+        if interrupted:
+            self.budget.recover_response(key=response.get('key','role-extraction:'+saved['input_fingerprint']),
+                reservation=response.get('reservation'),usage=saved.get('usage',{}),business_valid=error is None,
+                logical_keys=self.logical_keys(groups))
+        self._admit_saved(saved,groups)
         self.publishing_response={**response,'key':response.get('key','role-extraction:'+saved['input_fingerprint'])}
         self.save_units(saved['content'])
         self.admitted_units.update({group.group_key:self.publishing_response for group in groups})
@@ -441,51 +490,27 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         return json.dumps(payload,ensure_ascii=False)
 
     def save_units(self,content,*,partial_evidence_only=False):
-        try:
-            payload=json.loads(self.adapted_content(content))
-            rows=payload.get('records',[]) if isinstance(payload,dict) else []
-        except (ValueError,TypeError):return
-        for row in rows:
-            if not isinstance(row,dict):continue
-            unit=self.units.get(row.get('group_key'))
+        # Use the same raw-derived projection as the release source gate.
+        # A partial unit has source authority, but no false coverage claim.
+        for group_key,source in self.publishing_sources.items():
+            unit=self.units.get(group_key)
             if not unit:continue
+            row=source['answer']['validated_response']
             path=_unit_path(self.cache_dir,unit)
             previous=None
             if path.exists():
                 previous,_=_read_unit_cache(path,unit,self.model)
+                self.require_unit_source(unit,previous)
                 if _unit_answer_complete(unit,previous):continue
-            try:
-                verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
-            except (ValueError,TypeError,SourceNameCandidateExtractionError) as original_error:
-                # Validate siblings individually through the same F7a schema.
-                # No malformed target is converted into a positive or unknown
-                # answer. Missing targets remain available to bounded repair.
-                valid=[]
-                for candidate in row.get('candidates',[]) if isinstance(row.get('candidates'),list) else []:
-                    try:
-                        validate_extraction_record({**row,'candidates':[candidate]},unit.unit_group)
-                    except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
-                    valid.append(candidate)
-                if not valid:continue
-                partial={**row,'candidates':valid}
-                try:verdict,candidates,*_=validate_extraction_record(partial,unit.unit_group)
-                except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
-                partial['partial_validation_error']=str(original_error)
-                row=partial
-            if verdict.extraction_verdict.startswith('extraction_error'):continue
+            verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
             row=_merge_valid_target_answers(unit,row,candidates,previous)
             try:verdict,candidates,*_=validate_extraction_record(row,unit.unit_group)
             except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
             value={**_record(unit,self.model,verdict,candidates,origin='existing_f7a_extractor_primary_model'),
-                'validated_response':row,'budget_response':self.publishing_response}
-            if partial_evidence_only:
-                # Parsing retained incomplete evidence grants no complete-unit
-                # cache or source admission. Keep the old raw and fees, and do
-                # not dispatch another question on behalf of this partial batch.
-                if unit.unit_group.data_origin in {COMPLETION_ORIGIN,COVERAGE_REPAIR_ORIGIN,CORRECTION_ORIGIN}:
-                    self.retained_partials[unit.extraction_key]={**value,'source_admission':'retained_partial_evidence_only'}
-                continue
-            _atomic_write_json(path,value)
+                'validated_response':row,'budget_response':self.publishing_response,
+                'source_admission':'validated_original_unit',
+                'unit_source_proofs':[s['unit_source_proof'] for s in self.admitted_sources[_identity(unit,self.model)['input_fingerprint']]]}
+            _publish_derived_unit(self.cache_dir,unit,value)
 
     def replay_saved_raw(self):
         recovered_before=sum(_unit_path(self.cache_dir,unit).exists() for unit in self.units.values())
@@ -558,13 +583,10 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             if cached.get('input_fingerprint')!=signature or cached.get('model')!=self.model:
                 raise ValueError('role_raw_cache_identity_mismatch')
             feedback=self.recover_saved(cached)
-            if feedback is None:
-                self.raw_cache_hits+=1
-                return self.adapted_content(cached['content'])
-            if any((lambda unit: _unit_path(self.cache_dir,unit).exists() and
-                    _unit_answer_complete(unit,_read_unit_cache(_unit_path(self.cache_dir,unit),unit,self.model)[0]))
-                    (self.units[row['group_key']]) for row in requested):
-                return await self.complete_chat(messages,temperature=temperature,max_tokens=max_tokens)
+            self.raw_cache_hits+=1
+            # A recovered partial answer is not a dispatch plan. Its missing
+            # original targets are narrowed by the coverage repair planner.
+            return self.adapted_content(cached['content'])
         self.gate.check()
         groups=[self.units[row['group_key']].unit_group for row in requested]
         checked_cache_path(self.cache_dir,self.cache_dir/'raw'/'attempts')
@@ -590,12 +612,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             _atomic_write_json(checked_cache_path(self.cache_dir,destination),saved)
             _,validation_error=self.validate_saved(saved)
             self.budget.settle(reservation,self.last_usage,success=validation_error is None)
-            if validation_error is not None:
-                self.gate.reason='role_partial_batch_original_source_not_admitted'
-                self.publishing_response=response_identity
-                self.save_units(content,partial_evidence_only=True)
-                raise AdjudicationBudgetBlocked(self.gate.reason)
-            self.budget.require_cached_response(key=response_identity['key'],reservation=reservation)
+            self._admit_saved(saved,groups)
             self.publishing_response=response_identity
             self.save_units(content)
         except BaseException as exc:
@@ -643,7 +660,7 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
         elif not unit.llm_required:
             bundle=deterministic_bundle_for_unit(unit,run_id='production-pixiv-roles',run_label='production-pixiv-roles')
             value=_record(unit,wrapped.model,bundle.record_verdicts[0],bundle.candidates,origin='existing_f7a_deterministic')
-            _atomic_write_json(path,value);records[unit.extraction_key]=value;deterministic+=1
+            _publish_derived_unit(cache_dir,unit,value);records[unit.extraction_key]=value;deterministic+=1
         else:pending.append(unit)
     for start in range(0,len(pending),batch_size):
         batch=pending[start:start+batch_size]
@@ -855,6 +872,8 @@ def role_target_coverage(unit,record):
 
 
 def _original_completion_questions(consumer,vocabulary,role_facts,*,require_complete=False):
+    from .production_pixiv_role_recovery import historical_role_facts
+    role_facts=historical_role_facts(role_facts)
     # Reconstruct the exact original question, not a new interpretation of its
     # targets. Legacy caches remain immutable and their answered names survive.
     baseline={**role_facts,'completion_records':{},'completion_by_aggregate':{},
@@ -879,6 +898,8 @@ def _original_completion_questions(consumer,vocabulary,role_facts,*,require_comp
 
 def plan_role_coverage_repair(consumer,vocabulary,role_facts):
     originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts)
+    from .production_pixiv_role_recovery import current_role_facts
+    current=current_role_facts(role_facts)
     # Preserve the whole finite denominator, but spend a shared limited budget
     # on currently unresolved, non-rejected names before already rejected tags.
     adapted=adapt_production_semantics(consumer,vocabulary,role_facts)
@@ -890,18 +911,18 @@ def plan_role_coverage_repair(consumer,vocabulary,role_facts):
     units={};mapping={};parents={};target_occurrences=0;already_attempted=0
     for aggregate,parent in sorted(role_facts.get('completion_by_aggregate',{}).items()):
         if aggregate in grounded:continue
-        original=originals[parent];record=role_facts['completion_records'][parent]
+        original=originals[parent];record=current.get('completion_records',{}).get(parent,{})
         targets=role_target_coverage(original,record)['missing_raw_tags']
-        previous_key=role_facts.get('coverage_repair_by_aggregate',{}).get(aggregate)
-        previous=role_facts.get('coverage_repair_records',{}).get(previous_key)
+        previous_key=current.get('coverage_repair_by_aggregate',{}).get(aggregate)
+        previous=current.get('coverage_repair_records',{}).get(previous_key)
         if previous:
             already_attempted+=1
             if previous.get('parent_extraction_key')!=parent:
                 raise ValueError('role_coverage_repair_parent_changed')
             answered=previous.get('target_coverage',{}).get('outcomes',{})
             targets=[raw for raw in targets if raw not in answered]
-        targets=[raw for raw in targets if raw not in role_facts.get('role_terminal_targets',{}).get(aggregate,{})]
-        targets=[raw for raw in targets if raw not in role_facts.get('role_reused_target_answers',{}).get(aggregate,{})]
+        targets=[raw for raw in targets if raw not in current.get('role_terminal_targets',{}).get(aggregate,{})]
+        targets=[raw for raw in targets if raw not in current.get('role_reused_target_answers',{}).get(aggregate,{})]
         if not targets:continue
         signature=canonical_fingerprint({'schema':COVERAGE_REPAIR_ORIGIN,'parent':parent,
             'parent_response':canonical_fingerprint(record),'tags':original.unit_group.tags,'targets':targets})
@@ -926,21 +947,23 @@ def plan_role_coverage_repair(consumer,vocabulary,role_facts):
 
 def summarize_role_response_coverage(consumer,vocabulary,role_facts,*,require_complete=False):
     originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts,require_complete=require_complete)
+    from .production_pixiv_role_recovery import current_role_facts
+    current=current_role_facts(role_facts)
     counts=defaultdict(int);remaining=[];complete=0
     for aggregate,parent in sorted(role_facts.get('completion_by_aggregate',{}).items()):
         if aggregate in grounded:continue
-        coverage=role_target_coverage(originals[parent],role_facts['completion_records'][parent])
+        coverage=role_target_coverage(originals[parent],current.get('completion_records',{}).get(parent,{}))
         outcomes=dict(coverage['outcomes'])
-        repair_key=role_facts.get('coverage_repair_by_aggregate',{}).get(aggregate)
-        repair=role_facts.get('coverage_repair_records',{}).get(repair_key)
+        repair_key=current.get('coverage_repair_by_aggregate',{}).get(aggregate)
+        repair=current.get('coverage_repair_records',{}).get(repair_key)
         if repair:
             if repair.get('parent_extraction_key')!=parent:raise ValueError('role_coverage_repair_parent_changed')
             for raw,value in repair.get('target_coverage',{}).get('outcomes',{}).items():
                 if raw in coverage['missing_raw_tags']:outcomes[raw]=value
-        for raw,terminal in role_facts.get('role_terminal_targets',{}).get(aggregate,{}).items():
+        for raw,terminal in current.get('role_terminal_targets',{}).get(aggregate,{}).items():
             if raw in originals[parent].raw_values and raw not in outcomes:
                 outcomes[raw]={'disposition':'attempt_limit_reached','reason_code':terminal['reason_code']}
-        for raw,reused in role_facts.get('role_reused_target_answers',{}).get(aggregate,{}).items():
+        for raw,reused in current.get('role_reused_target_answers',{}).get(aggregate,{}).items():
             if raw in originals[parent].raw_values and (raw not in outcomes or outcomes[raw]['disposition']=='attempt_limit_reached'):
                 outcomes[raw]={'disposition':reused['disposition'],'reason_code':reused['reason_code']}
         missing=[raw for raw in originals[parent].raw_values if raw not in outcomes]
@@ -970,6 +993,9 @@ def _merge_coverage_records(role_facts,records,mapping):
             current['target_coverage']['requested_raw_tags']=sorted(set(
                 previous.get('target_coverage',{}).get('requested_raw_tags',[])) |
                 set(current['target_coverage']['requested_raw_tags']))
+            missing=[raw for raw in current['target_coverage']['requested_raw_tags']
+                if raw not in current['target_coverage']['outcomes']]
+            current['target_coverage'].update(missing_raw_tags=missing,fully_accounted=not missing)
             current['inherited_valid_response_keys']=[*previous.get('inherited_valid_response_keys',[]),previous_key]
     return {**role_facts,'coverage_repair_records':{**role_facts.get('coverage_repair_records',{}),**records},
         'coverage_repair_by_aggregate':{**role_facts.get('coverage_repair_by_aggregate',{}),

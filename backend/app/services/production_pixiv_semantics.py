@@ -72,6 +72,10 @@ def build_semantic_vocabulary(translation_rows, taxonomy_rows=()):
 
 
 def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
+    source_history=role_facts
+    if role_facts and role_facts.get('source_recovery'):
+        from .production_pixiv_role_recovery import current_role_facts
+        role_facts=current_role_facts(role_facts)
     hints={}
     if vocabulary is not None:
         payload={k:v for k,v in vocabulary.items() if k!='canonical_fingerprint'}
@@ -88,7 +92,7 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
         from .production_pixiv_role_extraction import _original_completion_questions,role_target_coverage
         from .source_name_candidate_extraction_service import validate_extraction_record
         from dataclasses import asdict
-        originals,grounded=_original_completion_questions(consumer,vocabulary,role_facts)
+        originals,grounded=_original_completion_questions(consumer,vocabulary,source_history)
         for aggregate,key in role_facts['completion_by_aggregate'].items():
             if aggregate in grounded:continue
             record=role_facts['completion_records'][key]
@@ -227,5 +231,8 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
         adapted=validate_contexts(apply_identity_qualification(adapted,consumer.signals,role_facts['identity_qualification']))
     identity=[{'key':s.signal_key,'role':s.role_hint,'context':s.work_context_key,'trust':s.trust_tier,
                'status':s.status,'evidence':s.evidence_payload} for s in adapted]
+    if source_history and source_history.get('source_recovery'):
+        from .production_pixiv_role_recovery import verify_archive_nonuse
+        verify_archive_nonuse(adapted,source_history)
     return replace(consumer,signals=tuple(adapted),input_fingerprint=canonical_fingerprint({
         'base_input':consumer.input_fingerprint,'production_semantics':identity}))

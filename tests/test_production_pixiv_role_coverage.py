@@ -105,8 +105,8 @@ def test_partial_unit_resume_preserves_valid_dispositions_and_original_fees(tmp_
     assert by_raw['MysteryDescription']['disposition']=='non_name'
     assert not any(c['raw_value']=='MysteryUnknown' for c in record['candidates'])
     assert result['completion_summary']['unaccounted_requested_tag_occurrences']==1
-    assert record['source_admission']=='retained_partial_evidence_only'
-    assert result['completion_summary']['blocked']=='role_partial_batch_original_source_not_admitted'
+    assert record['source_admission']=='validated_original_unit'
+    assert result['completion_summary']['blocked'] is None
     assert json.loads(budget.path.read_text())['calls'][:len(old_calls)]==old_calls
     charge=budget.summary()['charged_or_reserved_usd']
     complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
@@ -141,8 +141,8 @@ def test_partial_unit_accepts_only_nonpositive_new_answers_without_losing_candid
     assert result['completion_summary']['unaccounted_requested_tag_occurrences']==1
     record=next(iter(result['completion_records'].values()))
     assert {c['raw_value'] for c in record['candidates']}=={'MysteryKnown'}
-    assert record['source_admission']=='retained_partial_evidence_only'
-    assert result['completion_summary']['blocked']=='role_partial_batch_original_source_not_admitted'
+    assert record['source_admission']=='validated_original_unit'
+    assert result['completion_summary']['blocked'] is None
     assert not record['validated_response'].get('target_dispositions')
     charge=budget.summary()['charged_or_reserved_usd']
     complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
@@ -290,7 +290,7 @@ def test_cached_unsolicited_sibling_cannot_prevent_the_missing_target_retry(tmp_
     # Keep both paid attempts and the remaining target. An unadmitted partial
     # question cannot authorize a complete cache or a silent further dispatch.
     assert not provider.calls and result['role_response_coverage']['counts']['unaccounted']==1
-    assert result['coverage_repair_summary']['blocked']=='role_partial_batch_original_source_not_admitted'
+    assert result['coverage_repair_summary']['blocked'] is None
     assert all(__import__('pathlib').Path(p).read_bytes()==b for p,b in raw_before.items())
 
 
@@ -328,7 +328,7 @@ def test_compound_tag_keeps_reported_character_prefix_and_does_not_promote_outfi
     assert not any(c['candidate_role']=='work_title' for c in record['candidates'])
     assert plan_role_coverage_repair(value,vocabulary,facts)[0]==[]
     assert json.loads(budget.path.read_text())['calls'][0]['business_valid'] is False
-    assert record['source_admission']=='retained_partial_evidence_only'
+    assert record['source_admission']=='validated_original_unit'
 
 
 def test_nested_target_candidate_replays_without_invented_confidence_or_new_call(tmp_path):

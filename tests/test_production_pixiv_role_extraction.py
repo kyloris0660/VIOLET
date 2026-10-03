@@ -67,7 +67,7 @@ def test_local_response_failure_keeps_one_paid_attempt_across_two_resumes(tmp_pa
     atomic=roles._atomic_write_json
     def publish(path,value):
         if stage=='all_storage' or (stage=='raw' and 'raw' in path.parts):raise OSError('local raw disk failure')
-        if stage=='unit' and path==roles._unit_path(cache,units[1]):raise OSError('local second unit failure')
+        if stage=='unit' and path==roles._derived_unit_path(cache,units[1]):raise OSError('local second unit failure')
         return atomic(path,value)
     with monkeypatch.context() as patch:
         patch.setattr(roles,'_atomic_write_json',publish)
@@ -114,7 +114,11 @@ def test_saved_role_request_must_match_current_prompt_before_publishing_units(tm
     provider=Provider();budget=task_budget(tmp_path,provider);units=multiple_units()[:1]
     cache=tmp_path/'roles';wrapped=roles.BudgetedExtractionProvider(provider,budget,cache,units)
     asyncio.run(wrapped.complete_chat(extraction_messages([units[0].unit_group])))
-    saved=json.loads(next((cache/'raw').glob('*.json')).read_text())
+    saved=json.loads(next((cache/'raw').glob('*.json')).read_text(encoding='utf-8'))
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    assert wrapped.model==saved['model']
+    assert canonical_fingerprint({'model':wrapped.model,'messages':saved['request_messages'],
+        'temperature':saved['temperature'],'max_tokens':saved['max_tokens']})==saved['input_fingerprint']
     raw_before={p:p.read_bytes() for p in (cache/'raw').rglob('*.json')};ledger_before=budget.path.read_bytes()
     original=roles._production_messages
     def changed(messages):
@@ -129,7 +133,7 @@ def test_saved_role_request_must_match_current_prompt_before_publishing_units(tm
     assert all(path.read_bytes()==value for path,value in raw_before.items())
 
 
-def test_paid_invalid_role_keeps_raw_and_stops_without_publishing_or_repay(tmp_path):
+def test_paid_invalid_role_keeps_raw_and_recovers_valid_unit_without_repay(tmp_path):
     import asyncio
     from app.services.production_pixiv_role_extraction import BudgetedExtractionProvider
     from app.services.source_name_candidate_extraction_service import extraction_messages
@@ -141,12 +145,13 @@ def test_paid_invalid_role_keeps_raw_and_stops_without_publishing_or_repay(tmp_p
     provider=Partial();budget=task_budget(tmp_path,provider);units=multiple_units()[:2]
     wrapped=BudgetedExtractionProvider(provider,budget,tmp_path/'roles',units)
     messages=extraction_messages([u.unit_group for u in units])
-    from app.services.source_concept_budget import AdjudicationBudgetBlocked
-    with pytest.raises(AdjudicationBudgetBlocked,match='role_partial_batch_original_source_not_admitted'):
-        asyncio.run(wrapped.complete_chat(messages))
+    asyncio.run(wrapped.complete_chat(messages))
     first_raw=next((tmp_path/'roles'/'raw').glob('*.json'));original=first_raw.read_bytes()
-    with pytest.raises(AdjudicationBudgetBlocked):asyncio.run(wrapped.complete_chat(messages))
-    assert len(provider.calls)==1 and not list((tmp_path/'roles'/'units').glob('*.json'))
+    # Recover the same failed batch; only the good sibling gains a unit source.
+    wrapped.replay_saved_raw()
+    assert len(provider.calls)==1
+    assert sum(__import__('app.services.production_pixiv_role_extraction',fromlist=['_unit_path'])._unit_path(
+        tmp_path/'roles',u).exists() for u in units)==1
     assert first_raw.read_bytes()==original
     rows=json.loads(budget.path.read_text())['calls']
     assert [r['business_valid'] for r in rows]==[False]
@@ -244,14 +249,12 @@ def test_partial_invalid_batch_never_repays_already_valid_units(tmp_path):
             return content
     provider=Partial();units=multiple_units();budget=task_budget(tmp_path,provider)
     facts=extract_production_roles(units,provider=provider,budget=budget,cache_dir=tmp_path/'roles')
-    assert facts['summary']['completed_units']==0 and facts['summary']['remaining_units']==3
-    assert facts['summary']['blocked']=='role_partial_batch_original_source_not_admitted'
-    assert [len(call) for call in provider.calls]==[3]
-    from app.services.source_concept_budget import AdjudicationBudgetBlocked
+    assert facts['summary']['completed_units']==3 and facts['summary']['remaining_units']==0
+    assert facts['summary']['blocked'] is None
+    assert [len(call) for call in provider.calls]==[3,1]
     raw=next((tmp_path/'roles/raw').glob('*.json'));original=raw.read_bytes()
-    with pytest.raises(AdjudicationBudgetBlocked):
-        extract_production_roles(list(reversed(units)),provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
-    assert raw.read_bytes()==original and budget.summary()['call_count']==1
+    extract_production_roles(list(reversed(units)),provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
+    assert raw.read_bytes()==original and budget.summary()['call_count']==2
 
 
 def test_auth_failure_keeps_success_and_pauses_remaining_role_batches(tmp_path):
@@ -427,7 +430,8 @@ def _persist_original_paid_response(cache,unit,provider,budget,row):
     from app.services.pixiv_metadata_projection_service import canonical_fingerprint
     messages=_production_messages(extraction_messages([unit.unit_group]))
     signature=canonical_fingerprint({'model':provider.model,'messages':messages,'temperature':0.0,'max_tokens':6000})
-    reservation=budget.reserve('role-extraction:'+signature,messages,max_output_tokens=6000)
+    reservation=budget.reserve('role-extraction:'+signature,messages,max_output_tokens=6000,
+        logical_keys=__import__('app.services.production_pixiv_role_extraction',fromlist=['BudgetedExtractionProvider']).BudgetedExtractionProvider.logical_keys([unit.unit_group]))
     usage={'prompt_tokens':100,'completion_tokens':100};budget.settle(reservation,usage,success=True)
     raw=cache/'raw'/f'{signature}.json';raw.parent.mkdir(parents=True,exist_ok=True)
     raw.write_text(json.dumps({'model':provider.model,'input_fingerprint':signature,

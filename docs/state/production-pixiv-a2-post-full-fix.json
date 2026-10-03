@@ -8,13 +8,29 @@
       "before_sha256": "ca118bcded130e1043e9ebd3afe245faf1211e51e29c1731b16990b1c124841f",
       "after_sha256": "d6f830401241b117e970c92a3f3fcf1a5bc23ac1b68a77d0f74a14beb70398fb"
     },
+    "backend/app/services/production_pixiv_release_inputs.py": {
+      "before_sha256": "4011f7296628eb393e5ed1969c50c544146ed138901f6836f0550a9d2194b808",
+      "after_sha256": "9782bf32b7b91e36e7f4ce134a7cd7f5b6afed10b477560cced9aba7e0786f65"
+    },
     "backend/app/services/production_pixiv_release_provenance.py": {
       "before_sha256": "2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10",
-      "after_sha256": "30e4b8effa83f6ed4d5b06282f9f78cc516c55cefd2b22ce07a1903ca90e11bb"
+      "after_sha256": "014bbc1113fa20ce8fd536a0e42d666948ecd66ca375a684ebb96af818c70ff8"
     },
     "backend/app/services/production_pixiv_role_extraction.py": {
       "before_sha256": "286f861a58842384ce5b862fd67fc988c703ad3fbaaf73efc6a3a2f903ff87ca",
-      "after_sha256": "e95a9183efb20a7e6b8a583c788b4b9c49a74a80cb17819cb02446fe1b14bad4"
+      "after_sha256": "d0b43db5701cab74425a041667761e2b084b9420500f8df9e1ebd34107bb2d0f"
+    },
+    "backend/app/services/production_pixiv_role_recovery.py": {
+      "before_sha256": null,
+      "after_sha256": "50345bb23aa4548575d8b927e45ff1b2b653f70eeab5e196a127887c6e0184a8"
+    },
+    "backend/app/services/production_pixiv_role_sources.py": {
+      "before_sha256": null,
+      "after_sha256": "ac892b231826397c36d9c3cd6b085165c01dd41144183a410f20b035c46bfaeb"
+    },
+    "backend/app/services/production_pixiv_semantics.py": {
+      "before_sha256": "5e2f3490d8a0b4a0a3f348c5b0fa022af686f98f587829d8a3395f2cbfe2ad55",
+      "after_sha256": "7346f0f27e9711816f938c424f88ea2c176099485a9f6ffbb25ded87c3e2d656"
     },
     "backend/app/services/source_concept_budget.py": {
       "before_sha256": "236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57",
@@ -38,11 +54,11 @@
     },
     "docs/state/production-pixiv-a2-ignored-inputs.json": {
       "before_sha256": "6c18d1b9b37e781005ea95543866142b05e304926ae6eaa559d5b6323e50d9c3",
-      "after_sha256": "30e2387d0e91ddcdb14f890661440a3d31936d512dbe0009a9ab1cbb9d9ffb71"
+      "after_sha256": "60060496c8dfae2d958780f93d6e205e2cd839484f3af05ed5013e9c019331bd"
     },
     "docs/state/production-pixiv-a2-required-tests.json": {
       "before_sha256": "2340d627b0f16cd124f539a340816cfa84255f68d38d1ccd195606135d13e238",
-      "after_sha256": "c2e89dce90c2e84b59e969524b81504bf0b6f23ed8bd563f03660a075fb2eed9"
+      "after_sha256": "32c4e446e1cf6cbbc773b3d202d9cccb711e771a951fcc318f6b2e0c43a712b7"
     },
     "scripts/check_production_pixiv_a2.py": {
       "before_sha256": "0e580d2dc3e4d34b7eaee020aad879bffb15e8f175c57a48ba2e80c3afc490b2",
@@ -58,11 +74,15 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "ba5ed7774f8a780a3c1b36ff3e53621b991f94688eda71ccc0b7ae02aea65594"
+      "after_sha256": "2c7a6373b92369848525058284870c8cc732326b7ba0c3d766ac724fe98e744a"
     },
     "scripts/production_pixiv_budget_authority.py": {
       "before_sha256": "2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744",
       "after_sha256": "27a20b36948d1cff9ef1c9ef4f9e5e7e109c697f1777212a657e8ed325b9686a"
+    },
+    "scripts/production_pixiv_runtime_snapshot.py": {
+      "before_sha256": null,
+      "after_sha256": "76867b2bce948d2438231fe9eb980833ec99b10cc8da1768def816173bb91e6a"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
@@ -102,11 +122,11 @@
     },
     "tests/test_production_pixiv_correction29.py": {
       "before_sha256": "937978c4cff0f5766c186c68d6f07c712e08a721b2e8c36eb62e2312675d1caf",
-      "after_sha256": "61269fe1d03ea05c8d243e878c3a920d48ad00359bc2c038eb43e041216ab79e"
+      "after_sha256": "904f6c30f8316b42b1a22ca6662c3563da2a95b832f11352f1782e949cc9ccb5"
     },
     "tests/test_production_pixiv_release_inputs.py": {
       "before_sha256": "0f65d341fbb208dd21730b2af2f206d7566a0abf70a26d919414b3a1ac0b2941",
-      "after_sha256": "8cda81f2574c34d27ee52b37b1439807cb13890186631733ee5bd519a9682723"
+      "after_sha256": "08173d2f565e275938cada11be4e99a1899f347667e67ef2f4cfd1f8c72ddda5"
     },
     "tests/test_production_pixiv_review60.py": {
       "before_sha256": "6b9f5a6527ae9e6ac8867b168fe02e4999b0eea69e83e1b9058b13e7fcfe01f2",
@@ -126,15 +146,27 @@
     },
     "tests/test_production_pixiv_reviews113_114.py": {
       "before_sha256": null,
-      "after_sha256": "2295b13f7827345d0ab63f0dde7215601f8deb3051580367d17e1c7cc90dbac4"
+      "after_sha256": "4ff5ca2b96076aef65dc044840b3c725b25f5dfeeacffd1afb55cd6712ca0490"
     },
     "tests/test_production_pixiv_role_coverage.py": {
       "before_sha256": "f2fbbfef8aedca3f1bc238f26d8bb740c581e11b73f00fb80c70317d4b63edec",
-      "after_sha256": "94d4c0479e48f466b6c153f2b927796d11450d4eed29888159f819de6b10b5ff"
+      "after_sha256": "c28b9339d7fbcc23349fd6196cf094f42feb05db217f8f9084f745cd780ec30f"
     },
     "tests/test_production_pixiv_role_extraction.py": {
       "before_sha256": "42cff373aeb0898a7d4183b8d30f3a16c8f20770d180217758c9f00ca1946cb0",
-      "after_sha256": "2ceccc3c61f6e15e123d0b5132a28b07552cfb76deea9f45771969124337ddee"
+      "after_sha256": "2a92340b6c24e7b11a12fc41906e692e2a5ee228673ea2bc847067744365f66d"
+    },
+    "tests/test_production_pixiv_role_recovery.py": {
+      "before_sha256": null,
+      "after_sha256": "6539fa0c3d1d80910fc1ded73b0f71cab8d03973d27e53853882f8cb0d4c0434"
+    },
+    "tests/test_production_pixiv_role_sources.py": {
+      "before_sha256": null,
+      "after_sha256": "1c5c4f6690e9c7d6dfae0f6fee95f9b0e4daa7e97197494153278f3a3f6867b5"
+    },
+    "tests/test_production_pixiv_runtime_snapshot.py": {
+      "before_sha256": null,
+      "after_sha256": "455da7ce4d5e5fe02a8679af52a80f9a3d5c3acfaf40b3b9cf7fcad204760b94"
     },
     "tests/test_source_concept_task_budget.py": {
       "before_sha256": "e81d877d2dbf7de05ae67e005fdd0fe40f6cdd49634c8d9581cc5d44944275dc",
@@ -144,5 +176,12 @@
       "before_sha256": "ba1d17d23ba2c1cc68b652c7f01fa0e2114337913388914f19ef27223cd43078",
       "after_sha256": "b095851cfb8403918aca2f28e667ae2c17470a1b466b7bbd3ed3f23c27187497"
     }
+  },
+  "source_recovery_authorization": {
+    "file": "VIOLET-A2-来源恢复与最终收口执行任务-20261003.md",
+    "sha256": "928faaa4bc04a5f7e021023e4c87341c5da5d44c9eafd3194d96bde89af0bf75",
+    "scope": "9543 original role records; valid siblings, current views and necessary original targets only",
+    "original_ledger_rewrite_authorized": false,
+    "identity_policy_expansion_authorized": false
   }
 }

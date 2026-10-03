@@ -109,7 +109,12 @@ def test_legacy_absent_logical_keys_require_exact_anchored_call_and_original_req
         assert result['anchored_legacy_logical_replay'][call['id']]['derived_logical_keys']
         assert ledger['calls'][0]==original and len(provider.calls)==1
     else:
-        with pytest.raises(ValueError,match='logical_keys_changed'):
+        if change!='changed_call':
+            diagnostic=p.verify_role_response_sources(consumer,vocab,facts,tmp_path/'roles',ledger,diagnostic=True)
+            reason='legacy_logical_anchor_missing' if change=='missing_anchor' else 'original_logical_keys_changed'
+            assert diagnostic['missing_direct'] and any(reason in row['error'] for row in diagnostic['raw_errors'])
+        error='source_ledger_invalid:adjudication_charged_cost_mismatch' if change=='changed_call' else 'original_response_missing'
+        with pytest.raises(ValueError,match=error):
             p.verify_role_response_sources(consumer,vocab,facts,tmp_path/'roles',ledger)
 
 

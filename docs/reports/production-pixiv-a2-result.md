@@ -1,3 +1,7 @@
+# 2026-10-03 A2 来源恢复执行中
+
+2026-10-03 当前执行状态：PRODUCTION_PIXIV_A2_SOURCE_RECOVERY_ACTIVE。新任务明确批准当前9543原记录的共享逐单元来源恢复及必要原目标有界补证，取代旧范围等待；原failed/business_valid=false、原答、费用、两条耗尽目标和身份资格暂停保留。远端dca84bb、业务B15 5c40475、116线程已核实；开工原生产实际停止、无活动作业。先恢复独立固定普通入口，继而零调用全量复算、仅补真实余项、冻结测试、副本/质量和条件性新生产；全部完成前target_met/safe_to_merge/route_approved均false。以下此前版本只对应其当时证据。
+
 # VIOLET A2 当前纠偏结果（2026-10-03）
 
 当前业务/测试 HEAD 为 `5c40475cff9176e8fca6339ca035949eb72ea1e6`，分支 `codex/production-pixiv-a2`，PR #153 OPEN、非 Draft。完整角色原始来源准入仍受阻，A2 尚未工程完成；target_met、safe_to_merge、route_approved 与 Owner 验收均 false。
@@ -12,7 +16,7 @@
 
 18个当前契约槽位实际9通过、2失败、7依赖受阻未执行。当前完整副本、精度/80例、新原生产apply、正常EXE、生产Edge和240 workload尚未执行；历史B5成功只证明其旧HEAD。第112条原提交祖先意见按当时真实远端和Git对象判为未复现；原观测B14及69ae均在当前B15祖先链，不虚构新的通过节点。
 
-休眠后只读现场仍为原B5服务worker22852、38114 Media、8623绑定Media、66392有效支持、1 active run，0活动作业、0固定范围缺失或尾部新增，read ON/apply OFF。启动业务为562bc18；动态server git跟随工作树变化不证明进程已加载B15。未停服、重启或写生产。累计18433调用/USD13.589429，cap USD30、余量USD16.410571、在途0；本轮metadata/LLM新增调用均0。115真实远端线程和完整原评论分页核对，未resolve或触发reviewer。
+休眠后只读现场仍为原B5服务worker22852、38114 Media、8623绑定Media、66392有效支持、1 active run，0活动作业、0固定范围缺失或尾部新增，read ON/apply OFF。启动业务为562bc18；动态server git跟随工作树变化不证明进程已加载B15。未停服、重启或写生产。累计18433调用/USD13.589429，cap USD30、余量USD16.410571、在途0；本轮metadata/LLM新增调用均0。116真实远端线程和完整原评论分页核对，未resolve或触发reviewer。
 
 ## 剩余最小反例与具体裁决
 
@@ -24,19 +28,21 @@
 
 ## 当前交付与核验
 
-当前实际命令/JUnit/log为correction29-post-full-5c40475-20261003-1-validation-private.json；源码为correction29-b15-source-20261003-proof-private.json；完整原生失败为correction29-review114-native-5c40475-role-20261003-1-command-private.json及missing/log；18槽位为correction29-b15-current-source-blocked-20261003-1-contract-private.json；115线程为correction29-review115-current-source-blocked-20261003-review-dispositions-private.json；只读现场为correction29-b15-source-blocked-precloseout-20261003-1-availability-private.json。批准Python为C:/Users/kyloris/Documents/AnimeLocalBooru/venv/Scripts/python.exe，Python身份预检实际通过；本地验证不等于GitHub CI。
+当前实际命令/JUnit/log为correction29-post-full-5c40475-20261003-1-validation-private.json；源码为correction29-b15-source-20261003-proof-private.json；完整原生失败为correction29-review114-native-5c40475-role-20261003-1-command-private.json及missing/log；18槽位为correction29-b15-current-source-blocked-20261003-1-contract-private.json；116线程为correction29-review116-current-source-blocked-20261003-review-dispositions-private.json；只读现场为correction29-b15-source-blocked-precloseout-20261003-1-availability-private.json。批准Python为C:/Users/kyloris/Documents/AnimeLocalBooru/venv/Scripts/python.exe，Python身份预检实际通过；本地验证不等于GitHub CI。
 
-当前单ZIP为correction29-source-blocked-review115-final-20261003-3.zip，硬上限100000000字节；实测大小/SHA、全新解压、全部引用/JSON/XML及完整标准库重算必须以外部最终收据correction29-b15-final3-private-delivery-20261003-private.json确认。这里不预报尚未执行的成功数。93742原始来源与209大型原件保留无损编码；新旧文本池和原生文件只做原字节COPY/literal储存，解码后SHA须相同，不改变业务准入。
+当前单ZIP为correction29-source-blocked-review116-final-20261003-5.zip，硬上限100000000字节；实测大小/SHA、全新解压、全部引用/JSON/XML及完整标准库重算必须以外部最终收据correction29-b15-final5-private-delivery-20261003-private.json确认。这里不预报尚未执行的成功数。93742原始来源与209大型原件保留无损编码；新旧文本池和原生文件只做原字节COPY/literal储存，解码后SHA须相同，不改变业务准入。
 
 前四个实际失败ZIP与新鲜解压目录保留本地，全部负面日志/重放收据交付：首包102020195字节超限；第二包92484894字节在第15重放缺历史资源；第三包92953831字节在第20重放缺历史源码。当前补齐所有声明的原始源码导出，不再按扩展名截取；所有原核验断言保留。完整数据库备份、凭据配置、原图和旧ZIP留本地并索引理由。
 
 未merge、未推main/force、未resolve、未触发reviewer、未进入A3；未改确认Entity、人工标签/相册、源媒体或非owned资产。Computer Use已退出，本轮证据交付无需接管桌面。
 
-B15首包实测94708483字节且干净字节/引用检查通过，但第21项历史重放缺delivery-run-control-b5-final-current-documents.log；20项通过与原失败保留。新包补齐全部实际本地文件引用闭包，原断言不变，完整37项须重新通过。
+B15首包实测94708483字节且干净字节/引用检查通过，但第21项历史重放缺delivery-run-control-b5-final-current-documents.log；20项通过与原失败保留。新包补齐全部实际本地文件引用闭包，原断言不变，历史final3为37项；当前final5须38项实际通过。
 
-独立依赖探查的15个剩余原验证器已实际通过，补入7份原件共295314字节；历史103—104入口绑定其原B10源码，七当前文档仅有Git archive的CRLF转换，原Git与archive两种字节流及原拒绝均保留。9799条宽泛历史引用不是新的业务执行范围；最终新ZIP仍须全新解压和37项全部实际通过。
+独立依赖探查的15个剩余原验证器已实际通过，补入7份原件共295314字节；历史103—104入口绑定其原B10源码，七当前文档仅有Git archive的CRLF转换，原Git与archive两种字节流及原拒绝均保留。9799条宽泛历史引用不是新的业务执行范围；当前final5仍须全新解压和38项全部实际通过。
 
-最新115线程完整原评论已逐项对账。第115条所称8be62df2不是实际PR HEAD；实际880dd80与B15的merge-base为B15，原始Git对象及未改原生续接门禁通过，在实际交付未复现。原意见保留、未resolve，不虚构新增pytest或当前生产验收。新单ZIP要求全新解压及37项标准库离线重算，只有外部最终收据可确认实测通过。
+最新116线程完整原评论已逐项对账。第115条所称8be62df2不是实际PR HEAD；实际880dd80与B15的merge-base为B15，原始Git对象及未改原生续接门禁通过，在实际交付未复现。原意见保留、未resolve，不虚构新增pytest或当前生产验收。历史final3要求37项；当前final5要求全新解压及38项标准库离线重算，只有外部最终收据可确认实测通过。
+
+当前116线程完整原评论已对账。第116所称7cd58a0e不是实际PR HEAD，dca84bb仍以B15为祖先，原生门禁已实际通过；原意见及发布首拒均保留，不虚构新的pytest或生产验收。本检查点仅文档变化，依据已登记续接契约基于冻结HEAD；没有再推送同类文档提交。当前38项单包以最终外部收据确认。
 
 ## 历史版本记录（只对应各自旧HEAD，不构成当前通过）
 
@@ -436,3 +442,10 @@ C:\Users\kyloris\Documents\AnimeLocalBooru\venv\Scripts\python.exe -m pytest tes
 ### 实测单文件交付
 
 `correction22-final-review-EVIDENCE.zip`：92019084字节（92.019084 MB），SHA-256 `f53bacb952190de58a6ec833d55e40f95f2d07edc1022fb928705cb3f682cb68`。实际解压、逐文件hash、索引、JSON/JSONL/XML及独立复算通过。
+
+
+## 2026-10-04 来源恢复当前执行
+
+原生回放覆盖固定 100,285 信号与 15,824 条原记录。获批 9,543 条范围的直接来源缺口已恢复；15 条范围外不可用来源保留为历史，当前使用由统一派生视图和原答重放校验。原账本 USD 13.589429、原状态与 raw 不改。真实剩余目标仅 `eimiko`，已有 1 次尝试，默认额度剩余 2 次。两个精确身份资格暂停与禁止重问目标原样保留。
+
+固定日常 B5 部署继续可用；当前候选配置独立，冻结不推进生产入口。开发验证 115 通过，上一轮 248 通过/1 幂等失败保留。当前重放曾因写入中的输入 SHA 竞争失败，保留失败；本次正在完成稳定输入重放及新的集中验证。这些均不替代当前完整副本、新生产 apply、无调试正常 EXE、Edge/240 和 18 门验收。`target_met`、`safe_to_merge`、`route_approved` 均为 false。

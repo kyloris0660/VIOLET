@@ -6,15 +6,21 @@
     "phase-4.4p2r-f3-pixiv-metadata-normalization-pilot",
     "phase-4.4p2r-f4-pixiv-taxonomy-alias-kb",
     "phase-4.4p2r-f5-provider-neutral-source-name-registry",
-    "pixiv-a2"
+    "pixiv-a2",
+    "rt03-2",
+    "rt03-3",
+    "rt03-4",
+    "rt03-5"
   ],
   "repository_files": {
     "data/settings.json": "9bff8e74041298a63e6a65a6b3f4bab2eda245e18a95e1084933e1e8ae0b1ce6"
   },
-  "private_files": {},
+  "private_files": {
+    "production_launcher/production-profile.json": "afa44131b5be9cc0c6a51fa53ff9a045e1d69ef1ccb1f2429eb3cda757dc9ea8"
+  },
   "candidate_profile": {
-    "private_file": "production_launcher/production-profile.json",
-    "previous_full_sha256": "c60152b86cd5c985a1dfd2dc9f435ec2ba9c7942cae526d0b47d20832da2587e",
-    "stable_fields_sha256": "755f75d1df925e363aad23f930cef26ca62cc45e7ef25134c00f2f2f29632d61"
+    "private_file": "production_launcher/production-candidate-profile.json",
+    "previous_full_sha256": "b452100d5379d87f725aba816be334b36fd43bab507971647910e2d83b629975",
+    "stable_fields_sha256": "ec17283e9c1a94a6d6aad56235852675e16c4a7ad1e2cf627b59b48f23c66d20"
   }
 }

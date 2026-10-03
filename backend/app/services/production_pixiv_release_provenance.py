@@ -10,7 +10,7 @@ from dataclasses import asdict
 from .pixiv_metadata_projection_service import canonical_fingerprint
 from . import source_concept_resolver_service as resolver
 from .production_pixiv_role_extraction import checked_cache_path
-from .source_concept_budget import AdjudicationBudget
+from .source_concept_budget import AdjudicationBudget, AdjudicationBudgetBlocked
 
 
 def replay_role_request_messages(groups):
@@ -31,12 +31,12 @@ def replay_role_request_messages(groups):
         {**messages[1],'content':json.dumps(payload,ensure_ascii=False,sort_keys=True)}]
 
 
-def _anchored_legacy_role_calls(cache_dir,*,authority=None):
+def _anchored_role_calls(cache_dir,*,authority=None):
     """Read the immutable pre-amendment ledger; never repair the live ledger."""
     import hashlib
     private=Path(cache_dir).resolve().parent
     path=checked_cache_path(private,private/'closeout43-budget-before-private.json')
-    if not path.is_file():return {}
+    if not path.is_file():return {'calls':{}}
     authority_path=Path(__file__).resolve().parents[3]/'docs/state/production-pixiv-a2-budget-authority.json'
     authority=authority or json.loads(authority_path.read_text(encoding='utf-8'))
     raw=path.read_bytes()
@@ -45,11 +45,16 @@ def _anchored_legacy_role_calls(cache_dir,*,authority=None):
     old=json.loads(raw)
     if len(old['calls'])!=authority['call_count_before']:
         raise ValueError('semantic_legacy_role_ledger_count_changed')
-    return {row['id']:row for row in old['calls'] if row['key'].startswith('role-extraction:')
-        and 'logical_keys' not in row}
+    return {'path':path.name,'sha256':hashlib.sha256(raw).hexdigest(),
+        'calls':{row['id']:row for row in old['calls'] if row['key'].startswith('role-extraction:')}}
 
 
-def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
+def _anchored_legacy_role_calls(cache_dir,*,authority=None):
+    return {key:row for key,row in _anchored_role_calls(cache_dir,authority=authority)['calls'].items()
+        if 'logical_keys' not in row}
+
+
+def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger,*,diagnostic=False):
     """Reparse saved original questions and answers, including partial batches."""
     from collections import defaultdict
     from types import SimpleNamespace
@@ -59,6 +64,11 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         SourceCandidateInputGroup,group_prompt_payload,extraction_messages,validate_extraction_record,
         deterministic_bundle_for_unit,SourceNameCandidateExtractionError,build_extraction_units)
     from .source_metadata_registry_service import canonical_source_key
+    from .production_pixiv_role_sources import RoleSourceContract,validate_record_projection,original_target_accounting
+    from .production_pixiv_role_recovery import historical_role_facts,current_role_facts
+    full_facts=facts
+    if facts.get('source_recovery'):current_role_facts(facts)  # validate the complete view before replay
+    facts=historical_role_facts(facts)
     cache_dir=Path(cache_dir).resolve();calls={r['id']:r for r in ledger['calls']}
     legacy_calls=None;legacy_logical_replay={}
     calls_by_key=defaultdict(list)
@@ -97,7 +107,12 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         group=SourceCandidateInputGroup(group_key='a2-context:'+signature[:24],provider='pixiv',tags=tags,
             data_origin='production_metadata_contextual_supplement',source_work_id_present=True)
         by_group[group.group_key]=group
-    source_by_question=defaultdict(list);source_count=0
+    source_by_question=defaultdict(list);source_count=0;raw_errors=[];original_questions={};original_requests={}
+    for group in by_group.values():original_questions[canonical_fingerprint(group_prompt_payload(group))]=group
+    try:contract=RoleSourceContract(ledger,legacy_calls=lambda:_anchored_legacy_role_calls(cache_dir),
+        schema_history=lambda:_anchored_role_calls(cache_dir))
+    except (ValueError,AdjudicationBudgetBlocked) as exc:
+        raise ValueError('semantic_role_source_ledger_invalid:'+str(exc)) from exc
     paths=sorted(checked_cache_path(cache_dir,p) for p in [*(cache_dir/'raw').glob('*.json'),*(cache_dir/'raw'/'attempts').glob('*.json'),
                   *(cache_dir/'response-recovery').glob('*.json')])
     # Later attempts retain full request envelopes. They can reconstruct an
@@ -121,7 +136,6 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
         if saved.get('model')!='gpt-4.1-mini':continue
         reconstruction=checked_cache_path(cache_dir,cache_dir/'question-reconstruction'/f"{saved.get('input_fingerprint','')}.json")
         try:
-            rows=json.loads(saved['content'])['records']
             if saved.get('request_groups'):
                 groups=[SourceCandidateInputGroup(**g) for g in saved['request_groups']]
             elif reconstruction.is_file():
@@ -130,8 +144,12 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
                 if proof['source_raw_sha256']!=hashlib.sha256(path.read_bytes()).hexdigest():
                     raise ValueError('semantic_legacy_raw_changed')
                 groups=[SourceCandidateInputGroup(**g) for g in proof['request_groups']]
-            else:groups=[by_group[r['group_key']] for r in rows]
-        except (KeyError,ValueError,TypeError):continue  # Invalid raw is history, not answer evidence.
+            else:
+                rows=json.loads(saved['content'])['records']
+                groups=[by_group[r['group_key']] for r in rows]
+        except (KeyError,ValueError,TypeError) as exc:
+            raw_errors.append({'path':str(path.relative_to(cache_dir)),'error':'original_request_unreconstructed:'+str(exc)})
+            continue  # Invalid raw is history, not answer evidence.
         if not any(canonical_fingerprint(group_prompt_payload(g)) in required_questions for g in groups):continue
         messages=replay_role_request_messages(groups)
         fingerprint=canonical_fingerprint({'model':saved['model'],'messages':messages,
@@ -147,97 +165,60 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
                 if candidate==saved.get('input_fingerprint'):
                     groups=list(ordering);messages=proposed;fingerprint=candidate;break
         if fingerprint!=saved.get('input_fingerprint') or (saved.get('request_messages') is not None and saved['request_messages']!=messages):
+            raw_errors.append({'path':str(path.relative_to(cache_dir)),'error':'original_request_fingerprint_unreconstructed'})
             continue
-        response=saved.get('budget_response')
-        if response:
-            call=calls.get(response['reservation'])
-            if not call or call['key']!='role-extraction:'+fingerprint:
-                raise ValueError('semantic_role_source_attempt_not_settled')
-            # Failed and revoked calls remain charged history. They cannot
-            # supply answer evidence, including otherwise parseable siblings.
-            # An independent valid retry must still prove the retained facts.
-            if not AdjudicationBudget._eligible_cached_response(call):
-                continue
-            if call.get('usage_known') and call['usage']!={k:saved['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
-                raise ValueError('semantic_role_source_usage_changed')
-            source_attempts=[call['id']]
-        else:
-            # Older raw envelopes predate the explicit reservation field.
-            # Bind them to the original full request key and actual usage;
-            # a self-consistent question/answer file alone is insufficient.
-            matching_calls=calls_by_key['role-extraction:'+fingerprint]
-            source_attempts=[call['id'] for call in matching_calls
-                if AdjudicationBudget._eligible_cached_response(call)
-                and (not call.get('usage_known') or
-                    call['usage']=={k:saved.get('usage',{}).get(k) for k in ('prompt_tokens','completion_tokens')})]
-            if not source_attempts:
-                if not matching_calls:raise ValueError('semantic_legacy_role_source_attempt_missing')
-                continue
-        expected_logical_keys=roles.BudgetedExtractionProvider.logical_keys(groups)
-        for attempt in source_attempts:
-            keys=calls[attempt].get('logical_keys')
-            if 'logical_keys' not in calls[attempt]:
-                if legacy_calls is None:legacy_calls=_anchored_legacy_role_calls(cache_dir)
-                if legacy_calls.get(attempt)!=calls[attempt]:
-                    raise ValueError('semantic_role_source_logical_keys_changed')
-                # Exact original request fingerprint and usage were checked
-                # above. This is retrospective evidence for a call predating
-                # logical-key storage, never permission for another request.
-                legacy_logical_replay[attempt]={'request_fingerprint':fingerprint,
-                    'derived_logical_keys':expected_logical_keys,'original_ledger_unchanged':True}
-                continue
-            if (not isinstance(keys,list) or any(not isinstance(k,str) for k in keys)
-                or sorted(keys)!=expected_logical_keys):
-                raise ValueError('semantic_role_source_logical_keys_changed')
-        rows_by_key={r['group_key']:r for r in rows if isinstance(r,dict) and 'group_key' in r}
-        for group in groups:
-            raw=rows_by_key.get(group.group_key)
-            if not raw:continue
-            adapted=roles._adapt_response_record(raw,SimpleNamespace(unit_group=group))
-            # Preserve valid siblings under the existing F7a validator.
-            try:verdict,candidates,*_=validate_extraction_record(adapted,group)
-            except (ValueError,TypeError,SourceNameCandidateExtractionError):
-                candidates=[]
-                for candidate in adapted.get('candidates',[]):
-                    try:
-                        _,valid,*_=validate_extraction_record({**adapted,'candidates':[candidate]},group)
-                        candidates.extend(valid)
-                    except (ValueError,TypeError,SourceNameCandidateExtractionError):continue
-                verdict=None
-            # Historical accepted units may retain the base F7a source-field
-            # normalization rather than the later bounded production adapter.
-            # Both must be reconstructed from this same immutable raw answer.
-            original_verdict=None
-            try:
-                original_verdict,original_candidates,*_=validate_extraction_record(raw,group)
-                candidates=[*candidates,*original_candidates]
-            except (ValueError,TypeError,SourceNameCandidateExtractionError):pass
-            # The accepted pre-compound adapter retained the model's literal
-            # extracted span. Reproduce only that recorded compatibility path;
-            # every span still comes from this raw answer and an observed tag.
-            historical=json.loads(json.dumps(adapted))
-            for candidate in historical.get('candidates',[]) or []:
-                if isinstance(candidate,dict) and candidate.get('production_original_extracted_span'):
-                    candidate['raw_value']=candidate.pop('production_original_extracted_span')
-            try:
-                _,historical_candidates,*_=validate_extraction_record(historical,group)
-                candidates=[*candidates,*historical_candidates]
-            except (ValueError,TypeError,SourceNameCandidateExtractionError):pass
-            source_by_question[canonical_fingerprint(group_prompt_payload(group))].append({
-                'group':group,'candidates':[asdict(c) for c in candidates],
-                'verdict':verdict.extraction_verdict if verdict else None,
-                'original_verdict':original_verdict.extraction_verdict if original_verdict else None,
-                'dispositions':adapted.get('target_dispositions',[]),'path':str(path.relative_to(cache_dir)),
-                'attempts':source_attempts,
-                'fingerprint':canonical_fingerprint(saved)})
+        for group in groups:original_questions[canonical_fingerprint(group_prompt_payload(group))]=group
+        request=original_requests.setdefault(fingerprint,{'request_groups':[asdict(g) for g in groups],
+            'logical_targets':roles.BudgetedExtractionProvider.logical_keys(groups),
+            'attempt_ids':[c['id'] for c in calls_by_key['role-extraction:'+fingerprint]],'raw_paths':[]})
+        request['raw_paths'].append(str(path.relative_to(cache_dir)))
+        try:
+            admitted=contract.admit(saved,groups,path.read_bytes(),path=str(path.relative_to(cache_dir)))
+        except ValueError as exc:
+            raw_errors.append({'path':str(path.relative_to(cache_dir)),'error':str(exc)})
+            # Reject this attempted source without poisoning an independent
+            # valid answer. Its original failure remains in the inventory.
+            continue
+        legacy_logical_replay.update(admitted['anchored_legacy_logical_replay'])
+        raw_errors.extend({'path':str(path.relative_to(cache_dir)),'group_key':k,'error':v}
+            for k,v in admitted['errors'].items())
+        for source in admitted['sources']:
+            source_by_question[canonical_fingerprint(group_prompt_payload(source['group']))].append(source)
         source_count+=1
     aggregate_tags=defaultdict(set)
     for signal in consumer.signals:
         if signal.origin_type=='pixiv_tag_observation':aggregate_tags[signal.evidence_payload['aggregate_fingerprint']].add(signal.raw_value)
     records_by_key={k:r for kind in ('records','context_records','completion_records','coverage_repair_records','correction_records')
         for k,r in facts.get(kind,{}).items()}
+    use=full_facts.get('source_recovery',{}).get('records',{})
+    archive={k for k,e in use.items() if e['disposition']=='archive_only_unavailable'}
+    projections=full_facts.get('current_record_projections',{})
+    records_by_key={k:projections.get(k,r) for k,r in records_by_key.items()}
     missing_direct=[k for k,r in records_by_key.items() if r.get('origin')!='existing_f7a_deterministic'
-        and not source_by_question.get(r.get('input_fingerprint'))]
+        and not source_by_question.get(r.get('input_fingerprint')) and k not in archive]
+    if diagnostic:
+        # Complete native inventory, not release authority or a paid plan.
+        # Every original row is retained, including unavailable history.
+        inventory={}
+        for kind in ('records','context_records','completion_records','coverage_repair_records','correction_records'):
+            for key,record in facts.get(kind,{}).items():
+                original_record=record;record=projections.get(key,record)
+                direct=source_by_question.get(record.get('input_fingerprint'),[])
+                error=None
+                if direct:
+                    try:validate_record_projection(record,direct)
+                    except ValueError as exc:error=str(exc)
+                inventory[key]={'kind':kind,'question':record.get('input_fingerprint'),
+                    'original_record_fingerprint':canonical_fingerprint(original_record),
+                    'original_group':asdict(original_questions[record['input_fingerprint']])
+                        if record.get('input_fingerprint') in original_questions else None,
+                    'deterministic':record.get('origin')=='existing_f7a_deterministic',
+                    'direct_sources':[{**s,'group':asdict(s['group'])} for s in direct],
+                    'projection_error':error,'inherited_valid_response_keys':record.get('inherited_valid_response_keys',[])}
+        return {'record_count':len(inventory),'validated_raw_count':source_count,'records':inventory,
+            'missing_direct':missing_direct,'raw_errors':raw_errors,'new_provider_calls':0,
+            'original_requests':original_requests,
+            'anchored_legacy_logical_replay':legacy_logical_replay}
     if missing_direct:raise ValueError('semantic_role_original_response_missing:'+json.dumps(missing_direct))
     def record_sources(record,visited=()):
         key=record['extraction_key']
@@ -253,23 +234,15 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
             result.extend(inherited)
         return result
     def replay_coverage(record):
-        direct=source_by_question.get(record.get('input_fingerprint'),[])
-        if not direct:raise ValueError('semantic_role_coverage_original_question_missing:'+record['extraction_key'])
-        targets=json.loads(direct[0]['group'].data_type_label.split(': ',1)[1])
-        current=roles.role_target_coverage(SimpleNamespace(raw_values=targets,unit_group=direct[0]['group']),record)
-        if record.get('inherited_valid_response_keys'):
-            outcomes={};all_targets=set()
-            for parent in record['inherited_valid_response_keys']:
-                previous=replay_coverage(records_by_key[parent]);outcomes.update(previous['outcomes'])
-                all_targets.update(previous['requested_raw_tags'])
-            outcomes.update(current['outcomes']);all_targets.update(targets)
-            current={**current,'requested_raw_tags':sorted(all_targets),'outcomes':outcomes}
-            current['missing_raw_tags']=[raw for raw in current['requested_raw_tags'] if raw not in outcomes]
-            current['fully_accounted']=not current['missing_raw_tags']
-        return current
+        return original_target_accounting(record,record_sources(record))
     proofs=[];missing_sources=[]
     for kind in ('records','context_records','completion_records','coverage_repair_records','correction_records'):
         for key,record in facts.get(kind,{}).items():
+            if key in archive:
+                proofs.append({'key':key,'source_use':'archive_only_unavailable','current_semantic_use':False,
+                    'original_record_fingerprint':canonical_fingerprint(record),'question':record.get('input_fingerprint')})
+                continue
+            record=projections.get(key,record)
             sources=record_sources(record)
             if record.get('origin')=='existing_f7a_deterministic':
                 unit=unit_by_key.get(key)
@@ -288,39 +261,19 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
                     tags=tuple({**t,'raw_tag':record['raw_value']} for t in unit.unit_group.tags)))
                 if roles._identity(prior,'gpt-4.1-mini')['input_fingerprint']!=record['input_fingerprint']:
                     raise ValueError('semantic_role_current_question_changed')
-            def candidate_identity(c):
-                # Normal partial-answer merging revalidates old siblings under
-                # the last response's record verdict. Their semantic fields,
-                # confidence and source provenance must still match raw.
-                payload={k:v for k,v in c.items() if k not in {'extraction_verdict','group_key'}}
-                prefix='source-name-candidate:'+str(c.get('group_key'))+':'
-                if str(payload.get('candidate_key','')).startswith(prefix):
-                    payload['candidate_key']=payload['candidate_key'][len(prefix):]
-                return canonical_fingerprint(payload)
-            candidates={candidate_identity(c) for s in sources for c in s['candidates']}
-            verdicts={v for s in sources for v in (s['verdict'],s.get('original_verdict'))}|{c.get('extraction_verdict') for s in sources for c in s['candidates']}
-            if record['verdict'] not in verdicts:raise ValueError('semantic_role_verdict_not_in_original_response:'+key+':'+json.dumps({'record':record['verdict'],'source':list(verdicts)},ensure_ascii=False))
-            if any(candidate_identity(c) not in candidates or c.get('extraction_verdict') not in verdicts for c in record['candidates']):
-                differences=[]
-                for c in record['candidates']:
-                    if candidate_identity(c) in candidates and c.get('extraction_verdict') in verdicts:continue
-                    matches=[a for s in sources for a in s['candidates'] if a.get('candidate_key')==c.get('candidate_key')]
-                    differences.append({'raw':c.get('raw_value'),'same_key_sources':len(matches),
-                        'differences':[{k:[c.get(k),a.get(k)] for k in c.keys()|a.keys() if c.get(k)!=a.get(k)} for a in matches]})
-                raise ValueError('semantic_role_answer_not_in_original_response:'+key+':'+json.dumps(differences,ensure_ascii=False))
-            dispositions={canonical_fingerprint(d) for s in sources for d in s['dispositions'] if isinstance(d,dict)}
-            if any(canonical_fingerprint(d) not in dispositions for d in record.get('validated_response',{}).get('target_dispositions',[])):
-                raise ValueError('semantic_role_disposition_not_in_original_response')
-            if not record['candidates'] and record['verdict'] not in verdicts:
-                raise ValueError('semantic_role_verdict_not_in_original_response')
+            try:validate_record_projection(record,sources)
+            except ValueError as exc:raise ValueError('semantic_role_answer_not_in_original_response:'+key+':'+str(exc)) from exc
             if record.get('target_coverage') and replay_coverage(record)!=record['target_coverage']:
                 raise ValueError('semantic_role_target_coverage_changed:'+key)
             proofs.append({'key':key,'question':record['input_fingerprint'],
-                'sources':[{'path':s['path'],'fingerprint':s['fingerprint'],'attempts':s['attempts']} for s in sources]})
+                'sources':[{'path':s['path'],'fingerprint':s['fingerprint'],'attempts':s['attempts'],
+                    'unit_source_proof':s['unit_source_proof']} for s in sources]})
     if missing_sources:raise ValueError('semantic_role_original_response_missing:'+','.join(missing_sources))
     for mapping,kind in [('context_by_aggregate','context_records'),('completion_by_aggregate','completion_records'),
                          ('coverage_repair_by_aggregate','coverage_repair_records')]:
-        for aggregate,key in facts.get(mapping,{}).items():
+        mappings={**facts.get(mapping,{}),**full_facts.get('current_record_mappings',{}).get(mapping,{})}
+        for aggregate,key in mappings.items():
+            if key in archive:continue
             record=facts[kind][key];sources=source_by_question.get(record['input_fingerprint'],[])
             if not sources:raise ValueError('semantic_role_mapped_question_missing')
             for source in sources:
@@ -331,7 +284,7 @@ def verify_role_response_sources(consumer,vocabulary,facts,cache_dir,ledger):
     if facts.get('semantic_corrections'):
         # Rebuild scoped supersession and equivalent-question reuse from the
         # actual source tags, then validate all correction answers again.
-        adapt_production_semantics(consumer,vocabulary,facts)
+        adapt_production_semantics(consumer,vocabulary,full_facts)
     return {'record_count':len(proofs),'validated_raw_count':source_count,'records':proofs,'new_provider_calls':0,
         'anchored_legacy_logical_replay':legacy_logical_replay}
 

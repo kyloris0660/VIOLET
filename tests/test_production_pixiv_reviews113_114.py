@@ -69,7 +69,8 @@ def test_role_cache_projection_is_revalidated_from_original_answer_before_use(tm
  elif mutation=='name':
   changed['candidates'][0].update(candidate_role='work_title',display_name='Invented',normalized_value='Invented')
  path.write_text(json.dumps(changed),encoding='utf-8');retained=path.read_bytes();debits=budget.path.read_bytes()
- for raw in (cache/'raw').glob('*.json'):raw.unlink()
+ # Schema revalidation and actual raw provenance are separate. Runtime reuse
+ # now requires the retained original file, including a paid failed sibling.
  if route=='read':actual=roles._read_unit_cache(path,unit,provider.model)[0]
  else:actual=roles.extract_production_roles([unit],provider=provider,budget=budget,cache_dir=cache)['records'][unit.extraction_key]
  assert actual['verdict']==original['verdict'] and actual['candidates']==original['candidates']
@@ -93,3 +94,17 @@ def test_paid_role_cache_without_a_valid_original_answer_is_refused_before_dispa
  with pytest.raises((ValueError,SourceNameCandidateExtractionError)):
   roles.extract_production_roles([unit],provider=provider,budget=budget,cache_dir=cache)
  assert path.read_bytes()==retained and len(provider.calls)==1
+
+def test_role_cache_ticket_and_projection_cannot_replace_missing_real_raw(tmp_path):
+ import app.services.production_pixiv_role_extraction as roles
+ from test_production_pixiv_role_extraction import Provider,multiple_units,task_budget
+ from app.services.source_name_candidate_extraction_service import extraction_messages
+ from app.services.source_concept_budget import AdjudicationBudgetBlocked
+ provider=Provider();budget=task_budget(tmp_path,provider);unit=multiple_units()[0];cache=tmp_path/'roles'
+ wrapped=roles.BudgetedExtractionProvider(provider,budget,cache,[unit])
+ asyncio.run(wrapped.complete_chat(extraction_messages([unit.unit_group])))
+ for raw in (cache/'raw').glob('*.json'):raw.unlink()
+ debits=budget.path.read_bytes()
+ with pytest.raises(AdjudicationBudgetBlocked,match='original_source_not_admitted'):
+  roles.extract_production_roles([unit],provider=provider,budget=budget,cache_dir=cache)
+ assert budget.path.read_bytes()==debits and len(provider.calls)==1

@@ -79,8 +79,10 @@ def test_legacy_raw_requires_matching_paid_attempt_even_without_reservation_fiel
         path.write_text(json.dumps(saved),encoding='utf-8')
     ledger=json.loads(budget.path.read_text())
     assert verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)['new_provider_calls']==0
-    with pytest.raises(ValueError,match='legacy_role_source_attempt_missing'):
-        verify_role_response_sources(value,vocab,facts,tmp_path/'roles',{'calls':[]})
+    diagnostic=verify_role_response_sources(value,vocab,facts,tmp_path/'roles',{**ledger,'calls':[]},diagnostic=True)
+    assert diagnostic['missing_direct'] and any('missing_attempt' in row['error'] for row in diagnostic['raw_errors'])
+    with pytest.raises(ValueError,match='semantic_role_original_response_missing'):
+        verify_role_response_sources(value,vocab,facts,tmp_path/'roles',{**ledger,'calls':[]})
     assert len(provider.calls)==1
 
 
@@ -98,12 +100,13 @@ def test_release_replays_inherited_partial_answers_without_borrowing_other_quest
     inherited=[r for r in facts['coverage_repair_records'].values() if r.get('inherited_valid_response_keys')]
     assert inherited and len(first.calls)==len(second.calls)==1
     ledger=json.loads(budget.path.read_text())
-    # Partial siblings remain in storage, but their invalid batches cannot
-    # supply production-release evidence, even through inheritance.
+    # Current owner contract admits good original units without upgrading
+    # failed batches. Legitimate inheritance must retain exact parent/context.
     assert any(call['business_valid'] is False for call in ledger['calls'])
     retained = budget.path.read_bytes()
-    with pytest.raises(ValueError,match='semantic_.*role_'):
-        verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)
+    proof=verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger)
+    assert proof['record_count']==sum(len(facts.get(k,{})) for k in
+        ('records','context_records','completion_records','coverage_repair_records','correction_records'))
     assert budget.path.read_bytes() == retained
 
 
@@ -144,11 +147,10 @@ def test_release_replays_legacy_v1_repair_without_changing_current_prompt(tmp_pa
         patch.setattr(roles,'_production_messages',legacy_adapter)
         facts=roles.repair_missing_role_coverage(value,vocab,facts,provider=provider,budget=budget,cache_dir=tmp_path/'roles',batch_size=1)
     assert roles.COVERAGE_REPAIR_ORIGIN=='production_pixiv_role_coverage_repair_v2'
-    # Replaying a historical prompt cannot rehabilitate a failed original
-    # batch. Keep that paid response and reject it at the current release gate.
+    # Replay the literal v1 question; good units gain source evidence while
+    # its original failed batch and charged fees remain unchanged.
     retained = budget.path.read_bytes()
-    with pytest.raises(ValueError,match='semantic_.*role_'):
-        verify_role_response_sources(value,vocab,facts,tmp_path/'roles',json.loads(retained))
+    assert verify_role_response_sources(value,vocab,facts,tmp_path/'roles',json.loads(retained))['record_count']
     assert budget.path.read_bytes()==retained and len(provider.calls)==1
 
 

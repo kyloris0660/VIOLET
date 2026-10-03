@@ -86,11 +86,14 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
     if not isinstance(judgments, (list, tuple)):
         raise ValueError('complete_semantic_judgment_artifact_required')
     versions=semantic_versions()
+    from .production_pixiv_role_recovery import current_role_facts, historical_role_facts
+    current=current_role_facts(role_facts)
+    history=historical_role_facts(role_facts)
     expected_record={'schema_version':versions['role_schema'],'extractor_version':versions['extractor'],
                      'prompt_version':versions['prompt'],'decision_schema':versions['extraction_schema'],
                      'model':versions['model']}
     for name in ('records','context_records','completion_records','coverage_repair_records','correction_records'):
-        for record in role_facts.get(name,{}).values():
+        for record in (*history.get(name,{}).values(), *current.get(name,{}).values()):
             if any(record.get(k)!=v for k,v in expected_record.items()):
                 raise ValueError('semantic_role_record_version_or_model_changed')
     aggregate_keys={row['canonical_fingerprint'] for row in aggregates}
@@ -106,7 +109,7 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
                 or answer.get('disposition')!='non_name' or answer.get('new_provider_calls')!=0
                 or answer.get('original_context_response_claimed_complete') is not False):
                 raise ValueError('semantic_reused_role_answer_changed')
-    for aggregate,answers in role_facts.get('role_terminal_targets',{}).items():
+    for aggregate,answers in current.get('role_terminal_targets',{}).items():
         if aggregate not in aggregate_keys:raise ValueError('semantic_terminal_role_source_changed')
         for answer in answers.values():
             attempts=answer.get('attempt_ids',[])
@@ -120,6 +123,9 @@ def semantic_input_identity(aggregates, vocabulary, role_facts, judgments):
                             ('coverage_repair_by_aggregate','coverage_repair_records')):
         if any(aggregate not in aggregate_keys or key not in role_facts.get(records,{})
                for aggregate,key in role_facts.get(mapping,{}).items()):
+            raise ValueError('semantic_role_source_context_mapping_changed')
+        if any(aggregate not in aggregate_keys or key not in current.get(records,{})
+               for aggregate,key in role_facts.get('current_record_mappings',{}).get(mapping,{}).items()):
             raise ValueError('semantic_role_source_context_mapping_changed')
     return {'schema_version': 'violet.production-pixiv-semantic-inputs.v1',
             'aggregates': canonical_fingerprint(aggregates), 'vocabulary': canonical_fingerprint(vocabulary),
@@ -154,23 +160,26 @@ def verify_role_completion(aggregates,vocabulary,facts,ledger):
     from dataclasses import replace
     import json
     consumer=production_consumer(aggregates)
+    from .production_pixiv_role_recovery import current_role_facts
+    current=current_role_facts(facts)
     coverage=summarize_role_response_coverage(consumer,vocabulary,facts,require_complete=True)
-    if coverage['counts'].get('unaccounted',0) or coverage!=facts.get('role_response_coverage'):
+    reported=facts.get('current_role_response_coverage') if facts.get('source_recovery') else facts.get('role_response_coverage')
+    if coverage['counts'].get('unaccounted',0) or coverage!=reported:
         raise ValueError('semantic_original_role_target_processing_incomplete')
     calls={row['id']:row for row in ledger['calls']}
     originals,grounded=_original_completion_questions(consumer,vocabulary,facts,require_complete=True)
-    for aggregate,answers in facts.get('role_terminal_targets',{}).items():
+    for aggregate,answers in current.get('role_terminal_targets',{}).items():
         parent=facts.get('completion_by_aggregate',{}).get(aggregate)
         if aggregate in grounded or parent not in originals:
             raise ValueError('semantic_terminal_original_question_missing')
         unit=originals[parent]
-        original_coverage=role_target_coverage(unit,facts['completion_records'][parent])
+        original_coverage=role_target_coverage(unit,current.get('completion_records',{}).get(parent,{}))
         effective=dict(original_coverage['outcomes'])
-        repair=facts.get('coverage_repair_records',{}).get(facts.get('coverage_repair_by_aggregate',{}).get(aggregate))
+        repair=current.get('coverage_repair_records',{}).get(current.get('coverage_repair_by_aggregate',{}).get(aggregate))
         if repair:
             for raw,outcome in repair.get('target_coverage',{}).get('outcomes',{}).items():
                 if raw in original_coverage['missing_raw_tags']:effective[raw]=outcome
-        for raw,outcome in facts.get('role_reused_target_answers',{}).get(aggregate,{}).items():
+        for raw,outcome in current.get('role_reused_target_answers',{}).get(aggregate,{}).items():
             if raw not in effective:effective[raw]=outcome
         for raw,answer in answers.items():
             if raw not in unit.raw_values:
