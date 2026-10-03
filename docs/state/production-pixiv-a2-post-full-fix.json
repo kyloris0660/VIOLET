@@ -38,7 +38,7 @@
     },
     "backend/app/services/source_concept_resolver_service.py": {
       "before_sha256": "b1639c8ee41001799a6bffc7d4a87cdb3b3223e7ac88c25d5145d736041f92e3",
-      "after_sha256": "138386e98b08b36834be643be79340f9a29e93ef052d54da26ae232116922ac9"
+      "after_sha256": "04d20cf9fd096c3a5da0957bc1679204a6226dca1f58527ec60326999f7def2f"
     },
     "backend/app/services/source_concept_search_service.py": {
       "before_sha256": "fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd85bfb6d8c4d01bd",
@@ -46,7 +46,11 @@
     },
     "docs/state/production-pixiv-a2-approved-projection.json": {
       "before_sha256": null,
-      "after_sha256": "6173b47634370f1dae565b0e2a1e1835877da6a5603ba5d12477b07dc1405eef"
+      "after_sha256": "d3cc0b77f1d69dd99da85af4b1d2530dc515e590ecc2b02d02bbf88cd5c24601"
+    },
+    "docs/state/production-pixiv-a2-approved-run.json": {
+      "before_sha256": "7a9aa4e90bea750816445bddf49994bc39bdfe1920815c9b00de72105ed8cd83",
+      "after_sha256": "6b98653c112230b860b46dc36007ec58fae62b7985b558233a3d2c5eeeac3d9a"
     },
     "docs/state/production-pixiv-a2-budget-prefix-compatibility.json": {
       "before_sha256": null,
@@ -62,11 +66,11 @@
     },
     "scripts/check_production_pixiv_a2.py": {
       "before_sha256": "0e580d2dc3e4d34b7eaee020aad879bffb15e8f175c57a48ba2e80c3afc490b2",
-      "after_sha256": "93944f99ee8317670f640ed42b164f44d99b5703965fac7e7724f4274964979b"
+      "after_sha256": "14df9e7e38f266aef4f9e3847cba161e9ccf73b171bf41d451fce462622f8703"
     },
     "scripts/production_pixiv_a2_evidence.py": {
       "before_sha256": "a33c8a5e8c31a3ade1757c97e25b342039a926a3016c2fe92eac11f260655d36",
-      "after_sha256": "57824ba98fba480009cd3a36a36c27e849f02f205084bff31108500f4f2e7be0"
+      "after_sha256": "3557e5bc28af2598bcb123c3c45524718959a86754f73deec784f28dc83cbba5"
     },
     "scripts/production_pixiv_a2_full_suite.py": {
       "before_sha256": "29c109fff9fe3149a7ac70003ecae7be22c19c2087905680da7026f526a0d65d",
@@ -74,7 +78,11 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "95c46908d94a46ebd4397e1949607ecd5fb12cebf8be7734476733e71dcb4096"
+      "after_sha256": "bce3cac3f11a8785575d66ec840f5c3a475a94194923cbe67cc4ce01831bc43c"
+    },
+    "scripts/production_pixiv_a2_service_evidence.py": {
+      "before_sha256": "26430a1baf3f2663871bc7d842ab9b23c560eca3cb96d16a2f4b9dc3262411b9",
+      "after_sha256": "b73b75eee72b555252f0976e79e81d836599838800a6ec62ff68b338ec9a5779"
     },
     "scripts/production_pixiv_budget_authority.py": {
       "before_sha256": "2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744",
@@ -82,11 +90,11 @@
     },
     "scripts/production_pixiv_runtime_snapshot.py": {
       "before_sha256": null,
-      "after_sha256": "76867b2bce948d2438231fe9eb980833ec99b10cc8da1768def816173bb91e6a"
+      "after_sha256": "6d8b6f494e7ab902cb906081bb6603693a50e1f8b7f124dd3ff616cd542abbf1"
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
-      "after_sha256": "befe06efcf0bbcadb265f7120e9eb9f4f92e89d076e0f27c426e952f2f91b31e"
+      "after_sha256": "26080c26731ea8a78d76cca7492de61aa73dab2c4aca28039583fcc02dfb9691"
     },
     "scripts/violet_production_control.py": {
       "before_sha256": "d0c51d6cb5a8122d4610b1daa458920b4e0894931c0d375567338e37c6aef69f",
@@ -154,7 +162,7 @@
     },
     "tests/test_production_pixiv_reviews113_114.py": {
       "before_sha256": null,
-      "after_sha256": "4ff5ca2b96076aef65dc044840b3c725b25f5dfeeacffd1afb55cd6712ca0490"
+      "after_sha256": "89bab3559fb936d5ce15f345c30641e400e4f9374f56ee2f2357c47861c0acdf"
     },
     "tests/test_production_pixiv_role_coverage.py": {
       "before_sha256": "f2fbbfef8aedca3f1bc238f26d8bb740c581e11b73f00fb80c70317d4b63edec",
@@ -174,7 +182,7 @@
     },
     "tests/test_production_pixiv_runtime_snapshot.py": {
       "before_sha256": null,
-      "after_sha256": "455da7ce4d5e5fe02a8679af52a80f9a3d5c3acfaf40b3b9cf7fcad204760b94"
+      "after_sha256": "54550df1b439add0a8ca374fcb05057cccb7d6ab6e73177dcda5452273a9ba3e"
     },
     "tests/test_source_concept_task_budget.py": {
       "before_sha256": "e81d877d2dbf7de05ae67e005fdd0fe40f6cdd49634c8d9581cc5d44944275dc",

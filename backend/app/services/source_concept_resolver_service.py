@@ -3015,11 +3015,80 @@ def _pair_budget_identity(config, metadata, decision_input_key):
     return key,()
 
 
-def _admit_budgeted_cached_judgment(budget, record, *, admission_key):
-    """Recover a retained response, then verify actual settled eligibility."""
-    saved = record.get('budget_response')
+def _cached_judgment_budget_source(record, config):
+    """Follow retained occurrence migrations to the actual original answer."""
+    source = record
+    chain = [record]
+    seen = {record.get('cache_key')}
+    roots = {_cache_root(config), *(Path(path) for path in config.semantic_cache_dirs)}
+    if record.get('reused_from_cache_key') and (
+        not _cache_record_is_exact_compatible(record, metadata=record, config=config)
+        or record.get('provider_model') != config.model_label):
+        raise ValueError('adjudication_cached_source_current_identity_changed')
+    while source.get('reused_from_cache_key'):
+        key = source['reused_from_cache_key']
+        if not isinstance(key, str) or not re.fullmatch(r'[0-9a-f]{48}', key) or key in seen:
+            raise ValueError('adjudication_cached_source_identity_or_cycle')
+        seen.add(key)
+        copies = []
+        for root in sorted(roots):
+            for directory in ('records', 'response-recovery'):
+                path = checked_cache_path(root, root / directory / (key + '.json'))
+                if path.is_file():
+                    copies.append(json.loads(path.read_text(encoding='utf-8')))
+        if not copies or any(copy != copies[0] for copy in copies[1:]):
+            raise ValueError('adjudication_cached_source_missing_or_conflicting')
+        source = copies[0]
+        if (source.get('cache_key') != key
+            or not _cache_record_is_exact_compatible(source, metadata=source, config=config)
+            or _decision_input_key(source['input_signal_summary']) != _decision_input_key(record['input_signal_summary'])
+            or llm_public_decision(source.get('decision')) != llm_public_decision(record.get('decision'))
+            or source.get('confidence') != record.get('confidence')
+            or source.get('reason_code') != record.get('reason_code')
+            or source.get('provider_model') != config.model_label
+            or source.get('prompt_template_version') != record.get('prompt_template_version')):
+            raise ValueError('adjudication_cached_source_question_or_answer_changed')
+        chain.append(source)
+    saved = source.get('budget_response')
+    # A copied envelope is not independent authority. Every retained envelope
+    # must identify the same original attempt, even if migrations omitted it.
+    if any(row.get('budget_response') and row['budget_response'] != saved for row in chain):
+        raise ValueError('adjudication_cached_source_ticket_changed')
+    return source
+
+
+def _admit_budgeted_cached_judgment(budget, record, *, admission_key, config):
+    """Recover the original response, then apply the unchanged paid gate."""
+    from .source_concept_budget import AdjudicationBudgetBlocked
+    source = _cached_judgment_budget_source(record, config)
+    saved = source.get('budget_response')
     key = saved['key'] if saved else admission_key
     reservation = saved['reservation'] if saved else None
+    if saved:
+        usage = saved.get('usage')
+        if (not isinstance(reservation, str) or not reservation
+            or not isinstance(usage, Mapping)
+            or any(type(usage.get(field)) is not int or usage[field] < 0
+                   for field in ('prompt_tokens', 'completion_tokens'))):
+            raise AdjudicationBudgetBlocked('adjudication_cached_response_usage_invalid')
+        expected = {'decision-input:' + _decision_input_key(source['input_signal_summary']), source['cache_key']}
+        if config.prompt_version == PRODUCTION_PAIR_PROMPT_VERSION:
+            expected = {value + ':prompt:' + config.prompt_version for value in expected}
+        if key not in expected:
+            raise AdjudicationBudgetBlocked('adjudication_cached_response_question_changed')
+        with budget._locked() as state:
+            matches = [row for row in state['calls'] if row['id'] == reservation]
+            if len(matches) != 1 or matches[0]['key'] != key:
+                raise AdjudicationBudgetBlocked('adjudication_cached_response_attempt_not_unique')
+            call = matches[0]
+            if (call.get('usage_known') and call['usage'] !=
+                {field: usage[field] for field in ('prompt_tokens', 'completion_tokens')}):
+                raise AdjudicationBudgetBlocked('adjudication_cached_response_usage_changed')
+            if saved.get('attempt') is not None:
+                same = [row for row in state['calls'] if row['key'] == key]
+                attempt = next(index + 1 for index, row in enumerate(same) if row['id'] == reservation)
+                if type(saved['attempt']) is not int or saved['attempt'] != attempt:
+                    raise AdjudicationBudgetBlocked('adjudication_cached_response_attempt_changed')
     budget.recover_response(key=key, reservation=reservation,
         usage=saved['usage'] if saved else {}, business_valid=True)
     budget.require_cached_response(key=key, reservation=reservation)
@@ -4145,7 +4214,7 @@ def run_bounded_llm_adjudication(
         exact_record = _load_exact_cache_record(durable_cache_root, metadata=metadata, config=config)
         if exact_record is not None:
             if budget:
-                _admit_budgeted_cached_judgment(budget, exact_record, admission_key=admission_key)
+                _admit_budgeted_cached_judgment(budget, exact_record, admission_key=admission_key, config=config)
             cache_hits += 1
             exact_cache_hits += 1
             cached = _judgment_from_cache_record(
@@ -4160,7 +4229,7 @@ def run_bounded_llm_adjudication(
         legacy_record = _legacy_cache_record(legacy_dirs=legacy_dirs, legacy_fingerprint=fingerprint)
         if legacy_record is not None:
             if budget:
-                _admit_budgeted_cached_judgment(budget, legacy_record, admission_key=admission_key)
+                _admit_budgeted_cached_judgment(budget, legacy_record, admission_key=admission_key, config=config)
             migrated = _durable_cache_record_from_judgment(
                 legacy_record,
                 metadata=metadata,
@@ -4186,7 +4255,7 @@ def run_bounded_llm_adjudication(
         compatible = decision_cache.get(decision_input_key)
         if compatible:
             if budget:
-                _admit_budgeted_cached_judgment(budget, compatible, admission_key=admission_key)
+                _admit_budgeted_cached_judgment(budget, compatible, admission_key=admission_key, config=config)
             cached = _judgment_from_cache_record(compatible,block_payload=block_payload,
                 selected_pair_id=selected_pair_id,cache_status='hit',reuse_level='same_decision_input_new_occurrence')
             migrated = _durable_cache_record_from_judgment(cached,metadata=metadata,block_payload=block_payload,

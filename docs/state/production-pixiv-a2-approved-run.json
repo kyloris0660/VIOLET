@@ -4,8 +4,8 @@
     "schema_version": "violet.production-pixiv-semantic-inputs.v1",
     "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
     "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
-    "role_facts": "8baa79c1cf2af2b9375ee43a673cf50a9d83ce89b098f1d14b878c905df24845",
-    "judgments": "c06f9fcdb1e517704e6d80aeb6c8c0727cf2ebfe37365a17696502c22d4954a6",
+    "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+    "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
     "versions": {
       "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
       "role_schema": "violet.production-pixiv-role-result.v1",
@@ -26,14 +26,14 @@
   },
   "selection_fingerprint": "e84fb791b6d48eafc64ed82b3fd01d2ea2919ae9553931b616f6ebdb00e3a8fb",
   "run": {
-    "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
+    "run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
     "scope_key": "pixiv:production:7e3db56668de893bfdde03dc979f1693",
     "source_mode": "production_scope",
     "policy_version": "production_pixiv_fixed_scope_adjudication_v8",
-    "result_fingerprint": "8e0662f9ffd37d5a153e5734545a693bd9aed601eade02e951c3054a1f097b08",
-    "input_fingerprint": "c4c3aa3ead617b00af87a74e4171b38fb9d903f9330134bf5499dea7674fddce",
-    "business_fingerprint": "fcd3d7670859a63e00180581c3cbf8c496d1f63802cbf560f7d215ff0a923f30",
-    "resolver_run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda",
+    "result_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+    "input_fingerprint": "d7b2e5da6cbe15d2c5aa913d315f0763977a620a648d520ed60906ecdad54f47",
+    "business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+    "resolver_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
     "resolver_version": "source_concept_resolver_core_v7_alias_union_approval"
   }
 }

@@ -4,8 +4,8 @@
     "schema_version": "violet.production-pixiv-semantic-inputs.v1",
     "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
     "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
-    "role_facts": "8baa79c1cf2af2b9375ee43a673cf50a9d83ce89b098f1d14b878c905df24845",
-    "judgments": "c06f9fcdb1e517704e6d80aeb6c8c0727cf2ebfe37365a17696502c22d4954a6",
+    "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+    "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
     "versions": {
       "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
       "role_schema": "violet.production-pixiv-role-result.v1",
@@ -25,31 +25,34 @@
     }
   },
   "projection": {
-    "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
-    "product_fingerprint": "8e0662f9ffd37d5a153e5734545a693bd9aed601eade02e951c3054a1f097b08",
-    "core_business_fingerprint": "493fc75e79f5d6f8f8773955c6141964bd55b774d77738552b8ffa9fc5be0292",
-    "full_core_fingerprint": "e6e17ece7bc2112cad3c4608e43453ef310faa7f514acedcf7877e8b318facea",
+    "run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
+    "product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+    "core_business_fingerprint": "92b1ab335a514f9fd732037dc26cb75004048767740409848ee0fd06cb812650",
+    "full_core_fingerprint": "ca9beb3ef316e73c5a97b390fd01f8714f96a81bad050dd1c17e91bcaf7da141",
     "core_counts": {
       "resolution_runs": 1,
       "signals": 100285,
       "concepts": 17497,
       "aliases": 21313,
-      "evidence": 65956,
-      "signal_links": 65956,
+      "evidence": 65955,
+      "signal_links": 65955,
       "search_index": 21313
     },
     "product_counts": {
       "clusters": 17497,
-      "candidate_dispositions": 595157,
+      "candidate_dispositions": 595167,
       "ambiguity_records": 65978
     }
   },
   "origin": {
-    "complete_semantic_candidate": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
-    "actual_completed_copy_receipt": "correction29-copy-d26bd0c-1-reapply-apply-private.json",
-    "receipt_sha256": "8eab52831d296cb5333518a27b2d34710c342a6a2064197588260efa32e90656",
-    "independent_raw_projection": "correction29-approved-full-business-projection-20261001-private.json",
-    "raw_projection_sha256": "a0d84890c0f67563353eb38c7f51e8bb9bab2320416dce7b4f21c0096781f3f8"
+    "preparation_reference_head": "6125b867c63b1911e7e0effa566b5984870a0519",
+    "preparation_working_source_receipt": "correction03-concentrated-development-20261004-2-private.json",
+    "frozen_candidate_acceptance_claimed": false,
+    "actual_isolated_projection_preparation": "correction29-correction03-projection-preparation-20261004-2-receipt-private.json",
+    "receipt_sha256": "0dd95f380b0c7cfad3a0c3f3a622864ddd83be62b406cb049c23351aeb763691",
+    "outer_transaction_rolled_back": true,
+    "independent_raw_projection": "correction29-correction03-projection-preparation-20261004-2-raw-projection-private.json",
+    "raw_projection_sha256": "9d41d9990e2dcc4fbd76e665f1790d18b8fd71a59028c7c1eb6fb2f8912e7dd7"
   },
-  "purpose": "Protected approval for unchanged complete semantics. Native current candidate gates must recompute all live owned product and core business rows from one repeatable-read snapshot; no finite-query substitution."
+  "purpose": "Independent complete expected projection from current native source and a rollback-only isolated PostgreSQL materialization. Final frozen copy and production gates must recompute all owned rows against this protected expectation."
 }

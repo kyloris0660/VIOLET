@@ -19,7 +19,22 @@ def service_origin(value, *, fragment=False):
     return parsed.scheme,parsed.hostname,port
 
 
+def _runtime_context(launch):
+    if 'fixed_runtime_binding' not in launch:
+        return {'runtime_head':launch.get('candidate_head',''),
+                'runtime_root':launch.get('code_root') or launch.get('server_identity',{}).get('code_root')}
+    from scripts.production_pixiv_a2_evidence import launcher_runtime_context
+    binding=launch['fixed_runtime_binding']
+    if not isinstance(binding,dict) or not isinstance(binding.get('business_root'),str):
+        raise ValueError('a2_fixed_runtime_business_root_missing')
+    return launcher_runtime_context(launch,Path(binding['business_root']),launch.get('candidate_head',''))
+
+
 def verify_service_observation(observation,launch):
+    return _verify_service_observation(observation,launch,_runtime_context(launch))
+
+
+def _verify_service_observation(observation,launch,runtime_context):
     expected=service_origin(launch.get('base_url',''))
     for base in (launch.get('base_url',''),observation.get('base_url','')):
         if service_origin(base)!=expected or urlsplit(base).path not in {'','/'} or urlsplit(base).query:
@@ -27,14 +42,14 @@ def verify_service_observation(observation,launch):
     before=observation.get('server_identity',{});after=observation.get('server_identity_after',{})
     pid=launch.get('after_pid',launch.get('identity_pid'))
     candidate=launch.get('candidate_head','');observed=before.get('git_sha','')
-    code_root=launch.get('code_root') or launch.get('server_identity',{}).get('code_root')
+    runtime_head=runtime_context['runtime_head'];code_root=runtime_context['runtime_root']
     same_root=(isinstance(code_root,str) and Path(code_root).is_absolute()
         and isinstance(before.get('code_root'),str) and Path(before['code_root']).is_absolute()
         and Path(before['code_root']).resolve()==Path(code_root).resolve())
     keys=('pid','port','db_name','git_sha','code_root')
     if (type(pid) is not int or pid<=0 or before.get('pid')!=pid
         or not isinstance(candidate,str) or not re.fullmatch('[0-9a-f]{40}',candidate) or observation.get('candidate_head')!=candidate
-        or not isinstance(observed,str) or not re.fullmatch('[0-9a-f]{7,40}',observed) or not candidate.startswith(observed)
+        or not isinstance(observed,str) or not re.fullmatch('[0-9a-f]{7,40}',observed) or not runtime_head.startswith(observed)
         or before.get('port')!=expected[2] or not launch.get('database')
         or observation.get('database')!=launch['database'] or before.get('db_name')!=launch['database']
         or not same_root or any(before.get(k)!=after.get(k) for k in keys)):
@@ -80,13 +95,14 @@ def verify_browser_service(browser,launch):
 
 
 def verify_quality_service(quality,launch):
-    expected=verify_service_observation(quality,launch)
+    runtime_context=_runtime_context(launch)
+    expected=_verify_service_observation(quality,launch,runtime_context)
     collections=quality.get('collections',{})
     if not isinstance(collections,dict) or not collections:raise ValueError('a2_quality_collections_missing')
     for key,observation in collections.items():
         if not isinstance(key,str) or not key or observation.get('collection_id')!=key:
             raise ValueError('a2_quality_collection_identity')
-        if verify_service_observation(observation,launch)!=expected:raise ValueError('a2_quality_collection_service')
+        if _verify_service_observation(observation,launch,runtime_context)!=expected:raise ValueError('a2_quality_collection_service')
     seen=set()
     for query,row in quality['queries'].items():
         collection=row.get('collection_id')

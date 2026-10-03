@@ -1044,6 +1044,31 @@ def _verified_generated_bytecode(root: Path,path: str) -> bool:
     except (OSError,ValueError,TypeError,EOFError,SyntaxError,TrustedGitError):return False
 
 
+def _same_registered_controller_source(loaded: Path, deployed: Path, candidate: str) -> bool:
+    """Allow inspection from a sibling checkout only for native identical code."""
+    try:
+        _assert_no_alias_components(loaded); _assert_no_alias_components(deployed)
+        if loaded.resolve(strict=True) == deployed.resolve(strict=True):
+            return True
+        source_root=loaded.parents[1];runtime_root=deployed.parents[1]
+        if (loaded.relative_to(source_root).as_posix()!='scripts/violet_production_control.py'
+            or deployed.relative_to(runtime_root).as_posix()!='scripts/violet_production_control.py'):
+            return False
+        def observed(repo,args):
+            result=run_trusted_git_bytes(repo,args)
+            if result.returncode!=0:raise TrustedGitError('controller_source_git_identity_failed')
+            return result.stdout
+        common=['rev-parse','--path-format=absolute','--git-common-dir']
+        left=Path(observed(source_root,common).decode('utf-8').strip())
+        right=Path(observed(runtime_root,common).decode('utf-8').strip())
+        if not left.is_absolute() or not right.is_absolute() or left.resolve(strict=True)!=right.resolve(strict=True):
+            return False
+        committed=observed(runtime_root,['show',candidate+':scripts/violet_production_control.py'])
+        return loaded.read_bytes().replace(b'\r\n',b'\n')==deployed.read_bytes().replace(b'\r\n',b'\n')==committed
+    except (OSError,ValueError,TrustedGitError,subprocess.SubprocessError):
+        return False
+
+
 def _verified_launcher_runtime_file(root: Path, path: str, profile_spec, candidate: str) -> bool:
     """Recognize only source-bound, live launcher metadata in an approved profile.
 
@@ -1086,7 +1111,7 @@ def _verified_launcher_runtime_file(root: Path, path: str, profile_spec, candida
             return False
         from scripts import violet_production_control as control
         controller = root / 'scripts/violet_production_control.py'
-        if Path(control.__file__).resolve(strict=True) != controller.resolve(strict=True):
+        if not _same_registered_controller_source(Path(control.__file__),controller,candidate):
             return False
         config = control.resolve_config(repo_root=root, profile_id='production-default', profile_path=profile_path)
         if (config.config_source != 'production_profile' or not config.profile_exists or config.profile_errors

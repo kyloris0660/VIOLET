@@ -207,10 +207,20 @@ def recorded_code_root_matches(value,repo):
     return isinstance(value,str) and bool(value.strip()) and Path(value).is_absolute() and Path(value).resolve()==Path(repo).resolve()
 
 
+def launcher_runtime_context(launch,repo,candidate):
+    """Keep a business candidate distinct from its proved fixed deployment."""
+    if 'fixed_runtime_binding' in launch:
+        from scripts.production_pixiv_runtime_snapshot import verify_deployment_runtime_binding
+        return verify_deployment_runtime_binding(Path(repo),candidate,launch['fixed_runtime_binding'])
+    return {'business_source_head':candidate,'runtime_head':candidate,'runtime_root':str(Path(repo).resolve())}
+
+
 def verify_launcher_action(launch,repo,candidate):
     from pathlib import Path
     entry=launch.get('normal_entry_invocation',{});process=launch.get('server_process_at_action',{})
     profile=launch.get('profile_at_action',{})
+    context=launcher_runtime_context(launch,repo,candidate)
+    runtime_root=Path(context['runtime_root'])
     if (Path(entry.get('executable','')).name!='V.I.O.L.E.T. Production Launcher.exe'
         or entry.get('arguments')!=[] or entry.get('action') not in {'Start','Restart'}
         or not re.fullmatch('[a-f0-9]{64}',entry.get('sha256',''))):
@@ -219,14 +229,14 @@ def verify_launcher_action(launch,repo,candidate):
         or not process.get('CreationDate') or not process.get('CommandLine')
         or not re.search(r'run\.py|uvicorn',process['CommandLine'])):
         raise ValueError('a2_launcher_process_observation_missing')
-    if (profile.get('candidate_head')!=candidate or profile.get('pixiv_product_enabled') is not True
+    if (profile.get('candidate_head')!=context['runtime_head'] or profile.get('pixiv_product_enabled') is not True
         or profile.get('pixiv_product_apply_enabled') is not False
         or profile.get('database')!=launch['database']
-        or not recorded_code_root_matches(profile.get('code_root'),repo)
+        or not recorded_code_root_matches(profile.get('code_root'),runtime_root)
         or not re.fullmatch('[a-f0-9]{64}',profile.get('sha256',''))):
         raise ValueError('a2_launcher_profile_observation_changed')
-    verify_normal_entry_provenance(launch,repo)
-    return True
+    verify_normal_entry_provenance(launch,runtime_root)
+    return context
 
 
 def configured_launcher_root(repo):

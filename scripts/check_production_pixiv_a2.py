@@ -274,13 +274,16 @@ def derive_result(private,repo=ROOT):
         'browser_launch_evidence')
     browser_actions=verify_browser_actions(browser,launch=launch,
         suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'))
-    verify_launcher_action(launch,repo,head)
+    runtime_context=verify_launcher_action(launch,repo,head)
     require(browser['candidate_head']==launch['candidate_head']==head and browser['api_result_sets_verified'],'fresh_browser_candidate')
     require(launch['before_pid']!=launch['after_pid'] and launch['after_pid']>0
         and launch['database']==backup['database'] and launch['healthy'],'launcher_identity')
     actual_identity=launch.get('server_identity',{})
     require(actual_identity.get('pid')==launch['after_pid'] and actual_identity.get('db_name')==backup['database']
-        and recorded_code_root_matches(actual_identity.get('code_root'),repo),'launcher_actual_service_identity')
+        and recorded_code_root_matches(actual_identity.get('code_root'),Path(runtime_context['runtime_root']))
+        and isinstance(actual_identity.get('git_sha'),str)
+        and re.fullmatch('[0-9a-f]{7,40}',actual_identity['git_sha'])
+        and runtime_context['runtime_head'].startswith(actual_identity['git_sha']),'launcher_actual_service_identity')
     images=[i for page in browser.get('pages',[]) for i in page.get('images',[])]
     originals=[i for i in images if re.search(r'/api/media/\d+/file',i.get('src','')) and i.get('width',0)>0 and i.get('height',0)>0]
     thumbnails=[i for i in images if '/thumbnail' in i.get('src','') and i.get('width',0)>0 and i.get('height',0)>0]
