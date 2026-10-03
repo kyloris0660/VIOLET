@@ -536,10 +536,10 @@
     "thread_count": 114
   },
   "review_package": {
-    "archive": "correction29-source-blocked-review114-final-20261003-1.zip",
+    "archive": "correction29-source-blocked-review114-final-20261003-2.zip",
     "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
     "maximum_bytes": 100000000,
-    "external_final_receipt": "correction29-b15-final-private-delivery-20261003-private.json",
+    "external_final_receipt": "correction29-b15-final2-private-delivery-20261003-private.json",
     "source_and_runtime_acceptance": false
   },
   "review_package_size_failure": {
@@ -796,5 +796,96 @@
       "postgresql_passed": 142,
       "historical_passed": 88
     }
+  },
+  "review114_first_archive_failed_replay": {
+    "archive": "correction29-source-blocked-review114-final-20261003-1.zip",
+    "bytes": 94708483,
+    "sha256": "2f8ba344f8a574f81717437911fd30d0ba1630a99c48ecaa3ff686a655affc1f",
+    "actual_passed_replays": 20,
+    "failed_replay": 21,
+    "missing_original_log": "delivery-run-control-b5-final-current-documents.log",
+    "original_failed_log": "correction29-source-blocked-review114-final-20261003-1-offline-21.log",
+    "clean_bytes_and_references_passed": true,
+    "failed_archive_and_directory_preserved": true
+  },
+  "review114_exact_executable_dependency_closure": {
+    "closure": "correction29-review114-final2-executable-dependency-closure-20261003-4-private.json",
+    "closure_sha256": "474f104f6ccfe6aaaae0845fe443d98dbcb73ec4b9602712ed07deca628df53f",
+    "actual_unchanged_remaining_dependency_readers_passed": 15,
+    "additional_original_files": 7,
+    "additional_original_bytes": 295314,
+    "historical_review103104_code_root": "correction29-b10-source-20261002/candidate",
+    "historical_source_binding_refusal_preserved": true,
+    "old_document_crlf_refusal_preserved": true,
+    "git_archive_crlf_only_originals": [
+      {
+        "file": "docs/current-handoff.md",
+        "git_bytes": 24134,
+        "git_sha256": "e2d479e01ffd0acf50138db465075e0dad357a5970dc31e760072f1e8e847053",
+        "archive_bytes": 24249,
+        "archive_sha256": "46ee8e3cd08664c29fe64409457e311db45dce60870e60715a2009455045140d",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/phase-contracts.md",
+        "git_bytes": 45275,
+        "git_sha256": "acbfe05ded9113d31e06eba31bd6712a6608ebdd316608910dd1161ef4253db8",
+        "archive_bytes": 46020,
+        "archive_sha256": "5828b64e50ce510821ecc2a911bc940402f28131c913dc70ea91637f28396581",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/plans/production-pixiv-a2.md",
+        "git_bytes": 57965,
+        "git_sha256": "1d3a2efd22f1f0aa96da1a4dd2ac2976070db618299a44d7b8669e858060cf15",
+        "archive_bytes": 58276,
+        "archive_sha256": "30b38bd20473b42be20313adb91bceba81a17023244fa52b40bfc4591c2278a6",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/reports/production-pixiv-a2-result.md",
+        "git_bytes": 82931,
+        "git_sha256": "b35af550dce6e1a2b2579c90d726d61a123bd3489a1d57164023f465dfc77c24",
+        "archive_bytes": 83363,
+        "archive_sha256": "5d61288ed830d34eec1affb8eada462b65bda648b845efe54b3f972cc229c07b",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/reports/production-pixiv-a2-summary.json",
+        "git_bytes": 41340,
+        "git_sha256": "1feaad7ff642903f00e918de315ec712b3c279c6b463e726bde7fa1c2ffea612",
+        "archive_bytes": 42140,
+        "archive_sha256": "2972b0bf4aaefe54f6b66c07cae356f8ab753d2eb83f9e380f7230a14ca89b3c",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/roadmap/current-mainline-roadmap.md",
+        "git_bytes": 33089,
+        "git_sha256": "90234422facea556d480c935d5121c9443736e5bf1a261dd61ee7cfae1c7f6ab",
+        "archive_bytes": 33373,
+        "archive_sha256": "899fd050503c61fbcb9c3cca067801c8b0da91900f43f9fa209b3cb8afdb303e",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/state/current-phase.json",
+        "git_bytes": 212099,
+        "git_sha256": "845e720cd00b4eb6b7532f6be51e25f660790ee0d0802cb584e4128c4902111b",
+        "archive_bytes": 215653,
+        "archive_sha256": "4999c167a4c8287edab2451e9cb7fdacba29edbdd43a5e03e5e789088fe80ddb",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      }
+    ],
+    "original_business_source_changed": false,
+    "lexical_inventory_entries": 9799,
+    "lexical_inventory_bytes": 6131235673,
+    "lexical_inventory_is_required_execution_scope": false,
+    "final36_replays_claimed_passed": false
   }
 }

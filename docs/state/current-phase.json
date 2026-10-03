@@ -118,7 +118,7 @@
     "2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。",
     "2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。",
     "2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。",
-    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史通过；原生角色拒绝9543，18槽位9通过/2失败/7未执行，0新provider/生产写。105线程及6文档已冻结推送93ab18a；初版完整ZIP实际115724350字节超过硬上限，原包/失败保留，当前继续压缩去重与独立单包验证。B5 worker22852保留，target/safe/route均false。 第106条six-before-fail/six-after-pass、166运行路径及156契约开发回归通过；缓存账本准入集中冻结20d94190bfa4c4896398ee320c5d553fae98fc7e，26文件注册，当前正式验证和角色完整门待验；旧B5未动。 后续正式检查：2026-10-02 review106修复冻结20d9419：1003 focused通过/3跳过/3警告，142真实PG/API通过；历史首轮86通过/2环境控制拒绝失败，原日志保留，清除PYTEST_ADDOPTS后88节点全通过。26文件源码差量/80Git对象验证通过。完整原生角色9543缺口未变，18槽位9通过/2失败/7未执行；0新调用，原生产同PID保留。 当前B11首版ZIP实际101902344字节超限，失败原包保留；4份当前决定性证据已对包内旧原件做精确COPY/literal编码并实际逐字节复原，原件、失败及9543分母均不删。第二个独占ZIP仍以实际大小/干净重放收据判定交付。 2026-10-03恢复：新增107—109三项普通门禁纠偏进行中；原6110账本全字段保护、1665历史回填独立原题核对、准确88节点绑定，零新provider/全套/生产重启。 107—109及缓存快捷路径/停止分母同类修正集中冻结于5578e7dea113a4513aab05d8567c9cb7989045c9；32文件注册，正式focused/PG/88历史与全来源门待验；零新全套、provider及重启。 B12正式1038/2/3负面证据保留；旧夹具重建真实原答以验证失败来源拒绝，运行规则不改，集中冻结B13 a64c77ee152601a816eba3a7c86f73ef1e8f4e44，正式验证待执行。 B13实际1040 focused/3跳过/3警告和142隔离PG通过，原88节点正在执行，未预报通过。 111线程新增正常入口PATH-Git和超额结算缺陷，16原反例失败/修后17通过，完整有界开发286通过；原18433调用无超额、原账本不改，待B14正式验证。 集中冻结B14 8b42ed3afc1912d7ba9bb7b1756486af9c0953f7，同服务进程继续。 B14定向实际1061通过/3跳过/3警告，但测试后原门禁拒绝，首次正式序列未接受；原收据保留，后续阶段未执行。 B14第二正式序列1061定向/3跳过/3警告及测试后原门禁通过，隔离PG/原88继续；原拒绝未改写、原因未确认。 B14真实隔离PG142通过及测试后原门禁通过，原精确88正在正式复验。 B14第二正式序列1061/142/原88及原生验证收据全部通过，未追加全套；当前完整角色回放即将零调用执行。 B14当前全原生回放实际exit1/9543缺口/67.594秒，100285信号/18434缓存，前后原账本与输入缓存不变，网络0；与完整原scope逐项一致。 B14正式1061/142/原88通过；全原生100285信号/18434缓存仍9543缺口，原输入/账本/缓存不变。111线程逐项对账，18槽位9/2/7，单文件便携交付待实际终验。 当前111线程首版单包102020195字节超限，原包/日志保留；第二版改进精确文本字节池，失败证据与全部现有截图不删。 新增第112条提交祖先意见已用当前真实远端HEAD和原Git对象核验：B14是当前交付祖先，意见所称35ab1beb不是观测PR HEAD；原评论保留，不resolve、不改业务或降低9543来源门禁。 休眠后原进程/PR/main基线保持；第二包92484894字节和干净字节/引用核验通过，离线14项通过、第15项缺旧356源码导出的79份资源而拒绝。原包/目录/失败保留，全部原件1707843字节已独立核验，第三包补齐完整依赖后重新干净复验34项，不改任何断言或业务门禁。 第三包92953831字节干净字节/引用核验通过，19项离线通过后第20项缺历史review100源码目录而拒绝，原包/失败保留；远端114线程新增前驱旧格式调用绑定与角色缓存投影校验两项P1，开始零provider反例和有界修复，生产同进程保持。 113—114实际修前22失败/5通过，最小修后27通过；真实候选Sibling夹具从原F7a回答规范化，原356通过/1夹具失败/1权限跳过保留。完整有界开发450通过/1跳过，精确原输入付费前驱和每次缓存投影重验证已登记35项，准备冻结B15。 集中冻结B15 5c40475cff9176e8fca6339ca035949eb72ea1e6，同生产服务继续；当前正式focused/PG/原88及完整来源门待实际验证。 B15 focused实际1092通过/3跳过，原生测试后门禁通过；其余依赖继续。 B15 postgresql实际142通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15 historical实际88通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15当前完整原生实际exit1/9543缺口/49.969秒，100285信号/18434缓存，原输入/账本/缓存不变，网络0；完整原scope逐项一致。 B15冻结1092/142/精确88通过，当前原生仍9543缺口、18门9/2/7；114线程实际逐项对账。三个失败包负面证据与全部声明源码保留，新的单ZIP待实际干净终验。"
+    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史通过；原生角色拒绝9543，18槽位9通过/2失败/7未执行，0新provider/生产写。105线程及6文档已冻结推送93ab18a；初版完整ZIP实际115724350字节超过硬上限，原包/失败保留，当前继续压缩去重与独立单包验证。B5 worker22852保留，target/safe/route均false。 第106条six-before-fail/six-after-pass、166运行路径及156契约开发回归通过；缓存账本准入集中冻结20d94190bfa4c4896398ee320c5d553fae98fc7e，26文件注册，当前正式验证和角色完整门待验；旧B5未动。 后续正式检查：2026-10-02 review106修复冻结20d9419：1003 focused通过/3跳过/3警告，142真实PG/API通过；历史首轮86通过/2环境控制拒绝失败，原日志保留，清除PYTEST_ADDOPTS后88节点全通过。26文件源码差量/80Git对象验证通过。完整原生角色9543缺口未变，18槽位9通过/2失败/7未执行；0新调用，原生产同PID保留。 当前B11首版ZIP实际101902344字节超限，失败原包保留；4份当前决定性证据已对包内旧原件做精确COPY/literal编码并实际逐字节复原，原件、失败及9543分母均不删。第二个独占ZIP仍以实际大小/干净重放收据判定交付。 2026-10-03恢复：新增107—109三项普通门禁纠偏进行中；原6110账本全字段保护、1665历史回填独立原题核对、准确88节点绑定，零新provider/全套/生产重启。 107—109及缓存快捷路径/停止分母同类修正集中冻结于5578e7dea113a4513aab05d8567c9cb7989045c9；32文件注册，正式focused/PG/88历史与全来源门待验；零新全套、provider及重启。 B12正式1038/2/3负面证据保留；旧夹具重建真实原答以验证失败来源拒绝，运行规则不改，集中冻结B13 a64c77ee152601a816eba3a7c86f73ef1e8f4e44，正式验证待执行。 B13实际1040 focused/3跳过/3警告和142隔离PG通过，原88节点正在执行，未预报通过。 111线程新增正常入口PATH-Git和超额结算缺陷，16原反例失败/修后17通过，完整有界开发286通过；原18433调用无超额、原账本不改，待B14正式验证。 集中冻结B14 8b42ed3afc1912d7ba9bb7b1756486af9c0953f7，同服务进程继续。 B14定向实际1061通过/3跳过/3警告，但测试后原门禁拒绝，首次正式序列未接受；原收据保留，后续阶段未执行。 B14第二正式序列1061定向/3跳过/3警告及测试后原门禁通过，隔离PG/原88继续；原拒绝未改写、原因未确认。 B14真实隔离PG142通过及测试后原门禁通过，原精确88正在正式复验。 B14第二正式序列1061/142/原88及原生验证收据全部通过，未追加全套；当前完整角色回放即将零调用执行。 B14当前全原生回放实际exit1/9543缺口/67.594秒，100285信号/18434缓存，前后原账本与输入缓存不变，网络0；与完整原scope逐项一致。 B14正式1061/142/原88通过；全原生100285信号/18434缓存仍9543缺口，原输入/账本/缓存不变。111线程逐项对账，18槽位9/2/7，单文件便携交付待实际终验。 当前111线程首版单包102020195字节超限，原包/日志保留；第二版改进精确文本字节池，失败证据与全部现有截图不删。 新增第112条提交祖先意见已用当前真实远端HEAD和原Git对象核验：B14是当前交付祖先，意见所称35ab1beb不是观测PR HEAD；原评论保留，不resolve、不改业务或降低9543来源门禁。 休眠后原进程/PR/main基线保持；第二包92484894字节和干净字节/引用核验通过，离线14项通过、第15项缺旧356源码导出的79份资源而拒绝。原包/目录/失败保留，全部原件1707843字节已独立核验，第三包补齐完整依赖后重新干净复验34项，不改任何断言或业务门禁。 第三包92953831字节干净字节/引用核验通过，19项离线通过后第20项缺历史review100源码目录而拒绝，原包/失败保留；远端114线程新增前驱旧格式调用绑定与角色缓存投影校验两项P1，开始零provider反例和有界修复，生产同进程保持。 113—114实际修前22失败/5通过，最小修后27通过；真实候选Sibling夹具从原F7a回答规范化，原356通过/1夹具失败/1权限跳过保留。完整有界开发450通过/1跳过，精确原输入付费前驱和每次缓存投影重验证已登记35项，准备冻结B15。 集中冻结B15 5c40475cff9176e8fca6339ca035949eb72ea1e6，同生产服务继续；当前正式focused/PG/原88及完整来源门待实际验证。 B15 focused实际1092通过/3跳过，原生测试后门禁通过；其余依赖继续。 B15 postgresql实际142通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15 historical实际88通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15当前完整原生实际exit1/9543缺口/49.969秒，100285信号/18434缓存，原输入/账本/缓存不变，网络0；完整原scope逐项一致。 B15冻结1092/142/精确88通过，当前原生仍9543缺口、18门9/2/7；114线程实际逐项对账。三个失败包负面证据与全部声明源码保留，新的单ZIP待实际干净终验。 B15首包实测94708483字节，干净bytes/SHA/JSON/XML/59678引用通过；离线20通过、第21缺历史启动日志而拒绝。原包/目录/日志保留，补齐实际文件引用闭包后重新全验。 独立依赖探查15个剩余原验证器通过，新增7份原件295314字节；历史103—104绑定准确B10源码，七当前文档仅Git archive CRLF差异。宽泛9799引用非执行缺项，原失败保留；新包36项仍待实际全验。"
   ],
   "next_required_checkpoint": "owner_specific_role_provenance_scope_ruling_after_single_portable_failure_delivery",
   "durable_links": [
@@ -374,7 +374,7 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-10-03T04:48:29.915706+00:00",
+  "updated_at": "2026-10-03T05:28:16.656623+00:00",
   "production_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
   "correction17_progress": {
     "current_execution": {
@@ -3015,10 +3015,10 @@
     "current_runtime_accepted": false,
     "historical_role_source_records_verified_before_review105": 15824,
     "review_package": {
-      "archive": "correction29-source-blocked-review114-final-20261003-1.zip",
+      "archive": "correction29-source-blocked-review114-final-20261003-2.zip",
       "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
       "maximum_bytes": 100000000,
-      "external_final_receipt": "correction29-b15-final-private-delivery-20261003-private.json",
+      "external_final_receipt": "correction29-b15-final2-private-delivery-20261003-private.json",
       "source_and_runtime_acceptance": false
     },
     "historical_oversize_review_package": {
@@ -3468,6 +3468,97 @@
       "inputs_ledger_and_cache_unchanged": true,
       "network_connections": 0,
       "scope_binding": "correction29-b14-role-scope-binding-20261003-private.json"
+    },
+    "review114_first_archive_failed_replay": {
+      "archive": "correction29-source-blocked-review114-final-20261003-1.zip",
+      "bytes": 94708483,
+      "sha256": "2f8ba344f8a574f81717437911fd30d0ba1630a99c48ecaa3ff686a655affc1f",
+      "actual_passed_replays": 20,
+      "failed_replay": 21,
+      "missing_original_log": "delivery-run-control-b5-final-current-documents.log",
+      "original_failed_log": "correction29-source-blocked-review114-final-20261003-1-offline-21.log",
+      "clean_bytes_and_references_passed": true,
+      "failed_archive_and_directory_preserved": true
+    },
+    "review114_exact_executable_dependency_closure": {
+      "closure": "correction29-review114-final2-executable-dependency-closure-20261003-4-private.json",
+      "closure_sha256": "474f104f6ccfe6aaaae0845fe443d98dbcb73ec4b9602712ed07deca628df53f",
+      "actual_unchanged_remaining_dependency_readers_passed": 15,
+      "additional_original_files": 7,
+      "additional_original_bytes": 295314,
+      "historical_review103104_code_root": "correction29-b10-source-20261002/candidate",
+      "historical_source_binding_refusal_preserved": true,
+      "old_document_crlf_refusal_preserved": true,
+      "git_archive_crlf_only_originals": [
+        {
+          "file": "docs/current-handoff.md",
+          "git_bytes": 24134,
+          "git_sha256": "e2d479e01ffd0acf50138db465075e0dad357a5970dc31e760072f1e8e847053",
+          "archive_bytes": 24249,
+          "archive_sha256": "46ee8e3cd08664c29fe64409457e311db45dce60870e60715a2009455045140d",
+          "only_exact_crlf_conversion": true,
+          "both_original_streams_preserved": true
+        },
+        {
+          "file": "docs/phase-contracts.md",
+          "git_bytes": 45275,
+          "git_sha256": "acbfe05ded9113d31e06eba31bd6712a6608ebdd316608910dd1161ef4253db8",
+          "archive_bytes": 46020,
+          "archive_sha256": "5828b64e50ce510821ecc2a911bc940402f28131c913dc70ea91637f28396581",
+          "only_exact_crlf_conversion": true,
+          "both_original_streams_preserved": true
+        },
+        {
+          "file": "docs/plans/production-pixiv-a2.md",
+          "git_bytes": 57965,
+          "git_sha256": "1d3a2efd22f1f0aa96da1a4dd2ac2976070db618299a44d7b8669e858060cf15",
+          "archive_bytes": 58276,
+          "archive_sha256": "30b38bd20473b42be20313adb91bceba81a17023244fa52b40bfc4591c2278a6",
+          "only_exact_crlf_conversion": true,
+          "both_original_streams_preserved": true
+        },
+        {
+          "file": "docs/reports/production-pixiv-a2-result.md",
+          "git_bytes": 82931,
+          "git_sha256": "b35af550dce6e1a2b2579c90d726d61a123bd3489a1d57164023f465dfc77c24",
+          "archive_bytes": 83363,
+          "archive_sha256": "5d61288ed830d34eec1affb8eada462b65bda648b845efe54b3f972cc229c07b",
+          "only_exact_crlf_conversion": true,
+          "both_original_streams_preserved": true
+        },
+        {
+          "file": "docs/reports/production-pixiv-a2-summary.json",
+          "git_bytes": 41340,
+          "git_sha256": "1feaad7ff642903f00e918de315ec712b3c279c6b463e726bde7fa1c2ffea612",
+          "archive_bytes": 42140,
+          "archive_sha256": "2972b0bf4aaefe54f6b66c07cae356f8ab753d2eb83f9e380f7230a14ca89b3c",
+          "only_exact_crlf_conversion": true,
+          "both_original_streams_preserved": true
+        },
+        {
+          "file": "docs/roadmap/current-mainline-roadmap.md",
+          "git_bytes": 33089,
+          "git_sha256": "90234422facea556d480c935d5121c9443736e5bf1a261dd61ee7cfae1c7f6ab",
+          "archive_bytes": 33373,
+          "archive_sha256": "899fd050503c61fbcb9c3cca067801c8b0da91900f43f9fa209b3cb8afdb303e",
+          "only_exact_crlf_conversion": true,
+          "both_original_streams_preserved": true
+        },
+        {
+          "file": "docs/state/current-phase.json",
+          "git_bytes": 212099,
+          "git_sha256": "845e720cd00b4eb6b7532f6be51e25f660790ee0d0802cb584e4128c4902111b",
+          "archive_bytes": 215653,
+          "archive_sha256": "4999c167a4c8287edab2451e9cb7fdacba29edbdd43a5e03e5e789088fe80ddb",
+          "only_exact_crlf_conversion": true,
+          "both_original_streams_preserved": true
+        }
+      ],
+      "original_business_source_changed": false,
+      "lexical_inventory_entries": 9799,
+      "lexical_inventory_bytes": 6131235673,
+      "lexical_inventory_is_required_execution_scope": false,
+      "final36_replays_claimed_passed": false
     }
   },
   "historical_completed_checkpoints_before_correction29": [
