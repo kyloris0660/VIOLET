@@ -23,6 +23,9 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 WindowsGitLocationProvider = Callable[
     [], tuple[tuple[PurePath, ...], tuple[PurePath, ...]]
 ]
+# A complete ignored-file inventory can exceed the ordinary command budget
+# on evidence worktrees. Keep its duration bounded without reducing coverage.
+IGNORED_INVENTORY_TIMEOUT_SECONDS = 60
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 _BEHAVIOR_SUFFIXES = frozenset(
     {
@@ -1200,6 +1203,7 @@ def inspect_worktree_drift(
         root,
         tuple(ignored_arguments),
         git=git,
+        timeout=IGNORED_INVENTORY_TIMEOUT_SECONDS,
     )
     if ignored.returncode != 0:
         raise TrustedGitError("trusted_git_ignored_status_failed")

@@ -210,6 +210,49 @@ def test_ignored_enumeration_budget_fails_closed(tmp_path: Path, monkeypatch: py
         inspect_worktree_drift(git, repo)
 
 
+def test_slow_ignored_inventory_keeps_bounded_budget_and_rejects_behavior(tmp_path, monkeypatch):
+    from scripts import trusted_git
+    repo = _new_repo(tmp_path)
+    (repo / ".gitignore").write_text("ignored/\n", encoding="utf-8")
+    _commit(repo, "ignore retained evidence", ".gitignore")
+    ignored = repo / "ignored"
+    ignored.mkdir()
+    (ignored / "importable.py").write_text("synthetic\n", encoding="utf-8")
+    actual = trusted_git.run_trusted_git_bytes
+    observed = []
+
+    def simulated_slow_inventory(root, arguments, **kwargs):
+        observed.append((tuple(arguments), kwargs.get("timeout", 15)))
+        if "--ignored" in arguments and kwargs.get("timeout", 15) < 20:
+            raise TrustedGitError("trusted_git_invocation_failed:TimeoutExpired")
+        return actual(root, arguments, **kwargs)
+
+    monkeypatch.setattr(trusted_git, "run_trusted_git_bytes", simulated_slow_inventory)
+    git = resolve_trusted_git_executable(excluded_roots=(repo,))
+    with pytest.raises(TrustedGitError, match="behavior_affecting_ignored:1"):
+        assert_trusted_worktree_clean(git, repo)
+    assert [timeout for args, timeout in observed if "--ignored" in args] == [60]
+    assert all(timeout == 15 for args, timeout in observed if "--ignored" not in args)
+
+
+def test_ignored_inventory_timeout_still_blocks_candidate(tmp_path, monkeypatch):
+    from scripts import trusted_git
+    repo = _new_repo(tmp_path)
+    candidate = _bootstrap_git(repo, "rev-parse", "HEAD")
+    actual = trusted_git.run_trusted_git_bytes
+    observed = []
+
+    def expired_inventory(root, arguments, **kwargs):
+        if "--ignored" in arguments:
+            observed.append(kwargs.get("timeout"))
+            raise TrustedGitError("trusted_git_invocation_failed:TimeoutExpired")
+        return actual(root, arguments, **kwargs)
+
+    monkeypatch.setattr(trusted_git, "run_trusted_git_bytes", expired_inventory)
+    assert trusted_git.candidate_behavior_carry_forward(repo, candidate) is False
+    assert observed == [60]
+
+
 def test_exact_verified_repo_venv_is_excluded_before_ignored_budget(
     tmp_path: Path,
 ) -> None:

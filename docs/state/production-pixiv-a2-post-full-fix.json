@@ -54,7 +54,7 @@
     },
     "docs/state/production-pixiv-a2-ignored-inputs.json": {
       "before_sha256": "6c18d1b9b37e781005ea95543866142b05e304926ae6eaa559d5b6323e50d9c3",
-      "after_sha256": "d20f86f99115058fe232d27a8a2ee351672b0a5ac7f21996791245f89ff97c9c"
+      "after_sha256": "bc965243942859cd2c184b457f09a631dbfd47ce8dda5b9ac12a2079aa2d09bc"
     },
     "docs/state/production-pixiv-a2-required-tests.json": {
       "before_sha256": "2340d627b0f16cd124f539a340816cfa84255f68d38d1ccd195606135d13e238",
@@ -74,7 +74,7 @@
     },
     "scripts/production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "836073fe19e67fcea4797a489530358b683d76ee8e1ebbf049d1d1e3aaaf4754"
+      "after_sha256": "95c46908d94a46ebd4397e1949607ecd5fb12cebf8be7734476733e71dcb4096"
     },
     "scripts/production_pixiv_budget_authority.py": {
       "before_sha256": "2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744",
@@ -86,7 +86,7 @@
     },
     "scripts/trusted_git.py": {
       "before_sha256": "dbaf88fa5d6dec33d65571a5f0438f55e768bb92f5f300c87c397c5b747b86bf",
-      "after_sha256": "8126faf872ba09c42df6e68a57f304aefba30c07d54149c8a4f05191618fa7f8"
+      "after_sha256": "befe06efcf0bbcadb265f7120e9eb9f4f92e89d076e0f27c426e952f2f91b31e"
     },
     "scripts/violet_production_control.py": {
       "before_sha256": "d0c51d6cb5a8122d4610b1daa458920b4e0894931c0d375567338e37c6aef69f",
@@ -114,7 +114,7 @@
     },
     "tests/test_production_pixiv_a2_post_full_fix.py": {
       "before_sha256": null,
-      "after_sha256": "40f3c5bc42723053e6efe4630149ae0d7fd1434d1fbb4d258929d2e2bd66ed08"
+      "after_sha256": "55e921480898370a0eb0077bf0fdb45845bdd9b90562ba852ddd22ce1fc80318"
     },
     "tests/test_production_pixiv_adjudication.py": {
       "before_sha256": "797bb70fd86cf43fb017ffcbeae051537678b03f4ed2300d35f7279281cd1b52",
@@ -182,7 +182,7 @@
     },
     "tests/test_trusted_git.py": {
       "before_sha256": "ba1d17d23ba2c1cc68b652c7f01fa0e2114337913388914f19ef27223cd43078",
-      "after_sha256": "b095851cfb8403918aca2f28e667ae2c17470a1b466b7bbd3ed3f23c27187497"
+      "after_sha256": "ed336dfd88504f1ac002307303ba8479cf07a794d01e2fafe5bfda9cc07c3c82"
     }
   },
   "source_recovery_authorization": {

@@ -20,7 +20,7 @@
   },
   "candidate_profile": {
     "private_file": "production_launcher/production-candidate-profile.json",
-    "previous_full_sha256": "dc0ed8d89524c878bc435fa1f539b4a6bd9442ed2ca3cba2e1f807900a7e0c20",
+    "previous_full_sha256": "e466bb66161b3f6901825b056256b5cddc63961edaa5fa7d893752d99c90da20",
     "stable_fields_sha256": "ec17283e9c1a94a6d6aad56235852675e16c4a7ad1e2cf627b59b48f23c66d20"
   }
 }

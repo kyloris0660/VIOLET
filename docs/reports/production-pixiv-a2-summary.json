@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "0a857b5b741bfb9bf34a80a7c8353a46e469d6a7",
+  "candidate_head": "1444146219d0d89b0e68ac0ba0de0940d93413dc",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -913,7 +913,7 @@
   "correction03": {
     "authorization_file": "VIOLET-A2-来源恢复与最终收口执行任务-20261003.md",
     "authorization_sha256": "928faaa4bc04a5f7e021023e4c87341c5da5d44c9eafd3194d96bde89af0bf75",
-    "status": "bounded_fixes_frozen_current_validation_pending",
+    "status": "B18_inventory_timeout_fixed_current_validation_pending",
     "source_record_scope": 9543,
     "shared_unit_source_contract_authorized": true,
     "original_ledger_failure_rewrite_authorized": false,
@@ -941,8 +941,8 @@
     "current_source_gate_passed": false,
     "current_business_implementation_unfrozen": false,
     "source_derivation_receipt": "correction03-derived-20261004-3-receipt-private.json",
-    "current_replay": "correction03-current-replay-20261004-3-receipt-private.json",
-    "current_replay_status": "stable_zero_call_replay_passed_one_original_target_pending",
+    "current_replay": "correction03-current-replay-20261004-4-receipt-private.json",
+    "current_replay_status": "B17_all_original_sources_and_current_view_passed_one_legal_original_target_pending",
     "pending_original_target_plan": "correction03-remaining-plan-20261004-1-plan-private.json",
     "pending_legal_original_targets": 1,
     "new_provider_calls": 0,
@@ -955,7 +955,7 @@
       "previous_idempotence_failure_preserved": "correction03-source-test-20261004-16.log"
     },
     "additional_full_non_e2e_invocations": 0,
-    "business_candidate_head": "0a857b5b741bfb9bf34a80a7c8353a46e469d6a7",
+    "business_candidate_head": "1444146219d0d89b0e68ac0ba0de0940d93413dc",
     "owned_test_fixture_preservation": "correction03-owned-runtime-fixture-preservation-20261004-private.json",
     "historical_b16_zero_call_replay": "correction03-current-replay-20261004-3-receipt-private.json",
     "b16_focused": {
@@ -982,6 +982,32 @@
       "failed": 0,
       "skipped": 1,
       "previous_failures_preserved": true
+    },
+    "original_cache_preservation": "correction03-current-replay-20261004-4-original-cache-preservation-private.json",
+    "frozen_guard_failures": {
+      "originals_preserved": true,
+      "diagnosed_failure": "trusted_git_invocation_failed:TimeoutExpired",
+      "diagnostic": "correction29-correction03-b17-focused-20261004-2-before-guard-diagnostic-private.json",
+      "pytest_started": false
+    },
+    "historical_b17_zero_call_replay": "correction03-current-replay-20261004-4-receipt-private.json",
+    "ignored_inventory_failure": {
+      "diagnostic": "correction03-native-boundary-detailed-20261004-1-private.json",
+      "actual_command": "ls-files --others --ignored",
+      "prior_timeout_seconds": 15,
+      "observed_complete_seconds": 19.969,
+      "benchmark": "correction03-ignored-inventory-duration-20261004-1-private.json",
+      "new_bounded_timeout_seconds": 60,
+      "enumeration_scope_or_trust_rules_changed": false,
+      "paid_dispatch_performed": false
+    },
+    "timeout_development": {
+      "label": "correction03-inventory-timeout-test-20261004-3",
+      "passed": 110,
+      "failed": 0,
+      "skipped": 2,
+      "prior_failed_originals_preserved": true,
+      "historical_source_fixture_uses_original_git_blob": true
     }
   },
   "active_blocker": {

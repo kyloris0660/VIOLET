@@ -25,35 +25,15 @@ def _literal_query_sources():
 
 def _release_gate_sources(name):
     after = (Path(__file__).resolve().parents[1] / name).read_bytes().replace(b'\r\n', b'\n')
-    if name != 'scripts/trusted_git.py':
-        # Bind the entire historical module to its real Git object, including
-        # the earlier role branches, instead of reconstructing selected lines.
-        source_root = Path(__file__).resolve().parents[1]
-        git = resolve_trusted_git_executable(repo_root=source_root)
-        original = run_trusted_git_bytes(source_root,
-            ['show', '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f:' + name], git=git)
-        assert original.returncode == 0
-        before = original.stdout
-    else:
-        current = b"""        trusted = resolve_trusted_git_executable(repo_root=repo_root)
-        def git(*args):
-            result = run_trusted_git_text(repo_root, args, git=trusted, timeout=10)
-            if result.returncode != 0:
-                raise TrustedGitError('candidate_carry_git_operation_failed')
-            return result.stdout.strip()
-"""
-        historical = b"""    def git(*args):
-        return subprocess.check_output(['git', '-C', str(repo_root), *args],
-            text=True, encoding='utf-8', stderr=subprocess.DEVNULL, timeout=10).strip()
-"""
-        before = after.replace(current, b'')
-        marker = b'    """Local launcher and A1 evidence share the same candidate drift boundary."""\n'
-        before = before.replace(marker, marker + historical)
-        before = before.replace(b'drift=inspect_worktree_drift(trusted,repo_root,',
-            b'drift=inspect_worktree_drift(resolve_trusted_git_executable(repo_root=repo_root),repo_root,')
-        before = before.replace(
-            b"referenced = run_trusted_git_text(repo_root, ['grep','-l','-F',path,'--',\n                'backend','frontend','scripts','run.py'], git=trusted, timeout=10)",
-            b"referenced = subprocess.run(['git','-C',str(repo_root),'grep','-l','-F',path,'--',\n                'backend','frontend','scripts','run.py'], capture_output=True, timeout=10)")
+    # Every historical module comes from the protected original Git object.
+    # Reversing current implementation fragments cannot reconstruct unrelated
+    # later changes, including the ignored-inventory time budget.
+    source_root = Path(__file__).resolve().parents[1]
+    git = resolve_trusted_git_executable(repo_root=source_root)
+    original = run_trusted_git_bytes(source_root,
+        ['show', '8aeefb5e3f785360ca8b0cd55de7674d6ea62c3f:' + name], git=git)
+    assert original.returncode == 0
+    before = original.stdout
     assert {key:hashlib.sha256(value).hexdigest() for key,value in
             (('before_sha256',before),('after_sha256',after))} == contract.RELEASE_GATE_SOURCE_DELTAS[name]
     return before, after
