@@ -681,7 +681,7 @@ additional full runs; it is not documentation-only carry-forward or full-suite
 coverage of the new candidate. Current semantic, copy and production contracts
 still require the new candidate. Lead and Owner acceptance remain separate.
 The current exact registered set is enumerated by
-`docs/state/production-pixiv-a2-post-full-fix.json` (33 files at B14 8b42ed3).
+`docs/state/production-pixiv-a2-post-full-fix.json` (35 files at B15 5c40475).
 It includes the final projection collector,
 Git-protected approved business fingerprints, and real PostgreSQL drift and
 revision-trigger regressions. Updated source records cannot
@@ -737,3 +737,9 @@ PR #149 merge authority is consumed. Original read-only database backup and inde
 The next original-database operation requires separate owner approval and fresh actual-target selection, product and binding fingerprints. Copy acceptance never authorizes original apply. The provider-smoke template is non-executable until its work bound is actually enforced. Deferred gates: `SCV2_PX3_METADATA_REFRESH_BINDING_GATE` before metadata refresh/ongoing original use; `SCV2_PX3_POLICY_VERSION_CAPTURE_GATE` before the next PX2 policy version change. Existing multiworker and workspace debt remains open.
 
 Final restored-copy checkpoint: 852 canonical focused tests passed on implementation HEAD `306cc811fb0b49a5450ffb419edf115562045515`; independent synthetic and private PostgreSQL contracts passed. The full non-E2E suite ran once (4384 passed, 22 skipped, 11 raw failures); seven environment failures and three documentation assertions were closed by targeted validation, while missing original AI execution evidence reproduced on exact base. See [controlled-canary evidence and boundaries](development/scv2-px3-controlled-canary.md) for detail. The one-time PR #150 merge permission expires automatically when that PR is merged; original writes and normal startup remain unauthorized.
+
+Current B15 also checks exact original paid correction priors before planning,
+and always derives cached role verdict/candidates from the validated original
+answer. Legacy ambiguity, foreign input, invalid debit and missing original
+answers cannot become a paid plan. This does not admit the 9543 real upstream
+role-source gaps or grant out-of-scope role repair authority.
