@@ -531,16 +531,17 @@
   },
   "current_status": "PRODUCTION_PIXIV_A2_CORRECTION29_CURRENT_ROLE_SOURCE_BLOCKED",
   "current_review_dispositions": {
-    "file": "correction29-review114-current-source-blocked-20261003-review-dispositions-private.json",
-    "sha256": "0343bbff93e7372af61cff368ec338f54884c5689d1079c960fe651c8bbdfb5a",
-    "thread_count": 114
+    "file": "correction29-review115-current-source-blocked-20261003-review-dispositions-private.json",
+    "sha256": "4d7d86c9883265c617cac395baa0422d29c997c45aab01c4e8389d926a845e66",
+    "thread_count": 115
   },
   "review_package": {
-    "archive": "correction29-source-blocked-review114-final-20261003-2.zip",
+    "archive": "correction29-source-blocked-review115-final-20261003-3.zip",
     "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
     "maximum_bytes": 100000000,
-    "external_final_receipt": "correction29-b15-final2-private-delivery-20261003-private.json",
-    "source_and_runtime_acceptance": false
+    "external_final_receipt": "correction29-b15-final3-private-delivery-20261003-private.json",
+    "source_and_runtime_acceptance": false,
+    "required_offline_replays": 37
   },
   "review_package_size_failure": {
     "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
@@ -887,5 +888,14 @@
     "lexical_inventory_bytes": 6131235673,
     "lexical_inventory_is_required_execution_scope": false,
     "final36_replays_claimed_passed": false
+  },
+  "review115_live_ancestry": {
+    "file": "correction29-review115-live-ancestry-20261003-private.json",
+    "sha256": "138a1e7e327ac585b98bbb97d60c0e31332bfabde50eecb84b238b5153894c1d",
+    "actual_live_pr_head": "880dd80e0e6f2a0e0cad0d26f5c50e6255cb2aa3",
+    "actual_merge_base": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+    "native_guard_passed": true,
+    "not_reproduced_on_actual_live_PR": true,
+    "new_pytest_success_claimed": false
   }
 }

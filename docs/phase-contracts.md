@@ -743,3 +743,5 @@ and always derives cached role verdict/candidates from the validated original
 answer. Legacy ambiguity, foreign input, invalid debit and missing original
 answers cannot become a paid plan. This does not admit the 9543 real upstream
 role-source gaps or grant out-of-scope role repair authority.
+
+最新115线程完整原评论已逐项对账。第115条所称8be62df2不是实际PR HEAD；实际880dd80与B15的merge-base为B15，原始Git对象及未改原生续接门禁通过，在实际交付未复现。原意见保留、未resolve，不虚构新增pytest或当前生产验收。新单ZIP要求全新解压及37项标准库离线重算，只有外部最终收据可确认实测通过。

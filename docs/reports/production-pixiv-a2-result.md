@@ -12,7 +12,7 @@
 
 18个当前契约槽位实际9通过、2失败、7依赖受阻未执行。当前完整副本、精度/80例、新原生产apply、正常EXE、生产Edge和240 workload尚未执行；历史B5成功只证明其旧HEAD。第112条原提交祖先意见按当时真实远端和Git对象判为未复现；原观测B14及69ae均在当前B15祖先链，不虚构新的通过节点。
 
-休眠后只读现场仍为原B5服务worker22852、38114 Media、8623绑定Media、66392有效支持、1 active run，0活动作业、0固定范围缺失或尾部新增，read ON/apply OFF。启动业务为562bc18；动态server git跟随工作树变化不证明进程已加载B15。未停服、重启或写生产。累计18433调用/USD13.589429，cap USD30、余量USD16.410571、在途0；本轮metadata/LLM新增调用均0。114真实远端线程和完整原评论分页核对，未resolve或触发reviewer。
+休眠后只读现场仍为原B5服务worker22852、38114 Media、8623绑定Media、66392有效支持、1 active run，0活动作业、0固定范围缺失或尾部新增，read ON/apply OFF。启动业务为562bc18；动态server git跟随工作树变化不证明进程已加载B15。未停服、重启或写生产。累计18433调用/USD13.589429，cap USD30、余量USD16.410571、在途0；本轮metadata/LLM新增调用均0。115真实远端线程和完整原评论分页核对，未resolve或触发reviewer。
 
 ## 剩余最小反例与具体裁决
 
@@ -24,17 +24,19 @@
 
 ## 当前交付与核验
 
-当前实际命令/JUnit/log为correction29-post-full-5c40475-20261003-1-validation-private.json；源码为correction29-b15-source-20261003-proof-private.json；完整原生失败为correction29-review114-native-5c40475-role-20261003-1-command-private.json及missing/log；18槽位为correction29-b15-current-source-blocked-20261003-1-contract-private.json；114线程为correction29-review114-current-source-blocked-20261003-review-dispositions-private.json；只读现场为correction29-b15-source-blocked-precloseout-20261003-1-availability-private.json。批准Python为C:/Users/kyloris/Documents/AnimeLocalBooru/venv/Scripts/python.exe，Python身份预检实际通过；本地验证不等于GitHub CI。
+当前实际命令/JUnit/log为correction29-post-full-5c40475-20261003-1-validation-private.json；源码为correction29-b15-source-20261003-proof-private.json；完整原生失败为correction29-review114-native-5c40475-role-20261003-1-command-private.json及missing/log；18槽位为correction29-b15-current-source-blocked-20261003-1-contract-private.json；115线程为correction29-review115-current-source-blocked-20261003-review-dispositions-private.json；只读现场为correction29-b15-source-blocked-precloseout-20261003-1-availability-private.json。批准Python为C:/Users/kyloris/Documents/AnimeLocalBooru/venv/Scripts/python.exe，Python身份预检实际通过；本地验证不等于GitHub CI。
 
-当前单ZIP为correction29-source-blocked-review114-final-20261003-2.zip，硬上限100000000字节；实测大小/SHA、全新解压、全部引用/JSON/XML及完整标准库重算必须以外部最终收据correction29-b15-final2-private-delivery-20261003-private.json确认。这里不预报尚未执行的成功数。93742原始来源与209大型原件保留无损编码；新旧文本池和原生文件只做原字节COPY/literal储存，解码后SHA须相同，不改变业务准入。
+当前单ZIP为correction29-source-blocked-review115-final-20261003-3.zip，硬上限100000000字节；实测大小/SHA、全新解压、全部引用/JSON/XML及完整标准库重算必须以外部最终收据correction29-b15-final3-private-delivery-20261003-private.json确认。这里不预报尚未执行的成功数。93742原始来源与209大型原件保留无损编码；新旧文本池和原生文件只做原字节COPY/literal储存，解码后SHA须相同，不改变业务准入。
 
 前四个实际失败ZIP与新鲜解压目录保留本地，全部负面日志/重放收据交付：首包102020195字节超限；第二包92484894字节在第15重放缺历史资源；第三包92953831字节在第20重放缺历史源码。当前补齐所有声明的原始源码导出，不再按扩展名截取；所有原核验断言保留。完整数据库备份、凭据配置、原图和旧ZIP留本地并索引理由。
 
 未merge、未推main/force、未resolve、未触发reviewer、未进入A3；未改确认Entity、人工标签/相册、源媒体或非owned资产。Computer Use已退出，本轮证据交付无需接管桌面。
 
-B15首包实测94708483字节且干净字节/引用检查通过，但第21项历史重放缺delivery-run-control-b5-final-current-documents.log；20项通过与原失败保留。新包补齐全部实际本地文件引用闭包，原断言不变，完整36项须重新通过。
+B15首包实测94708483字节且干净字节/引用检查通过，但第21项历史重放缺delivery-run-control-b5-final-current-documents.log；20项通过与原失败保留。新包补齐全部实际本地文件引用闭包，原断言不变，完整37项须重新通过。
 
-独立依赖探查的15个剩余原验证器已实际通过，补入7份原件共295314字节；历史103—104入口绑定其原B10源码，七当前文档仅有Git archive的CRLF转换，原Git与archive两种字节流及原拒绝均保留。9799条宽泛历史引用不是新的业务执行范围；最终新ZIP仍须全新解压和36项全部实际通过。
+独立依赖探查的15个剩余原验证器已实际通过，补入7份原件共295314字节；历史103—104入口绑定其原B10源码，七当前文档仅有Git archive的CRLF转换，原Git与archive两种字节流及原拒绝均保留。9799条宽泛历史引用不是新的业务执行范围；最终新ZIP仍须全新解压和37项全部实际通过。
+
+最新115线程完整原评论已逐项对账。第115条所称8be62df2不是实际PR HEAD；实际880dd80与B15的merge-base为B15，原始Git对象及未改原生续接门禁通过，在实际交付未复现。原意见保留、未resolve，不虚构新增pytest或当前生产验收。新单ZIP要求全新解压及37项标准库离线重算，只有外部最终收据可确认实测通过。
 
 ## 历史版本记录（只对应各自旧HEAD，不构成当前通过）
 
