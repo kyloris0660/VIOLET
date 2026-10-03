@@ -534,7 +534,7 @@
     "thread_count": 112
   },
   "review_package": {
-    "archive": "correction29-source-blocked-review111-final-20261003-2.zip",
+    "archive": "correction29-source-blocked-review111-final-20261003-3.zip",
     "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
     "maximum_bytes": 100000000,
     "external_final_receipt": "correction29-b14-final-private-delivery-20261003-private.json",
@@ -716,5 +716,21 @@
     "source_changed": false,
     "resolved": false,
     "current_runtime_accepted": false
+  },
+  "review112_second_archive_failed_replay": {
+    "archive": "correction29-source-blocked-review111-final-20261003-2.zip",
+    "bytes": 92484894,
+    "sha256": "374fd9eeb042fde2d77afe08ab79ac88257b7e55b9847b5666633ca870bb4c37",
+    "clean_extraction_passed": true,
+    "declared_replays": 34,
+    "actual_passed_before_failure": 14,
+    "failed_replay": 15,
+    "failure_log": "correction29-source-blocked-review111-final-20261003-2-offline-15.log",
+    "original_archive_and_failed_directory_retained": true,
+    "source_export_dependency_audit": "correction29-review112-final3-baseline-export-closure-20261003-private.json",
+    "declared_old_runtime_files": 356,
+    "missing_original_files_to_restore": 79,
+    "missing_original_bytes": 1707843,
+    "source_gate_and_replay_assertions_unchanged": true
   }
 }
