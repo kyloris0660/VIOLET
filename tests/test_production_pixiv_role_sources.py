@@ -57,6 +57,31 @@ def admit(budget, saved, groups, *, ledger=None):
     return RoleSourceContract(ledger).admit(saved, groups, json.dumps(saved).encode(), path='raw/original.json')
 
 
+@pytest.mark.parametrize('requested', [False, True])
+def test_unrelated_malformed_history_is_retained_and_current_malformed_answer_cannot_dispatch(tmp_path, requested):
+    from app.services.production_pixiv_role_extraction import extract_production_roles
+    from test_production_pixiv_role_extraction import Provider, multiple_units, task_budget
+    import hashlib
+    provider=Provider();budget=task_budget(tmp_path,provider);units=multiple_units()[:1]
+    cache=tmp_path/'roles';(cache/'raw').mkdir(parents=True)
+    raw=cache/'raw'/('0'*64+'.json')
+    saved={'model':'gpt-4.1-mini','input_fingerprint':'0'*64,'content':'{"records":[',
+        'request_groups':[asdict(units[0].unit_group)] if requested else []}
+    raw.write_text(json.dumps(saved),encoding='utf-8');original=raw.read_bytes()
+    before=budget.path.read_bytes() if budget.path.exists() else None
+    if requested:
+        with pytest.raises(AdjudicationBudgetBlocked,match='current_requested_raw_malformed'):
+            extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache)
+        assert not provider.calls and (budget.path.read_bytes() if budget.path.exists() else None)==before
+    else:
+        result=extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache)
+        assert result['summary']['new_provider_calls']==len(provider.calls)==1
+        rejected=result['summary']['unadmitted_raw_replay_rejections']
+        assert len(rejected)==1 and not rejected[0]['admitted']
+        assert rejected[0]['raw_sha256']==hashlib.sha256(original).hexdigest()
+    assert raw.read_bytes()==original
+
+
 def test_paid_failed_batch_admits_only_valid_sibling_without_upgrading_call(tmp_path):
     budget, saved, groups = paid_original(tmp_path, bad_sibling=True)
     original = budget.path.read_bytes()

@@ -19,6 +19,10 @@ def test_role_runtime_never_publishes_or_reuses_revoked_paid_source(tmp_path,rou
  if outcome=='failed':state['calls'][0]['status']='failed'
  budget.path.write_text(json.dumps(state),encoding='utf-8');before=budget.path.read_bytes()
  wrapped=roles.BudgetedExtractionProvider(provider,budget,tmp_path/'recovery',units)
+ if route=='recover':
+  import shutil
+  destination=tmp_path/'recovery/raw';destination.mkdir(parents=True)
+  for path in (tmp_path/'first/raw').glob('*.json'):shutil.copyfile(path,destination/path.name)
  with pytest.raises(AdjudicationBudgetBlocked):
   if route=='recover':wrapped.recover_saved(saved)
   else:asyncio.run(first.complete_chat(messages))
@@ -83,11 +87,9 @@ def test_extract_unit_cache_checks_original_call_without_raw_recovery(tmp_path,o
   path=roles._unit_path(cache,units[0]);value=json.loads(path.read_text());value.pop('budget_response')
   path.write_text(json.dumps(value),encoding='utf-8')
  budget.path.write_text(json.dumps(state),encoding='utf-8');before=budget.path.read_bytes()
- if outcome=='valid':
-  result=roles.extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache)
-  assert result['summary']['cache_hits']==1
- else:
-  with pytest.raises(AdjudicationBudgetBlocked):roles.extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache)
+ # Even a valid paid ticket cannot authenticate a cached projection after
+ # its actual original answer bytes have been removed.
+ with pytest.raises(AdjudicationBudgetBlocked):roles.extract_production_roles(units,provider=provider,budget=budget,cache_dir=cache)
  assert len(provider.calls)==1 and budget.path.read_bytes()==before
 
 @pytest.mark.parametrize('shortcut',['first','second'])
@@ -117,9 +119,14 @@ def test_partial_reply_is_retained_without_complete_cache_or_lost_denominator(tm
  empty={'schema_version':roles.ROLE_SCHEMA,'records':{}}
  result=roles.complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=cache)
  assert result['completion_summary']['unaccounted_requested_tag_occurrences']==1
- assert result['completion_summary']['blocked']=='role_partial_batch_original_source_not_admitted'
- record=next(iter(result['completion_records'].values()));assert record['source_admission']=='retained_partial_evidence_only'
- assert not list((cache/'units').glob('*.json')) and len(provider.calls)==1
+ assert result['completion_summary']['blocked'] is None
+ record=next(iter(result['completion_records'].values()));assert record['source_admission']=='validated_original_unit'
+ unit=next(u for u in roles.plan_contextual_role_completion(value,vocab,empty)[0] if u.extraction_key==record['extraction_key'])
+ assert roles.role_target_coverage(unit,record)['missing_raw_tags']==['MissingName']
+ assert roles._unit_path(cache,unit).is_file()
+ assert len(provider.calls)==1
+ charged=json.loads(budget.path.read_bytes())['calls'][0]
+ assert charged['status']=='failed' and charged['business_valid'] is False
  raw=next((cache/'raw').glob('*.json'));original=raw.read_bytes();ledger=budget.path.read_bytes()
  again=roles.complete_contextual_production_roles(value,vocab,empty,provider=provider,budget=budget,cache_dir=cache)
  assert again['completion_records']==result['completion_records']

@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+  "candidate_head": "0a857b5b741bfb9bf34a80a7c8353a46e469d6a7",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -913,7 +913,7 @@
   "correction03": {
     "authorization_file": "VIOLET-A2-来源恢复与最终收口执行任务-20261003.md",
     "authorization_sha256": "928faaa4bc04a5f7e021023e4c87341c5da5d44c9eafd3194d96bde89af0bf75",
-    "status": "business_frozen_current_validation_pending",
+    "status": "bounded_fixes_frozen_current_validation_pending",
     "source_record_scope": 9543,
     "shared_unit_source_contract_authorized": true,
     "original_ledger_failure_rewrite_authorized": false,
@@ -941,12 +941,12 @@
     "current_source_gate_passed": false,
     "current_business_implementation_unfrozen": false,
     "source_derivation_receipt": "correction03-derived-20261004-3-receipt-private.json",
-    "current_replay": "correction03-current-replay-20261004-2-receipt-private.json",
-    "current_replay_status": "input_hash_guard_failed_writer_race_preserved",
+    "current_replay": "correction03-current-replay-20261004-3-receipt-private.json",
+    "current_replay_status": "stable_zero_call_replay_passed_one_original_target_pending",
     "pending_original_target_plan": "correction03-remaining-plan-20261004-1-plan-private.json",
     "pending_legal_original_targets": 1,
     "new_provider_calls": 0,
-    "registered_source_files": 43,
+    "registered_source_files": 45,
     "development_checks": {
       "label": "correction03-source-test-20261004-17",
       "passed": 115,
@@ -954,7 +954,35 @@
       "skipped": 0,
       "previous_idempotence_failure_preserved": "correction03-source-test-20261004-16.log"
     },
-    "additional_full_non_e2e_invocations": 0
+    "additional_full_non_e2e_invocations": 0,
+    "business_candidate_head": "0a857b5b741bfb9bf34a80a7c8353a46e469d6a7",
+    "owned_test_fixture_preservation": "correction03-owned-runtime-fixture-preservation-20261004-private.json",
+    "historical_b16_zero_call_replay": "correction03-current-replay-20261004-3-receipt-private.json",
+    "b16_focused": {
+      "command": "correction29-correction03-b16-focused-20261004-1-command-private.json",
+      "passed": 1138,
+      "failed": 10,
+      "skipped": 3,
+      "warnings": 3
+    },
+    "bounded_dispatch_before_new_fix": {
+      "label": "correction03-original-target-20261004-1",
+      "authentication_preflight": "passed_model_GET_200",
+      "paid_calls": 0,
+      "status": "aborted_before_reservation_unrelated_malformed_historical_raw"
+    },
+    "pending_business_fixes": [
+      "live_ledger_and_raw_revalidation_on_in_memory_cache_hit",
+      "retained_unrelated_malformed_raw_cannot_block_an_independent_legal_target",
+      "separate_original_paid_pair_question_from_current_role_source_authority"
+    ],
+    "bounded_fixes_development": {
+      "label": "correction03-revocation-test-20261004-3",
+      "passed": 258,
+      "failed": 0,
+      "skipped": 1,
+      "previous_failures_preserved": true
+    }
   },
   "active_blocker": {
     "code": "native_role_original_response_missing",

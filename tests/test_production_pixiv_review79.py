@@ -30,8 +30,10 @@ def test_role_source_binds_exact_logical_targets(tmp_path, defect):
     keys = ledger['calls'][0]['logical_keys']
     ledger['calls'][0]['logical_keys'] = {'missing': [], 'extra': keys+['unrelated'],
         'other': ['different'], 'duplicate': keys+keys}[defect]
-    with pytest.raises(ValueError, match='logical_keys'):
+    with pytest.raises(ValueError, match='original_response_missing'):
         verify_role_response_sources(value, vocab, facts, tmp_path/'roles', ledger)
+    diagnostic=verify_role_response_sources(value,vocab,facts,tmp_path/'roles',ledger,diagnostic=True)
+    assert any('role_source_original_logical_keys_changed' in row['error'] for row in diagnostic['raw_errors'])
 
 
 def test_duplicate_raw_cannot_expand_correction_authority():

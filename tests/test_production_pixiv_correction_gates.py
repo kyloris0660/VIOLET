@@ -177,6 +177,40 @@ def test_policy_only_prior_requires_exact_inputs_and_legacy_policy(tmp_path,monk
         assert observed==[]
 
 
+@pytest.mark.parametrize('mutation',['none','prior_question','original_metadata','current_projection'])
+def test_recovered_roles_bind_exact_historical_pair_question_and_separate_current_authority(tmp_path,monkeypatch,mutation):
+    from app.services.production_pixiv_role_recovery import derive_current_role_view
+    from app.services.production_pixiv_pair_correction import bind_correction_prior,read_correction_prior
+    from app.services import production_pixiv_release_provenance as provenance
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    from test_production_pixiv_role_recovery import supplemental_fixture
+    recovered,answer,source=supplemental_fixture(tmp_path)
+    from app.services.production_pixiv_role_recovery import original_role_facts
+    original=copy.deepcopy(original_role_facts(recovered));aggregates=[{'fixed':True}];vocabulary={'fixed':True}
+    name=write_prior(tmp_path,[{'left_signal_key':'a','right_signal_key':'b'}])
+    path=tmp_path/'prior-semantic-manifest-private.json';manifest=json.loads(path.read_text())
+    manifest['input_identity'].update({k:canonical_fingerprint(v) for k,v in (
+        ('aggregates',aggregates),('vocabulary',vocabulary),('role_facts',original))})
+    if mutation=='prior_question':manifest['input_identity']['role_facts']=canonical_fingerprint({'different_question':True})
+    path.write_text(json.dumps(manifest));_,prior=read_correction_prior(tmp_path,name)
+    if mutation=='original_metadata':recovered['coverage_repair_by_aggregate']['invented']='original'
+    if mutation=='current_projection':recovered['current_record_projections']['original']={**original['records']['original'],'verdict':'no_explicit_name'}
+    observed=[]
+    def replay(a,v,f,*args,**kwargs):
+        assert (a,v,f)==(aggregates,vocabulary,original)
+        assert kwargs['historical_predecessor'] is True and kwargs['source_recovered_facts']==recovered
+        observed.append(True);return {'exact_historical_selection_replayed':True}
+    monkeypatch.setattr(provenance,'_replay_source_selection',replay)
+    if mutation=='none':
+        result=bind_correction_prior(aggregates,vocabulary,recovered,prior,tmp_path)
+        assert result['kind']=='original_role_source_recovery' and result['historical_question_not_current_source_authority']
+        assert observed==[True]
+    else:
+        with pytest.raises(ValueError,match='correction_prior_|role_current_source_view_'):
+            bind_correction_prior(aggregates,vocabulary,recovered,prior,tmp_path)
+        assert observed==[]
+
+
 def valid_preservation():
     import hashlib
     from scripts.production_pixiv_a2_evidence import PRESERVED_TABLES,PRESERVED_NONEMPTY

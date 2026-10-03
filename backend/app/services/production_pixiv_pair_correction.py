@@ -120,6 +120,23 @@ def bind_correction_prior(aggregates,vocabulary,facts,prior,private_root,*,seman
         if not path.is_relative_to(root):raise ValueError('correction_prior_outside_task')
         return json.loads(path.read_text(encoding='utf-8')),path
     manifest,_=read(prior['manifest'])
+    if facts.get('source_recovery'):
+        from .production_pixiv_role_recovery import original_role_facts,current_role_facts
+        current_role_facts(facts)
+        original=original_role_facts(facts)
+        expected={name:canonical_fingerprint(value) for name,value in (
+            ('aggregates',aggregates),('vocabulary',vocabulary),('role_facts',original))}
+        if any(manifest['input_identity'].get(name)!=digest for name,digest in expected.items()):
+            raise ValueError('correction_prior_original_role_source_changed')
+        rows,actual_prior=read_correction_prior(root,prior['judgments'])
+        if actual_prior!=prior:raise ValueError('correction_prior_provenance_changed')
+        replay=_replay_source_selection(aggregates,vocabulary,original,rows,manifest,root,
+            semantic_cache_dirs=semantic_cache_dirs,historical_predecessor=True,source_recovered_facts=facts)
+        return {'prior':prior,'input_identity':expected,'kind':'original_role_source_recovery',
+            'current_role_facts_fingerprint':canonical_fingerprint(facts),
+            'original_role_rows_preserved':True,'historical_question_not_current_source_authority':True,
+            'source_replay_fingerprint':canonical_fingerprint(replay),'selected_pair_count':len(rows),
+            'original_invocation_not_relabelled':True,'new_provider_calls':0}
     current_identity={name:canonical_fingerprint(value) for name,value in (
         ('aggregates',aggregates),('vocabulary',vocabulary),('role_facts',facts))}
     from .production_pixiv_service import HISTORICAL_AMBIGUITY_POLICY

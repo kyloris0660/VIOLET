@@ -372,6 +372,7 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         self.last_usage={};self.calls=0;self.raw_cache_hits=0;self.gate=gate or ExtractionDispatchGate()
         self.admitted_units={};self.publishing_response=None;self.retained_partials={}
         self.admitted_sources=defaultdict(list);self.publishing_sources={}
+        self.admitted_request_groups={};self.raw_replay_rejections=[]
 
     def is_available(self):return self.provider.is_available()
     def get_provider_name(self):return self.provider.get_provider_name()
@@ -383,7 +384,18 @@ class BudgetedExtractionProvider(BaseLLMProvider):
         sources=self.admitted_sources.get(cached.get('input_fingerprint'),[])
         if not sources:
             raise AdjudicationBudgetBlocked('role_unit_cache_original_source_not_admitted')
-        validate_record_projection(cached,sources)
+        # A prior in-memory admission is not authority after a ledger or raw
+        # change. Recheck the actual file and live settlement on every hit.
+        fresh=[]
+        for relative in sorted({source['path'] for source in sources}):
+            path=checked_cache_path(self.cache_dir,self.cache_dir/relative)
+            if not path.is_file():raise AdjudicationBudgetBlocked('role_unit_cache_original_raw_missing')
+            saved=json.loads(path.read_text(encoding='utf-8'))
+            admitted=self._fresh_admission(saved,self.admitted_request_groups[relative])
+            fresh.extend(s for s in admitted['sources']
+                if canonical_fingerprint(group_prompt_payload(s['group']))==cached['input_fingerprint'])
+        if not fresh:raise AdjudicationBudgetBlocked('role_unit_cache_original_source_not_admitted')
+        validate_record_projection(cached,fresh)
 
     def _source_raw(self,saved):
         fingerprint=saved.get('input_fingerprint','')
@@ -397,10 +409,14 @@ class BudgetedExtractionProvider(BaseLLMProvider):
                 if json.loads(raw)==json.loads(json.dumps(saved)):return path,raw
         raise ValueError('role_unit_real_original_raw_required')
 
-    def _admit_saved(self,saved,groups):
+    def _fresh_admission(self,saved,groups):
         from .production_pixiv_role_sources import RoleSourceContract
         from .production_pixiv_release_provenance import _anchored_legacy_role_calls,_anchored_role_calls
-        path,raw=self._source_raw(saved)
+        try:path,raw=self._source_raw(saved)
+        except ValueError as exc:
+            if str(exc)=='role_unit_real_original_raw_required':
+                raise AdjudicationBudgetBlocked('role_unit_cache_original_raw_missing') from exc
+            raise
         with self.budget._locked() as current:
             ledger=json.loads(json.dumps(current))
         try:
@@ -411,8 +427,13 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             if str(exc).startswith('role_source_call_not_admitted:'):
                 raise AdjudicationBudgetBlocked('role_unit_cache_original_source_not_admitted:'+str(exc)) from exc
             raise
+        return admitted
+
+    def _admit_saved(self,saved,groups):
+        admitted=self._fresh_admission(saved,groups)
         self.publishing_sources={s['group'].group_key:s for s in admitted['sources']}
         for source in admitted['sources']:
+            self.admitted_request_groups[source['path']]=tuple(groups)
             question=canonical_fingerprint(group_prompt_payload(source['group']))
             if not any(s['unit_source_proof']==source['unit_source_proof'] for s in self.admitted_sources[question]):
                 self.admitted_sources[question].append(source)
@@ -520,7 +541,21 @@ class BudgetedExtractionProvider(BaseLLMProvider):
             path=checked_cache_path(self.cache_dir,path)
             saved=json.loads(path.read_text(encoding='utf-8'))
             if saved.get('model')!=self.model:continue
-            rows=json.loads(saved['content']).get('records',[])
+            try:
+                payload=json.loads(saved['content'])
+                rows=payload.get('records',[]) if isinstance(payload,dict) else []
+                if not isinstance(payload,dict) or not isinstance(rows,list):
+                    raise ValueError('role_response_records_not_list')
+            except (ValueError,TypeError,KeyError) as exc:
+                import hashlib
+                rejection={'path':str(path.relative_to(self.cache_dir)),
+                    'raw_sha256':hashlib.sha256(path.read_bytes()).hexdigest(),
+                    'error':type(exc).__name__,'admitted':False}
+                self.raw_replay_rejections.append(rejection)
+                requested=saved.get('request_groups',[])
+                if any(isinstance(g,dict) and g.get('group_key') in self.units for g in requested):
+                    raise AdjudicationBudgetBlocked('role_current_requested_raw_malformed') from exc
+                continue
             # An unrelated retained failure is not this invocation's question.
             # The final native source gate still verifies the entire scope.
             if not any(isinstance(row,dict) and row.get('group_key') in self.units for row in rows):continue
@@ -684,6 +719,7 @@ def extract_production_roles(units,*,provider,budget,cache_dir,batch_size=20,pro
     return {'schema_version':ROLE_SCHEMA,'records':records,'summary':{'total_units':len(units),'completed_units':len(records),
         'cache_hits':cached,'deterministic_units':deterministic,'new_provider_calls':wrapped.calls,'raw_cache_hits':wrapped.raw_cache_hits,
         'paid_raw_units_recovered_locally':raw_recovered,
+        'unadmitted_raw_replay_rejections':wrapped.raw_replay_rejections,
         'original_question_case_variant_cache_hits':canonical_reuse,
         'blocked':blocked,'remaining_units':len(units)-len(records),'task_budget':budget.summary()}}
 

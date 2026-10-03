@@ -42,9 +42,13 @@ def original_role_attempt_index(ledger,original_requests):
     return {key:list(attempts.values()) for key,attempts in result.items()}
 
 
-def historical_role_facts(facts):
-    result={k: v for k, v in facts.items() if k not in {'source_recovery', 'current_record_projections',
+def original_role_facts(facts):
+    return {k: v for k, v in facts.items() if k not in {'source_recovery', 'current_record_projections',
         'current_role_terminal_targets','current_role_response_coverage','additional_role_records','current_record_mappings'}}
+
+
+def historical_role_facts(facts):
+    result=original_role_facts(facts)
     for kind,rows in facts.get('additional_role_records',{}).items():
         if kind not in RECORD_KINDS or set(rows)&set(result.get(kind,{})):
             raise ValueError('role_current_additional_record_collision')
@@ -59,6 +63,8 @@ def current_role_facts(facts):
         return facts
     if recovery.get('schema_version') != VIEW_SCHEMA:
         raise ValueError('role_current_source_view_schema_changed')
+    if recovery.get('original_facts_fingerprint') != canonical_fingerprint(original_role_facts(facts)):
+        raise ValueError('role_current_source_view_original_facts_changed')
     if recovery.get('fixed_record_denominator') != sum(len(facts.get(kind, {})) for kind in RECORD_KINDS):
         raise ValueError('role_current_source_view_fixed_denominator_changed')
     if set(facts.get('current_record_mappings', {})) - set(MAPPINGS):
@@ -244,7 +250,8 @@ def derive_current_role_view(facts, inventory):
                             BudgetedExtractionProvider.logical_keys([group])),
                         'source_paths': [s['path'] for s in sources], 'identity_equivalence_authorized': False})
     recovered = {**facts, 'current_record_projections': projections,
-        'source_recovery': {'schema_version': VIEW_SCHEMA, 'original_facts_fingerprint': canonical_fingerprint(facts),
+        'source_recovery': {'schema_version': VIEW_SCHEMA,
+            'original_facts_fingerprint': facts.get('source_recovery',{}).get('original_facts_fingerprint',canonical_fingerprint(facts)),
             'records': entries, 'fixed_record_denominator': sum(len(facts.get(k,{})) for k in RECORD_KINDS),
             'historical_rows_preserved': True, 'original_call_states_changed': False}}
     current_role_facts(recovered)

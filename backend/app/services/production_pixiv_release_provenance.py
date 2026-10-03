@@ -373,7 +373,7 @@ def verify_selected_judgment_sources(edges,signals,judgments,config,ledger):
     return {'selected_pair_count':len(selected),'judgment_count':len(judgments),'sources':evidence,'new_provider_calls':0}
 
 
-def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,private_root,*,semantic_cache_dirs=(),history=None,historical_predecessor=False):
+def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,private_root,*,semantic_cache_dirs=(),history=None,historical_predecessor=False,source_recovered_facts=None):
     from .production_pixiv_service import production_consumer,build_production_clustering
     from .source_concept_budget import AdjudicationBudget
     private_root=Path(private_root).resolve(strict=True)
@@ -390,7 +390,22 @@ def _replay_source_selection(aggregates,vocabulary,facts,judgments,manifest,priv
     if recorded_policy!=(historical_policy or PRODUCTION_POLICY):
         raise ValueError('semantic_production_policy_replay_mismatch')
     consumer=production_consumer(aggregates,_historical_policy=historical_policy)
-    roles=verify_role_response_sources(consumer,vocabulary,facts,private_root/'role-cache',ledger)
+    if source_recovered_facts is None:
+        roles=verify_role_response_sources(consumer,vocabulary,facts,private_root/'role-cache',ledger)
+    else:
+        from .production_pixiv_role_recovery import current_role_facts,original_role_facts,verify_archive_nonuse
+        from .production_pixiv_semantics import adapt_production_semantics
+        current_role_facts(source_recovered_facts)
+        if (not historical_predecessor or not source_recovered_facts.get('source_recovery')
+                or canonical_fingerprint(original_role_facts(source_recovered_facts))!=canonical_fingerprint(facts)):
+            raise ValueError('semantic_historical_role_question_changed')
+        # The cached paid pair answered an exact historical question, including
+        # any historical upstream mistake. Recompute that question below; only
+        # the separately revalidated current view grants source authority now.
+        roles=verify_role_response_sources(consumer,vocabulary,source_recovered_facts,private_root/'role-cache',ledger)
+        current_semantics=adapt_production_semantics(consumer,vocabulary,source_recovered_facts)
+        roles={**roles,'historical_question_not_current_source_authority':True,
+            'current_archive_nonuse':verify_archive_nonuse(current_semantics.signals,source_recovered_facts)}
     config=resolver.LLMAdjudicationConfig(enabled=True,max_calls=1000000,max_budget_usd=30,
         model_label='gpt-4.1-mini',selection_policy='all_eligible',prompt_version=resolver.PRODUCTION_PAIR_PROMPT_VERSION,
         durable_cache_dir=str(private_root/'llm-cache'),semantic_cache_dirs=tuple(semantic_cache_dirs),semantic_cache_reuse=True)
