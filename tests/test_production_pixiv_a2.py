@@ -1,0 +1,683 @@
+"""Fixed-scope production seams, with real persistence and transaction failure."""
+import copy
+import os
+import uuid
+
+import pytest
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.orm import Session
+
+from app.database import Base
+from app.models import Media, SourceMetadataRecord, SourceConceptProductRun, SourceConceptProductMediaBinding
+from app.services import pixiv_product_integration_service as product
+from app.services.pixiv_product_binding_fixture import seed_media_binding_fixture
+from app.services.pixiv_metadata_projection_service import build_canonical_pixiv_aggregates_from_session
+from app.services.production_pixiv_service import (
+    build_fixed_scope, production_consumer, build_production_clustering, replace_production_projection,
+)
+
+
+@pytest.fixture
+def database(tmp_path):
+    url=os.environ.get('VIOLET_A2_TEST_DATABASE_URL')
+    schema=None
+    if url:
+        from sqlalchemy.engine import make_url
+        assert make_url(url).database=='violet_pixiv_a2_test_20260911'
+        schema='a2_test_'+uuid.uuid4().hex
+        admin=create_engine(url)
+        with admin.begin() as connection:
+            connection.execute(text(f'CREATE SCHEMA {schema}'))
+        engine=create_engine(url,connect_args={'options':f'-c search_path={schema}'})
+    else:
+        engine = create_engine('sqlite:///' + str(tmp_path/'scope.sqlite'))
+        @event.listens_for(engine, 'connect')
+        def foreign_keys(connection, _):
+            connection.execute('PRAGMA foreign_keys=ON')
+    Base.metadata.create_all(engine)
+    from app.services.source_binding_revision import migrate_source_binding_revisions
+    migrate_source_binding_revisions(engine)
+    try:
+        with Session(engine) as db:
+            seed_media_binding_fixture(db)
+            yield db
+    finally:
+        engine.dispose()
+        if schema:
+            with admin.begin() as connection:
+                connection.execute(text(f'DROP SCHEMA {schema} CASCADE'))
+            admin.dispose()
+
+
+def scope_for(db, *, exclude=()):
+    rows = [dict(id=row.id,filename=row.filename,path=row.path) for row in db.query(Media) if row.id not in exclude]
+    trusted = [dict(media_id=row.media_id,work_id=row.source_work_id,page_index=row.source_page_index) for row in db.query(SourceMetadataRecord)]
+    return build_fixed_scope(rows,watermark='2026-09-11T00:00:00Z',trusted_bindings=trusted)
+
+
+def test_postgresql_withdrawal_index_timeout_is_transaction_local(database):
+    from app.database import migrate_add_source_concept_withdrawal_indexes
+    from sqlalchemy import inspect
+    engine=database.get_bind()
+    if engine.dialect.name!='postgresql':pytest.skip('real PostgreSQL timeout scope')
+    observed=[]
+    def timeouts(connection):
+        return tuple(connection.execute(text('SHOW '+name)).scalar_one() for name in ('lock_timeout','statement_timeout'))
+    with engine.connect() as conn:before=timeouts(conn)
+    def observe(conn,cursor,statement,parameters,context,executemany):
+        if statement=="SET LOCAL statement_timeout = '120000ms'":observed.append(timeouts(conn))
+    event.listen(engine,'after_cursor_execute',observe)
+    try:migrate_add_source_concept_withdrawal_indexes(engine,inspect(engine))
+    finally:event.remove(engine,'after_cursor_execute',observe)
+    assert observed==[('5s','2min')]
+    with engine.connect() as conn:assert timeouts(conn)==before
+
+
+def build(db, works=None):
+    aggregates=build_canonical_pixiv_aggregates_from_session(db,work_ids=works)
+    return build_production_clustering(production_consumer(aggregates))
+
+
+def apply(db, run, scope):
+    plan=replace_production_projection(db,run,scope=scope)
+    return replace_production_projection(db,run,scope=scope,apply=True,accepted_plan=plan)
+
+
+def test_real_source_sampler_records_database_identity_clock_and_replay(database):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real source sampler PostgreSQL identity')
+    import subprocess
+    from pathlib import Path
+    from scripts.production_pixiv_source_measurement import measure_source_case,replay_source_results,verify_live_source_performance
+    from app.services.pixiv_metadata_projection_service import canonical_fingerprint
+    actual=tuple(database.execute(text('select current_database(),system_identifier::text from pg_control_system()')).one())
+    root=Path(__file__).resolve().parents[1]
+    head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()
+    case={'case_id':'real-source','terms':['fixture absent name']}
+    sample=measure_source_case(database,case,0,candidate=head,database=actual[0],system_identifier=actual[1])
+    assert sample['execution']['candidate_head']==head and sample['execution']['database']==actual[0]
+    assert sample['ms']>0 and sample['result_fingerprint']==canonical_fingerprint(sample['ids'])
+    assert replay_source_results(database,[case],database=actual[0],system_identifier=actual[1])=={case['case_id']:sample['ids']}
+    fresh=verify_live_source_performance(database,[case],candidate=head,database=actual[0],system_identifier=actual[1])
+    assert len(fresh['samples'])==3 and fresh['results'][case['case_id']]==sample['ids']
+    assert fresh['latency']['p95_ms']>0
+    with pytest.raises(ValueError,match='runtime_identity'):
+        measure_source_case(database,case,0,candidate='0'*40,database=actual[0],system_identifier=actual[1])
+
+
+def seed_historical_partial(db,run,scope):
+    from app.services.production_pixiv_service import scope_selection
+    args={'scope_key':'pixiv:production:'+scope['canonical_fingerprint'][:32],
+        'source_mode':'production_scope','input_selection':scope_selection(scope,run)}
+    plan=product.apply_pixiv_product_plan(db,run,**args,apply=False)
+    return product.apply_pixiv_product_plan(db,run,**args,apply=True,
+        accepted_selection_fingerprint=plan['selection_fingerprint'],
+        accepted_product_fingerprint=plan['product_result_fingerprint'],
+        accepted_binding_fingerprint=plan['media_binding']['local_binding_fingerprint'])
+
+
+def test_scope_uses_trusted_source_and_keeps_conflicts():
+    rows=[{'id':1,'filename':'12345678_22222222_p1.png'},
+          {'id':2,'filename':'12345678.png'}, {'id':3,'filename':'other.png'}]
+    scope=build_fixed_scope(rows,watermark='T0',trusted_bindings=[{'media_id':1,'work_id':'22222222','page_index':1},
+        {'media_id':2,'work_id':'12345678','page_index':0},{'media_id':2,'work_id':'22222222','page_index':0}])
+    assert [row['disposition'] for row in scope['mappings']]==['trusted_source_mapping','conflicting_trusted_sources','not_applicable']
+    assert scope['mappings'][0]['work_id']=='22222222'
+
+
+def test_artist_parenthetical_context_is_adapted_without_dropping_raw_facts(database):
+    source=database.query(SourceMetadataRecord).filter_by(id=101).one()
+    source.artist_name='Aster (account note)'
+    database.commit()
+    aggregates=build_canonical_pixiv_aggregates_from_session(database)
+    frozen=copy.deepcopy(aggregates)
+    consumer=production_consumer(aggregates)
+    assert aggregates==frozen
+    artists=[s for s in consumer.signals if s.role_hint=='artist']
+    assert all(s.work_context_key is None for s in artists)
+    assert any(s.raw_value=='Aster (account note)' for s in artists)
+    assert any(s.work_context_key for s in consumer.signals if s.role_hint!='artist')
+
+
+def test_full_scope_replay_and_tail_exclusion(database):
+    scope=scope_for(database,exclude=(2,))
+    run=build(database)
+    first=apply(database,run,scope)
+    second=apply(database,run,scope)
+    assert second['idempotent_replay'] is True
+    assert {row.media_id for row in database.query(SourceConceptProductMediaBinding)}=={1,3,4}
+    assert database.query(SourceConceptProductRun).filter_by(status='active').count()==1
+    assert first['contract_id']=='production_pixiv_a2_v1'
+
+
+@pytest.mark.parametrize('prefix',['search','media_list','media_detail','danbooru'])
+def test_projection_epoch_survives_redis_invalidation_outage(database,monkeypatch,prefix):
+    import asyncio
+    from starlette.requests import Request
+    from app.utils import cache
+    from scripts.run_production_pixiv_a2_product import database_state
+    from scripts.production_pixiv_a2_evidence import collect_final_projection,verify_final_projection
+    class RetainedRedis:
+        _enabled=True
+        def __init__(self):self.values={}
+        def get(self,key):return self.values.get(key)
+        def set(self,key,value,**kw):self.values[key]=value
+    retained=RetainedRedis();monkeypatch.setattr(cache,'redis_cache',retained)
+    monkeypatch.setattr(cache,'invalidate_source_concept_search_cache',lambda:None)
+    monkeypatch.setattr(product,'invalidate_source_concept_search_cache',lambda:None)
+    request=Request({'type':'http','scheme':'http','server':('fixture',80),'path':'/api/search','query_string':b'q=fixture','headers':[]})
+    @cache.cache_response(key_prefix=prefix)
+    async def endpoint(*,request,db):return {'active':db.query(SourceConceptProductRun).filter_by(status='active').count()}
+    def fetch():return asyncio.run(endpoint(request=request,db=database))
+    def epoch():return database.execute(text('select revision from blombooru_source_binding_cache_epoch where id=1')).scalar_one()
+    assert fetch()=={'active':0};before=epoch()
+    result=apply(database,build(database),scope_for(database))
+    assert epoch()>before and fetch()=={'active':1}
+    receipt=database_state(database)
+    if database.bind.dialect.name=='postgresql':
+        cursor=database.connection().connection.cursor()
+        try:assert verify_final_projection(receipt,collect_final_projection(cursor))==receipt
+        finally:cursor.close()
+    committed=epoch();product.rollback_pixiv_product_run(database,result['run_key'],commit=False)
+    assert epoch()>committed
+    database.rollback();assert epoch()==committed and fetch()=={'active':1}
+    product.rollback_pixiv_product_run(database,result['run_key'])
+    assert epoch()>committed and fetch()=={'active':0}
+    assert len(retained.values)==3
+
+
+@pytest.mark.parametrize('field',['scope_key','policy_version','result_fingerprint'])
+def test_live_active_run_metadata_drift_is_rejected_with_unchanged_bindings(database,field):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real active-run projection collector')
+    from scripts.run_production_pixiv_a2_product import database_state
+    from scripts.production_pixiv_a2_evidence import collect_final_projection,verify_final_projection
+    apply(database,build(database),scope_for(database))
+    receipt=database_state(database)
+    approved={k:v for k,v in receipt['run_metadata'][0].items() if k!='id'}
+    row=database.query(SourceConceptProductRun).filter_by(status='active').one()
+    setattr(row,field,'fixture-drift');database.flush()
+    cursor=database.connection().connection.cursor()
+    try:
+        actual=collect_final_projection(cursor)
+        assert actual['binding_rows']==receipt['binding_rows']
+        with pytest.raises(ValueError,match='live_final_projection_changed'):
+            verify_final_projection(receipt,actual,approved_run=approved)
+        with pytest.raises(ValueError,match='not_approved_candidate'):
+            verify_final_projection(actual,actual,approved_run=approved)
+    finally:
+        cursor.close();database.rollback()
+
+
+@pytest.mark.parametrize('field,value', [('title','Revised artwork title'),
+                                        ('artist_name','Revised account name'),
+                                        ('status','superseded')])
+def test_live_final_projection_rejects_stale_source_revision(database,field,value):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real source revision trigger')
+    from scripts.run_production_pixiv_a2_product import database_state
+    from scripts.production_pixiv_a2_evidence import (collect_final_projection,
+        collect_creator_projection,collect_identity_projection,verify_final_projection)
+    apply(database,build(database),scope_for(database))
+    recorded=database_state(database)
+    approved={k:v for k,v in recorded['run_metadata'][0].items() if k!='id'}
+    cursor=database.connection().connection.cursor()
+    try:
+        assert verify_final_projection(recorded,collect_final_projection(cursor),approved_run=approved)==recorded
+        before_revision=database.execute(text('select binding_revision from blombooru_source_metadata_records where id=104')).scalar_one()
+        source=database.get(SourceMetadataRecord,104)
+        setattr(source,field,value);database.flush()
+        current_revision=database.execute(text('select binding_revision from blombooru_source_metadata_records where id=104')).scalar_one()
+        assert current_revision==before_revision+1
+        # The old physical bindings remain as audit data. They cannot grant
+        # current valid support, even when a finite query set misses this Media.
+        assert database_state(database)['binding_rows']==recorded['binding_rows']
+        actual=collect_final_projection(cursor)
+        assert actual['run_metadata']==recorded['run_metadata']
+        assert actual['binding_rows']==[row for row in recorded['binding_rows'] if row[3]!=104]
+        assert actual['bound_media_ids']==[1,2,3] and 104 not in actual['source_record_ids']
+        assert all(row[4]!=4 for row in collect_identity_projection(cursor))
+        assert all(row['media_id']!=4 for row in collect_creator_projection(cursor))
+        with pytest.raises(ValueError,match='live_final_projection_changed'):
+            verify_final_projection(recorded,actual,approved_run=approved)
+    finally:
+        cursor.close();database.rollback()
+    cursor=database.connection().connection.cursor()
+    try:
+        assert verify_final_projection(recorded,collect_final_projection(cursor),approved_run=approved)==recorded
+    finally:cursor.close()
+
+
+def test_cumulative_atomic_replacement_keeps_audit(database,monkeypatch):
+    scope=scope_for(database)
+    partial=build(database,['910000001'])
+    # Seed the historical partial projection through its original lower-level
+    # API. Today's replacement boundary must reject creation of this state.
+    with pytest.raises(ValueError,match='fixed_media_binding'):
+        apply(database,partial,scope)
+    original=seed_historical_partial(database,partial,scope)
+    previous_epoch=database.execute(text('select revision from blombooru_source_binding_cache_epoch where id=1')).scalar_one()
+    full=build(database)
+    plan=replace_production_projection(database,full,scope=scope)
+    persist=product.persist_media_bindings
+    def fail(*args,**kwargs):
+        raise RuntimeError('injected failure after old withdrawal')
+    monkeypatch.setattr(product,'persist_media_bindings',fail)
+    with pytest.raises(RuntimeError,match='injected failure'):
+        replace_production_projection(database,full,scope=scope,apply=True,accepted_plan=plan)
+    assert database.query(SourceConceptProductRun).filter_by(run_key=original['run_key']).one().status=='active'
+    assert database.execute(text('select revision from blombooru_source_binding_cache_epoch where id=1')).scalar_one()==previous_epoch
+    assert {r.media_id for r in database.query(SourceConceptProductMediaBinding)}=={1,2}
+    monkeypatch.setattr(product,'persist_media_bindings',persist)
+    final=apply(database,full,scope)
+    assert {r.media_id for r in database.query(SourceConceptProductMediaBinding)}=={1,2,3,4}
+    assert database.query(SourceConceptProductRun).filter_by(run_key=original['run_key']).one().status=='rolled_back'
+    product.rollback_pixiv_product_run(database,final['run_key'])
+    assert database.query(SourceConceptProductMediaBinding).count()==0
+    assert database.query(Media).count()==4
+    assert database.query(SourceMetadataRecord).count()==4
+
+
+def test_source_change_invalidates_prepared_replacement(database):
+    scope=scope_for(database)
+    run=build(database)
+    plan=replace_production_projection(database,run,scope=scope)
+    database.query(SourceMetadataRecord).filter_by(id=101).one().title='New title'
+    database.commit()
+    with pytest.raises(ValueError,match='accepted_replacement_changed|fixed_media'):
+        replace_production_projection(database,build(database),scope=scope,apply=True,accepted_plan=plan)
+    assert database.query(SourceConceptProductRun).count()==0
+
+
+def test_frozen_mapping_excludes_new_other_work_on_same_media(database):
+    scope=scope_for(database)
+    source=database.query(SourceMetadataRecord).filter_by(id=103).one()
+    values={col.name:getattr(source,col.name) for col in SourceMetadataRecord.__table__.columns
+            if col.name not in ('id','provider_record_key','media_id','created_at','updated_at')}
+    database.add(SourceMetadataRecord(id=999,provider_record_key='new-other-work-same-media',media_id=1,**values))
+    database.commit()
+    apply(database,build(database),scope)
+    assert database.query(SourceConceptProductMediaBinding).filter_by(source_metadata_record_id=999).count()==0
+    assert {r.media_id for r in database.query(SourceConceptProductMediaBinding)}=={1,2,3,4}
+
+
+def test_production_snapshot_accounts_missing_page_without_poisoning_valid_page(database):
+    from app.services.production_pixiv_service import build_production_inputs
+    from app.services.pixiv_metadata_ingestion_service import queue_media_for_pixiv_metadata
+    media=database.get(Media,2)
+    media.filename='910000001_p99.jpg';media.path='media/910000001_p99.jpg'
+    database.query(SourceMetadataRecord).filter_by(media_id=2).delete()
+    queue_media_for_pixiv_metadata(database,media)
+    database.commit()
+    scope=scope_for(database)
+    aggregates,coverage=build_production_inputs(database,scope)
+    assert coverage['media_count']==4 and sum(coverage['counts'].values())==4
+    assert coverage['counts']=={'metadata_complete':3,'metadata_pending':1}
+    assert all(row['disposition']=='complete' for row in aggregates)
+    assert {(row['work_id'],row['page_index']) for row in aggregates}=={('910000001',0),('910000002',0),('910000003',0)}
+    with pytest.raises(ValueError,match='fixed_media'):
+        apply(database,build_production_clustering(production_consumer(aggregates)),scope)
+    assert database.query(SourceConceptProductMediaBinding).count()==0
+
+
+def test_partial_release_admission_leaves_existing_projection_unchanged(database):
+    from app.services.production_pixiv_service import build_production_inputs
+    from app.services.production_pixiv_release_inputs import verify_full_input
+    scope=scope_for(database)
+    apply(database,build(database),scope)
+    before=[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    live,coverage=build_production_inputs(database,scope)
+    with pytest.raises(ValueError,match='complete_source_snapshot_changed'):
+        verify_full_input(live[:1],live,coverage)
+    assert before==[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    verify_full_input(live,live,coverage)
+
+
+def test_explicit_isolated_partial_copy_preserves_selected_denominator(database):
+    if database.get_bind().dialect.name!='postgresql':pytest.skip('actual isolated database identity required')
+    name=database.execute(text('select current_database()')).scalar_one()
+    scope=scope_for(database);run=build(database,['910000001'])
+    kwargs={'partial_copy_work_ids':{'910000001'},'partial_copy_database':name}
+    with pytest.raises(ValueError,match='fixed_media_binding'):
+        replace_production_projection(database,run,scope=scope)
+    plan=replace_production_projection(database,run,scope=scope,**kwargs)
+    assert plan['media_binding']['planned_media_binding_count']==2
+    result=replace_production_projection(database,run,scope=scope,apply=True,accepted_plan=plan,**kwargs)
+    assert result['applied']
+    assert {r.media_id for r in database.query(SourceConceptProductMediaBinding)}=={1,2}
+
+
+def test_partial_copy_flag_cannot_bypass_production_or_wrong_database_identity(database):
+    run=build(database,['910000001']);scope=scope_for(database)
+    for name in ('blombooru','blombooru_pixiv_a2_test_99999999'):
+        with pytest.raises(ValueError,match='partial_experiments_require_isolated_database'):
+            replace_production_projection(database,run,scope=scope,partial_copy_work_ids={'910000001'},partial_copy_database=name)
+    assert database.query(SourceConceptProductMediaBinding).count()==0
+
+
+def test_identity_gate_reads_actual_database_instead_of_forged_attachment(database):
+    from scripts.production_pixiv_a2_evidence import collect_identity_projection,verify_identity_projection
+    from app.models import SourceConceptEvidence
+    apply(database,build(database),scope_for(database))
+    cursor=database.connection().connection.cursor();actual=collect_identity_projection(cursor)
+    quality={'projection_rows':copy.deepcopy(actual)}
+    assert verify_identity_projection(quality,actual)==actual
+    concepts=sorted({r[3] for r in actual});assert len(concepts)>1
+    database.query(SourceConceptEvidence).filter_by(concept_id=concepts[1]).update({'concept_id':concepts[0]})
+    database.flush()
+    with pytest.raises(ValueError,match='identity_projection'):
+        verify_identity_projection(quality,collect_identity_projection(cursor))
+
+
+@pytest.mark.parametrize('status',['metadata_pending','metadata_retryable','provider_identity_mismatch'])
+def test_shared_page_incomplete_media_rejected_before_withdrawal(database,monkeypatch,status):
+    from app.services.production_pixiv_service import build_production_inputs
+    scope=scope_for(database);run=build(database)
+    apply(database,run,scope)
+    before=[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    original_runs=[(r.id,r.status) for r in database.query(SourceConceptProductRun)]
+    database.get(SourceMetadataRecord,102).status=status
+    database.commit()
+    live,coverage=build_production_inputs(database,scope)
+    assert {(a['work_id'],a['page_index']) for a in live}=={(a['work_id'],a['page_index']) for a in run.consumer.aggregates}
+    candidate=build_production_clustering(production_consumer(live))
+    def forbidden(*args,**kwargs):raise AssertionError('withdrawal attempted before closure')
+    monkeypatch.setattr(product,'rollback_pixiv_product_run',forbidden)
+    for should_apply in (False,True):
+        with pytest.raises(ValueError,match='fixed_media'):
+            replace_production_projection(database,candidate,scope=scope,apply=should_apply)
+    assert before==[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    assert original_runs==[(r.id,r.status) for r in database.query(SourceConceptProductRun)]
+
+
+def test_creator_gate_recomputes_actual_database_accounts_and_rejects_invented_summary(database):
+    from scripts.production_pixiv_a2_evidence import collect_creator_projection,recompute_quality
+    from test_production_pixiv_a2_evidence import quality_fixture
+    apply(database,build(database),scope_for(database))
+    cursor=database.connection().connection.cursor()
+    raw=collect_creator_projection(cursor)
+    accounts=[]
+    for creator,expected in [('920000001',[1,2,3]),('920000002',[4])]:
+        rows=[r for r in raw if r['provider_creator_id']==creator]
+        concepts=sorted({r['concept_id'] for r in rows})
+        assert len(concepts)==1
+        accounts.append({'provider_creator_id':creator,'concept_ids':concepts,
+            'bound_media_ids':sorted({r['media_id'] for r in rows}),'missing_bound_media_ids':[]})
+    family={'query':'AsterCurrent','expected_union_media_ids':[1,2,3,4],
+        'creators':[{'provider_creator_id':a['provider_creator_id'],'expected_media_ids':a['bound_media_ids']} for a in accounts]}
+    quality=quality_fixture()[0]
+    quality['projection_rows'] += [['AsterCurrent','artist',None,r['concept_id'],r['media_id'],'w'] for r in raw]
+    quality['cases'].append({'category':'bare_name_distinct_creator_accounts','query':'AsterCurrent',
+        'expected_account_union_media_ids':[1,2,3,4],'accounts':accounts,'passed':True})
+    quality['queries']['"AsterCurrent"']={'status_code':200,'ids':[1,2,3,4],'total':4}
+    oracle={'identity_pairs':[{'names':['a','b'],'expected':'must_link'}]}
+    assert recompute_quality(quality,oracle,creator_oracle={'selected_families':[family]},creator_projection=raw)['failed_cases']==0
+    from app.models import SourceConceptEvidence
+    left=accounts[0]['concept_ids'][0];right=accounts[1]['concept_ids'][0]
+    database.query(SourceConceptEvidence).filter_by(concept_id=right).update({'concept_id':left})
+    database.flush()
+    changed=collect_creator_projection(cursor)
+    assert {r['concept_id'] for r in changed}=={left}
+    quality['projection_rows']=[[*r[:3],left,*r[4:]] if r[1]=='artist' and r[3]==right else r
+        for r in quality['projection_rows']]
+    # The cached attachment still reports two separate IDs and the API union is
+    # unchanged, but the actual source projection now has one account concept.
+    with pytest.raises(ValueError,match='creator_support_summary'):
+        recompute_quality(quality,oracle,creator_oracle={'selected_families':[family]},creator_projection=changed)
+
+
+def test_omitted_completion_universe_cannot_replace_existing_projection(database):
+    from app.services.production_pixiv_service import build_production_inputs
+    from app.services.production_pixiv_release_inputs import verify_role_completion
+    from app.services.production_pixiv_role_extraction import (
+        ROLE_SCHEMA,plan_contextual_role_completion,summarize_role_response_coverage)
+    from app.services.production_pixiv_semantics import build_semantic_vocabulary
+    scope=scope_for(database);apply(database,build(database),scope)
+    before=[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    runs=[(r.id,r.status) for r in database.query(SourceConceptProductRun).order_by(SourceConceptProductRun.id)]
+    aggregates,_=build_production_inputs(database,scope);consumer=production_consumer(aggregates)
+    vocabulary=build_semantic_vocabulary([])
+    facts={'schema_version':ROLE_SCHEMA,'records':{},'completion_by_aggregate':{},'completion_records':{}}
+    assert plan_contextual_role_completion(consumer,vocabulary,facts)[1]
+    facts['role_response_coverage']=summarize_role_response_coverage(consumer,vocabulary,facts)
+    assert facts['role_response_coverage']['requested_tag_occurrences']==0
+    with pytest.raises(ValueError,match='expected_role_completion_mapping_missing'):
+        verify_role_completion(aggregates,vocabulary,facts,{'calls':[]})
+    assert before==[(r.id,r.product_run_id,r.media_id) for r in database.query(SourceConceptProductMediaBinding).order_by(SourceConceptProductMediaBinding.id)]
+    assert runs==[(r.id,r.status) for r in database.query(SourceConceptProductRun).order_by(SourceConceptProductRun.id)]
+
+
+def test_accepted_alias_recalls_untyped_literal_tags_without_identity_union(database):
+    from dataclasses import replace
+    from app.models import SourceConceptSignal
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    aggregates=build_canonical_pixiv_aggregates_from_session(database)
+    consumer=production_consumer(aggregates)
+    consumer=replace(consumer,signals=tuple(replace(s,role_hint='work',trust_tier='strong',status='active',work_context_key=None)
+        if s.origin_type=='pixiv_tag_observation' and s.evidence_payload['work_id']!='910000003' else s for s in consumer.signals))
+    initial=build_production_clustering(consumer)
+    typed=[s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation' and s.role_hint=='work']
+    judgment={'left_signal_key':typed[0].signal_key,'right_signal_key':typed[1].signal_key,
+        'decision':'must_link','confidence':0.99,'cache_key':'test-accepted-distinct-spellings'}
+    run=build_production_clustering(consumer,judgments=[judgment])
+    applied=apply(database,run,scope_for(database))
+    assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True)['evidence_fallback']
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,include_evidence_fallback=True,
+        include_production_alias_evidence=True)
+    assert 4 not in observed['identity'] and 4 in observed['evidence_fallback']
+    unknown=database.query(SourceConceptSignal).filter_by(created_by_run_id=run.resolution.run_id,
+        canonical_key='sunpetal',role_hint='unknown').one()
+    assert unknown.role_hint=='unknown'
+    # A literal artwork title cannot gain this source-tag recall permission.
+    unknown.origin_type='pixiv_title_observation';database.flush()
+    assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)['combined']
+    unknown.origin_type='pixiv_tag_observation';database.flush()
+    source=database.get(SourceMetadataRecord,104);source.title='Changed source revision';database.commit()
+    assert 4 not in source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)['combined']
+
+
+def _seed_untyped_alias_occurrence(database, *, cannot_link=False):
+    from dataclasses import replace
+    from app.models import SourceConceptSignal,SourceConceptEvidence
+    consumer=production_consumer(build_canonical_pixiv_aggregates_from_session(database))
+    consumer=replace(consumer,signals=tuple(replace(s,role_hint='work',trust_tier='strong',status='active',work_context_key=None)
+        if s.origin_type=='pixiv_tag_observation' and s.evidence_payload['work_id']!='910000003' else s for s in consumer.signals))
+    initial=build_production_clustering(consumer)
+    typed=[s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation' and s.role_hint=='work']
+    judgments=[{'left_signal_key':typed[0].signal_key,'right_signal_key':typed[1].signal_key,
+        'decision':'must_link','confidence':.99,'cache_key':'untyped-component-regression-alias'}]
+    if cannot_link:
+        unknown=next(s for s in initial.resolution.signals if s.origin_type=='pixiv_tag_observation'
+            and s.role_hint=='unknown' and s.canonical_key=='sunpetal')
+        judgments.append({'left_signal_key':unknown.signal_key,'right_signal_key':typed[0].signal_key,
+            'decision':'cannot_link','confidence':.99,'cache_key':'untyped-component-regression-separation'})
+    run=build_production_clustering(consumer,judgments=judgments)
+    apply(database,run,scope_for(database))
+    signal=database.query(SourceConceptSignal).filter_by(created_by_run_id=run.resolution.run_id,
+        canonical_key='sunpetal',role_hint='unknown').one()
+    evidence=database.query(SourceConceptEvidence).filter_by(signal_id=signal.id).first()
+    assert evidence is not None
+    return run,signal,evidence
+
+
+@pytest.mark.parametrize('concept_status,link_status',[
+    ('active','active'),('needs_review','active'),('active','needs_review'),('needs_review','needs_review'),
+    ('withdrawn','needs_review'),('needs_review','withdrawn')])
+def test_untyped_alias_occurrence_respects_other_visible_component(database,concept_status,link_status):
+    from app.models import SourceConcept,SourceConceptSignalLink
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    run,signal,evidence=_seed_untyped_alias_occurrence(database)
+    before=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert 4 not in before['identity'] and 4 in before['evidence_fallback']
+    concept=SourceConcept(concept_key='other-unknown-constraint-component',primary_display_name='Held fixture occurrence',
+        concept_type_hint='unknown',status=concept_status,created_by_run_id=run.resolution.run_id)
+    database.add(concept);database.flush()
+    database.add(SourceConceptSignalLink(signal_id=signal.id,concept_id=concept.id,link_status=link_status,
+        run_id=evidence.run_id,resolver_version='isolated-constraint-regression',resolution_reason_code='cannot_link_review_control'))
+    database.flush()
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert (4 in observed['combined']) is ('withdrawn' in (concept_status,link_status))
+
+
+@pytest.mark.parametrize('change',['literal_singleton','literal_corroboration','missing_reason','missing_guard','typed_component','extra_member'])
+def test_untyped_alias_placeholder_requires_exact_singleton_qualification(database,change):
+    from app.models import SourceConcept,SourceConceptSignal,SourceConceptSignalLink
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    _,signal,_=_seed_untyped_alias_occurrence(database)
+    link=database.query(SourceConceptSignalLink).filter_by(signal_id=signal.id).one()
+    concept=database.get(SourceConcept,link.concept_id)
+    assert link.link_status==concept.status=='needs_review' and concept.concept_type_hint=='unknown'
+    if change=='literal_corroboration':link.resolution_reason_code='unknown_role_requires_corroboration'
+    elif change=='missing_reason':link.resolution_reason_code=None
+    elif change=='missing_guard':link.negative_reason_code=None
+    elif change=='typed_component':concept.concept_type_hint='work'
+    elif change=='extra_member':
+        peer=database.query(SourceConceptSignal).filter(SourceConceptSignal.id!=signal.id).first()
+        database.add(SourceConceptSignalLink(signal_id=peer.id,concept_id=concept.id,link_status='needs_review',run_id=link.run_id,
+            resolver_version='isolated-constraint-regression',resolution_reason_code='constraint_component_member'))
+    database.flush()
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert (4 in observed['combined']) is change.startswith('literal_')
+
+
+def test_untyped_alias_cannot_link_from_real_resolver_remains_separate(database):
+    from app.models import SourceConceptSignalLink
+    from app.services.source_concept_search_service import source_layer_search_path_media_ids
+    _,signal,_=_seed_untyped_alias_occurrence(database,cannot_link=True)
+    link=database.query(SourceConceptSignalLink).filter_by(signal_id=signal.id).one()
+    assert link.resolution_reason_code=='llm_cannot_link_source_layer_guard'
+    observed=source_layer_search_path_media_ids(database,'MoonPetal',include_needs_review=False,
+        include_evidence_fallback=True,include_production_alias_evidence=True)
+    assert 4 not in observed['combined']
+
+
+def test_batch_order_and_resume_receipts_do_not_change_business_identity(database):
+    aggregates=build_canonical_pixiv_aggregates_from_session(database)
+    initial=build_production_clustering(production_consumer(aggregates))
+    judgments=[{'left_signal_key':edge.left_signal_key,'right_signal_key':edge.right_signal_key,
+        'judgment_id':f'accepted-{index}','cache_key':f'accepted-{index}',
+        'decision':'cannot_link','confidence':0.9} for index,edge in enumerate(initial.resolution.edge_candidates[:2])]
+    direct=build_production_clustering(production_consumer(aggregates),judgments=judgments)
+    resumed=[{**row,'selected_pair_id':f'resume-{index}','cache_status':'hit','usage':{'historical':True}}
+             for index,row in enumerate(reversed(judgments))]
+    batches=[aggregates[::2],aggregates[1::2]]
+    cumulative=[row for batch in reversed(batches) for row in batch]
+    replay=build_production_clustering(production_consumer(cumulative),judgments=resumed)
+    assert direct.resolution.run_id==replay.resolution.run_id
+    assert direct.business_projection_fingerprint==replay.business_projection_fingerprint
+    assert direct.resolution.aliases==replay.resolution.aliases
+    scope=scope_for(database)
+    first=apply(database,direct,scope)
+    second=apply(database,replay,scope)
+    assert second['idempotent_replay'] and first['product_result_fingerprint']==second['product_result_fingerprint']
+
+
+def test_tied_positive_judgments_with_cannot_link_are_stable_across_resume_order(database):
+    from itertools import permutations
+    from app.models import SourceTagObservation
+    from app.services.production_pixiv_semantics import build_semantic_vocabulary
+    names=('AlphaVerse','BetaVerse','GammaVerse')
+    for name in names:
+        database.add(SourceTagObservation(source_metadata_record_id=101,provider='pixiv',
+            observation_key='tied-'+name,raw_tag=name,normalized_tag=name.lower(),
+            canonical_tag_key=name.lower(),source_category_raw='copyright',status='observed'))
+    database.commit()
+    aggregates=build_canonical_pixiv_aggregates_from_session(database)
+    consumer=production_consumer(aggregates)
+    vocabulary=build_semantic_vocabulary([{'canonical_name':name,'category':'copyright','source':'static'} for name in names])
+    initial=build_production_clustering(consumer,vocabulary=vocabulary)
+    keys={signal.raw_value:signal.signal_key for signal in initial.resolution.signals if signal.raw_value in names}
+    judgments=[{'left_signal_key':keys[left],'right_signal_key':keys[right],
+        'decision':decision,'confidence':0.9,'cache_key':left+right}
+        for left,right,decision in [('AlphaVerse','BetaVerse','must_link'),
+            ('BetaVerse','GammaVerse','must_link'),('AlphaVerse','GammaVerse','cannot_link')]]
+    fingerprints=set();partitions=set()
+    for order in permutations(judgments):
+        run=build_production_clustering(consumer,vocabulary=vocabulary,judgments=order)
+        groups=tuple(sorted(tuple(sorted(signal.raw_value for signal in concept.signals if signal.raw_value in names))
+            for concept in run.resolution.concepts if any(signal.raw_value in names for signal in concept.signals)))
+        assert len(groups)==2 and sorted(map(len,groups))==[1,2]
+        assert not any({'AlphaVerse','GammaVerse'}<=set(group) for group in groups)
+        fingerprints.add(run.business_projection_fingerprint);partitions.add(groups)
+    assert len(partitions)==len(fingerprints)==1
+
+
+@pytest.mark.parametrize('table,operation,field,value', [
+    ('SourceConceptAlias','delete',None,None),
+    ('SourceConceptAlias','update','status','superseded'),
+    ('SourceConceptSearchIndex','delete',None,None),
+    ('SourceConceptSearchIndex','update','display_name','wrong search name'),
+    ('SourceConceptProductCluster','delete',None,None),
+    ('SourceConceptProductCluster','update','primary_display_name','wrong cluster name'),
+    ('SourceConceptCandidateDisposition','delete',None,None),
+    ('SourceConceptCandidateDisposition','update','reason_code','wrong reason'),
+    ('SourceConceptAmbiguityRecord','delete',None,None),
+    ('SourceConceptAmbiguityRecord','update','status','closed'),
+    ('SourceConcept','update','status','superseded'),
+    ('SourceConceptSignal','update','raw_value','wrong signal name'),
+    ('SourceConceptEvidence','update','status','superseded'),
+    ('SourceConceptSignalLink','update','link_status','superseded'),
+])
+def test_live_owned_product_core_drift_is_rejected(database, table, operation, field, value):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real complete owned business projection')
+    from app import models
+    from scripts.production_pixiv_a2_evidence import collect_final_projection, verify_final_projection
+    apply(database, build(database), scope_for(database))
+    cursor = database.connection().connection.cursor()
+    try:
+        before = collect_final_projection(cursor)
+        approved = {k:v for k,v in before['run_metadata'][0].items() if k != 'id'}
+        assert verify_final_projection(before, copy.deepcopy(before), approved_run=approved) == before
+        row = database.query(getattr(models, table)).order_by(getattr(models, table).id).first()
+        assert row is not None, table + ' must have actual persisted fixture rows'
+        if operation == 'delete': database.delete(row)
+        else: setattr(row, field, value)
+        database.flush()
+        actual = collect_final_projection(cursor)
+        # These mutations leave the run's approved result string and all media
+        # supports intact. A finite passing query set cannot close this hole.
+        assert actual['run_metadata'] == before['run_metadata']
+        if table not in ('SourceConceptEvidence',):
+            assert actual['binding_rows'] == before['binding_rows']
+        with pytest.raises(ValueError, match='live_.*projection|owned_.*projection'):
+            verify_final_projection(before, actual, approved_run=approved)
+    finally:
+        cursor.close(); database.rollback()
+
+
+
+@pytest.mark.parametrize('table,field,value', [
+    ('SourceConceptAlias', 'display_name', 'self-consistent changed alias'),
+    ('SourceConceptSignal', 'raw_value', 'self-consistent changed raw signal'),
+    ('SourceConceptSearchIndex', 'display_name', 'self-consistent changed index'),
+    ('SourceConceptEvidence', 'payload', {'changed':'self-consistent evidence'}),
+])
+def test_self_consistent_live_report_cannot_replace_independent_approval(database, table, field, value):
+    if database.bind.dialect.name!='postgresql':pytest.skip('real independently approved business projection')
+    from app import models
+    from scripts.production_pixiv_a2_evidence import verify_owned_business_projection
+    from scripts.production_pixiv_a2_evidence import collect_final_projection, verify_final_projection
+    apply(database, build(database), scope_for(database))
+    cursor = database.connection().connection.cursor()
+    try:
+        before = collect_final_projection(cursor)
+        metadata = before['run_metadata'][0]
+        approved_run = {k:v for k,v in metadata.items() if k != 'id'}
+        approval = verify_owned_business_projection(before['owned_business_projection'][0], metadata)
+        row = database.query(getattr(models, table)).order_by(getattr(models, table).id).first()
+        assert row is not None
+        setattr(row, field, value)
+        database.flush()
+        actual = collect_final_projection(cursor)
+        assert actual['run_metadata'] == before['run_metadata']
+        with pytest.raises(ValueError, match='not_approved_candidate'):
+            verify_final_projection(copy.deepcopy(actual), actual, approved_run=approved_run, approved_projection=approval)
+        actual.pop('owned_business_projection')
+        with pytest.raises(ValueError, match='owned_business_projection_missing'):
+            verify_final_projection(copy.deepcopy(actual), actual, approved_run=approved_run, approved_projection=approval)
+    finally:
+        cursor.close()
+        database.rollback()

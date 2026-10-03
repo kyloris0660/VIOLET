@@ -1,0 +1,60 @@
+{
+  "schema_version": "violet.production-pixiv-precision-controls.v1",
+  "independent_source": "correction27-precision-source-controls-private.json",
+  "source_evidence_sha256": "f6b6a522c7685f58836fbaf100b1ceeb8ba9602ac4c5c65c178062db05893e1d",
+  "identity_separations": [
+    {
+      "id": "genshin-distinct-character-class-bridge",
+      "source_evidence_sha256": "f6b6a522c7685f58836fbaf100b1ceeb8ba9602ac4c5c65c178062db05893e1d",
+      "sides": [
+        {
+          "names": [
+            "nahida",
+            "纳西妲",
+            "草神",
+            "ナヒーダ"
+          ],
+          "exclusive_media_ids": [
+            784
+          ]
+        },
+        {
+          "names": [
+            "雷電将軍",
+            "雷电将军",
+            "RaidenShogun"
+          ],
+          "exclusive_media_ids": [
+            1737
+          ]
+        }
+      ]
+    }
+  ],
+  "cooccurrence_controls": [
+    {
+      "id": "legitimate-two-characters-one-artwork",
+      "names": [
+        "ナヒーダ",
+        "スカラマシュ"
+      ],
+      "media_ids": [
+        5147
+      ],
+      "source_evidence_sha256": "f6b6a522c7685f58836fbaf100b1ceeb8ba9602ac4c5c65c178062db05893e1d"
+    }
+  ],
+  "unchanged_existing_controls": [
+    784,
+    5147,
+    3915,
+    5256,
+    5651,
+    718,
+    714,
+    715
+  ],
+  "retained_80_case_denominator": 80,
+  "model_input": false,
+  "production_rules_contain_names": false
+}

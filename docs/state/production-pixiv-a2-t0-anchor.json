@@ -1,0 +1,19 @@
+{
+  "schema_version": "violet.production-pixiv-t0-anchor.v1",
+  "identity": {
+    "database": "blombooru",
+    "system_identifier": "7635635488443479756"
+  },
+  "watermark": {
+    "t0": "2026-09-11 22:28:42.238965+08:00",
+    "snapshot": "430010:430010:"
+  },
+  "media_count": 38114,
+  "media_fingerprint": "731aea92ced5ad94fd496f571ffad738ae4cd5850b0187393b9bb82d3f760fda",
+  "metadata_fingerprint": "2e5fdda40b18bf4e881b624c5f66dd7f7d1e50d53c8e9b06bc9593b0f1cf74af",
+  "scope_fingerprint": "7e3db56668de893bfdde03dc979f16931954746c80c54f88bc41431667d30042",
+  "backup_sha256": "92f28240ba657439ad85439bb8d3c9df33d008252a356134aab59a3f19a2b6ba",
+  "backup_bytes": 63908354,
+  "opening_query_receipt_sha256": "695e283c25a9a4661f79ee823294510e2576567318af5993ce52f6f01105ddf6",
+  "evidence": "correction27-t0-backup-reconstruction-private.json"
+}

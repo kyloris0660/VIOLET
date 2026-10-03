@@ -34,20 +34,20 @@ def _state() -> dict[str, object]:
         '26a6fc8d30ba2b2eae69f55a8e7c33d5a4b9cdd3:docs/state/current-phase.json'))
 
 
-def test_current_handoff_is_exact_a1_projection() -> None:
+def test_current_handoff_is_exact_a2_projection() -> None:
     state = load_state(ROOT / 'docs/state/current-phase.json')
     handoff = (ROOT / 'docs/current-handoff.md').read_text(encoding='utf-8')
     assert handoff == render_handoff(state)
     assert 55 <= len(handoff.splitlines()) <= 115
-    assert state['phase_id'] == 'PRODUCTION-PIXIV-A1'
-    assert 'PR #150 已合并' in handoff
+    assert state['phase_id'] == 'PRODUCTION-PIXIV-A2'
+    assert '已接受并合并基线：PR #152' in handoff
 
 
-def test_a1_state_and_active_docs_validate() -> None:
+def test_a2_state_and_active_docs_validate() -> None:
     state = load_state(ROOT / 'docs/state/current-phase.json')
     validate_state(state)
     validate_roadmaps(state)
-    assert state['previous_phase_pr_number'] == 150
+    assert state['previous_phase_pr_number'] == 152
     assert state['safe_to_merge'] is False
     assert state['route_approved'] is False
     assert state['next_phase_started'] is False
@@ -55,9 +55,27 @@ def test_a1_state_and_active_docs_validate() -> None:
 
 @pytest.mark.parametrize('field', ['merge','provider_network','llm','truth_mutation','original_file_mutation'])
 def test_a1_authority_cannot_expand(field):
-    state = load_state(ROOT / 'docs/state/current-phase.json')
+    # Keep A1's consumed authority under regression at its accepted merge.
+    from scripts.check_documentation_state import _trusted_git_value
+    state = json.loads(_trusted_git_value(ROOT, 'show',
+        'ea4bdd740943b2dad8c4eace88d0b33819d86cb8:docs/state/current-phase.json'))
     state['authorities'][field] = True
     with pytest.raises(DocumentationStateError, match='forbidden'):
+        validate_state(state)
+
+
+@pytest.mark.parametrize('field', ['merge','push_main','additional_reviewer','original_file_mutation','confirmed_entity_write'])
+def test_a2_authority_cannot_expand(field):
+    state=load_state(ROOT / 'docs/state/current-phase.json')
+    state['authorities'][field]=True
+    with pytest.raises(DocumentationStateError,match='forbidden'):
+        validate_state(state)
+
+
+def test_a2_unregistered_authority_cannot_bypass_named_limits():
+    state=load_state(ROOT / 'docs/state/current-phase.json')
+    state['authorities']['truth_mutation']=True
+    with pytest.raises(DocumentationStateError,match='authority_map'):
         validate_state(state)
 
 

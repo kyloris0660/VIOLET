@@ -25,7 +25,6 @@ def db():
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import sessionmaker
     from sqlalchemy.pool import StaticPool
-    from app.database import Base
     url = os.environ.get('VIOLET_IMPORT_RECOVERY_PG_URL')
     schema = None
     if url:
@@ -39,7 +38,9 @@ def db():
         engine = create_engine(url, connect_args={'options': f'-c search_path={schema}'})
     else:
         engine = create_engine('sqlite://', connect_args={'check_same_thread': False}, poolclass=StaticPool)
-    Base.metadata.create_all(engine)
+    # Environment safety tests reload app.database; model mappings retain
+    # their original declarative metadata. Create the tables actually queried.
+    Media.__table__.metadata.create_all(engine)
     with sessionmaker(bind=engine, autoflush=False)() as session:
         yield session
     engine.dispose()
@@ -59,6 +60,19 @@ def enqueue(db, root, cap):
         confirmation_phrase=plan['integrity']['confirmation_phrase'],
         plan_created_at=plan['job']['created_at'])
     return run, plan
+
+
+def test_fixture_uses_mapped_metadata_after_database_module_reload(monkeypatch):
+    import app.database as database_module
+    from sqlalchemy.orm import declarative_base
+    from sqlalchemy import inspect
+    monkeypatch.setattr(database_module,'Base',declarative_base())
+    fixture=db.__wrapped__()
+    session=next(fixture)
+    try:
+        assert 'blombooru_dynamic_source_roots' in inspect(session.bind).get_table_names()
+    finally:
+        fixture.close()
 
 
 @pytest.mark.parametrize('positions', [set(range(12)), set(range(3, 15)), set(range(6, 18))])

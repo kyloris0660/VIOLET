@@ -1,0 +1,901 @@
+{
+  "contract_id": "production_pixiv_a2_v1",
+  "target_met": false,
+  "safe_to_merge": false,
+  "route_approved": false,
+  "project_lead_acceptance": "pending",
+  "candidate_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+  "coverage": {
+    "media_count": 38114,
+    "mapped_media": 9502,
+    "mapped_works": 9209,
+    "mapped_work_pages": 9412,
+    "counts": {
+      "metadata_complete": 8623,
+      "terminal_remote_unavailable": 850,
+      "conflicting_filename_priors": 1455,
+      "not_applicable": 27157,
+      "deferred_nonblocking_source_page_mismatch": 29
+    }
+  },
+  "production": {
+    "status": "existing_b5_service_preserved_current_candidate_not_deployed",
+    "startup_business_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+    "worker_pid": 22852,
+    "observation": "correction29-b15-source-blocked-precloseout-20261003-1-availability-private.json",
+    "current_production_acceptance": false
+  },
+  "budget": {
+    "model": "gpt-4.1-mini",
+    "cap_usd": 30,
+    "charged_or_reserved_usd": 13.589429,
+    "call_count": 18433,
+    "unknown_usage_count": 54
+  },
+  "quality": {
+    "status": "blocked_unexecuted_current_head",
+    "original_oracle_case_count": 80,
+    "oracle_changed": false
+  },
+  "identity_precision": {
+    "status": "blocked_unexecuted_current_head"
+  },
+  "workload": {
+    "status": "blocked_unexecuted_current_head"
+  },
+  "browser": {
+    "status": "blocked_unexecuted_current_head"
+  },
+  "launcher": {
+    "status": "blocked_unexecuted_current_head",
+    "computer_use_exited": true
+  },
+  "validation": {
+    "focused": {
+      "passed": 1092,
+      "failed": 0,
+      "skipped": 3,
+      "errors": 0,
+      "source_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6"
+    },
+    "postgresql": {
+      "passed": 142,
+      "failed": 0,
+      "skipped": 0,
+      "errors": 0,
+      "source_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6"
+    },
+    "non_e2e": {
+      "passed": 5268,
+      "failed": 1,
+      "skipped": 22,
+      "errors": 0,
+      "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+      "collected_node_count": 5291,
+      "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
+      "known_historical_failures": 1,
+      "validation_candidate_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+      "post_full_fix": {
+        "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+        "candidate_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+        "registered_files": [
+          "backend/app/services/production_pixiv_pair_correction.py",
+          "backend/app/services/production_pixiv_release_provenance.py",
+          "backend/app/services/production_pixiv_role_extraction.py",
+          "backend/app/services/source_concept_budget.py",
+          "backend/app/services/source_concept_resolver_service.py",
+          "backend/app/services/source_concept_search_service.py",
+          "docs/state/production-pixiv-a2-approved-projection.json",
+          "docs/state/production-pixiv-a2-budget-prefix-compatibility.json",
+          "docs/state/production-pixiv-a2-ignored-inputs.json",
+          "docs/state/production-pixiv-a2-required-tests.json",
+          "scripts/check_production_pixiv_a2.py",
+          "scripts/production_pixiv_a2_evidence.py",
+          "scripts/production_pixiv_a2_full_suite.py",
+          "scripts/production_pixiv_a2_post_full_fix.py",
+          "scripts/production_pixiv_budget_authority.py",
+          "scripts/trusted_git.py",
+          "scripts/violet_production_control.py",
+          "tests/test_production_launcher_control.py",
+          "tests/test_production_pixiv_a1_contract.py",
+          "tests/test_production_pixiv_a2.py",
+          "tests/test_production_pixiv_a2_api.py",
+          "tests/test_production_pixiv_a2_evidence.py",
+          "tests/test_production_pixiv_a2_post_full_fix.py",
+          "tests/test_production_pixiv_adjudication.py",
+          "tests/test_production_pixiv_correction29.py",
+          "tests/test_production_pixiv_release_inputs.py",
+          "tests/test_production_pixiv_review60.py",
+          "tests/test_production_pixiv_review68.py",
+          "tests/test_production_pixiv_reviews107_109.py",
+          "tests/test_production_pixiv_reviews110_111.py",
+          "tests/test_production_pixiv_reviews113_114.py",
+          "tests/test_production_pixiv_role_coverage.py",
+          "tests/test_production_pixiv_role_extraction.py",
+          "tests/test_source_concept_task_budget.py",
+          "tests/test_trusted_git.py"
+        ],
+        "registry_sha256": "13b4bb03e9b8abfd84cba99d19c715029d8e34a1a202a4ac281807a34dd7d404",
+        "affected_verification": {
+          "focused": {
+            "passed": 1092,
+            "failed": 0,
+            "skipped": 3,
+            "errors": 0
+          },
+          "postgresql": {
+            "passed": 142,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0
+          },
+          "historical": {
+            "passed": 88,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0
+          }
+        },
+        "additional_full_invocations": 0,
+        "behavior_neutral_claimed": false,
+        "coverage_scope": "registered source delta and affected verification"
+      }
+    },
+    "historical_non_e2e": {
+      "passed": 4541,
+      "failed": 89,
+      "skipped": 15,
+      "errors": 0,
+      "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
+      "known_historical_failures": 1,
+      "resolved_initial_failures": 88
+    }
+  },
+  "recovery": {
+    "status": "current_lifecycle_blocked_unexecuted",
+    "historical_recovery_preserved": true
+  },
+  "review102": {
+    "thread_count": 102,
+    "current_completion_withdrawn": true,
+    "actual_before_command": "correction29-review102-before-real-pg-20261002-1-command-private.json",
+    "historical_b5_full_contract_only": true,
+    "new_candidate_validation_pending": false,
+    "candidate_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+    "stage": "actual_current_affected_validation_passed_full_copy_ready",
+    "current_copy_and_production_pending": true,
+    "validation": "correction29-post-full-b84ed7d-20261002-1-validation-private.json",
+    "byte_pinned_counterfactual": {
+      "file": "correction29-review102-byte-pinned-counterfactual-20261002-private.json",
+      "sha256": "b9e565b271b03253acf92fb3b9313eb4f8047962a7401eed2e45bb37d9bdbfde",
+      "historical_git_module_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+      "original_test_bytes_verified": true,
+      "same_original_working_module_bytes_claimed": false,
+      "historical_counts": {
+        "passed": 1,
+        "failed": 3,
+        "skipped": 0
+      },
+      "current_counts": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "production_writes": 0
+    }
+  },
+  "post_full_fix": {
+    "candidate_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+    "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "registered_source_files": 35,
+    "status": "actual_frozen_affected_validation_passed_current_role_source_blocked",
+    "additional_full_invocations": 0,
+    "new_provider_calls": 0,
+    "behavior_neutral_claimed": false,
+    "formal_progress": {
+      "status": "finished",
+      "sequence": "correction29-post-full-5c40475-20261003-1-sequence-private.json"
+    },
+    "validation": "correction29-post-full-5c40475-20261003-1-validation-private.json",
+    "registered_files": 35,
+    "current_counts": {
+      "focused_passed": 1092,
+      "focused_skipped": 3,
+      "focused_warnings": 3,
+      "postgresql_passed": 142,
+      "historical_passed": 88
+    }
+  },
+  "reviews103104": {
+    "implementation_plan": "correction29-reviews103104-implementation-plan-20261002-private.json",
+    "implementation_plan_sha256": "1b0fdfd1d812e4561a9bb4df41520e1bb7b95767d28b488daeefb08ac6b6a9ad",
+    "thread_count": 104,
+    "status": "frozen_current_affected_validation_pending",
+    "before_head": "b84ed7da03adc6bbf393bf978811769c0b3c9b76",
+    "historical_b6_impact_validation_preserved": true,
+    "copy_interruption": "correction29-b6-readonly-source-interruption-reviews103104-20261002-private.json",
+    "candidate_head": "d967f521f39777f29a31751709db288d0bc1b023",
+    "frozen_receipt": "correction29-reviews103104-frozen-b8-20261002-private.json",
+    "registered_source_files": 21,
+    "hermetic_fixture_remediation": {
+      "candidate_head": "b89ccea0859330eb28a1267f968055c002df8309",
+      "actual_focused_command": "correction29-post-full-b89ccea-20261002-1-focused-command-private.json",
+      "passed": 896,
+      "failed": 13,
+      "skipped": 3,
+      "warnings": 3,
+      "diagnostic": "correction29-b7-focused-trusted-fixture-diagnostic-20261002-private.json",
+      "actual_after_fixture_xml": "correction29-reviews103104-hermetic-fixture-20261002-1.xml",
+      "fixture_after_passed": 165,
+      "all_13_failed_nodes_rechecked": [
+        "tests/test_production_pixiv_a1_contract.py::test_production_candidate_pin_rejects_behavior_and_untracked_drift",
+        "tests/test_production_pixiv_correction29.py::test_candidate_rejects_ignored_behavior_inputs[.env]",
+        "tests/test_production_pixiv_correction29.py::test_candidate_rejects_ignored_behavior_inputs[package.json]",
+        "tests/test_production_pixiv_correction29.py::test_candidate_rejects_ignored_behavior_inputs[settings.toml]",
+        "tests/test_production_pixiv_correction29.py::test_candidate_rejects_ignored_behavior_inputs[sitecustomize.py]",
+        "tests/test_production_pixiv_correction29.py::test_candidate_rejects_ignored_behavior_inputs[startup.pth]",
+        "tests/test_production_pixiv_correction29.py::test_generated_bytecode_is_allowed_but_forged_cached_code_is_not",
+        "tests/test_production_pixiv_correction29.py::test_launcher_pin_can_advance_to_verified_candidate_without_allowing_config_drift",
+        "tests/test_production_pixiv_correction29.py::test_protected_evidence_exception_does_not_exempt_root_configuration",
+        "tests/test_production_pixiv_review63.py::test_public_summary_without_private_contract_cannot_complete",
+        "tests/test_production_pixiv_review63.py::test_state_uses_fixed_private_contract_and_exact_derived_result[contract_failed]",
+        "tests/test_production_pixiv_review63.py::test_state_uses_fixed_private_contract_and_exact_derived_result[matching]",
+        "tests/test_production_pixiv_review63.py::test_state_uses_fixed_private_contract_and_exact_derived_result[summary_mismatch]"
+      ],
+      "reason": "Fixture text writes normalize through global autocrlf; trusted transport intentionally excludes global config. Each fixture now declares its local newline policy.",
+      "production_source_changed_by_fixture_fix": false,
+      "additional_full_invocations": 0,
+      "new_provider_calls": 0
+    },
+    "new_candidate_validation_pending": false,
+    "current_copy_and_production_pending": true,
+    "stage": "actual_current_affected_validation_passed_full_copy_ready",
+    "validation": "correction29-post-full-d967f52-20261002-1-validation-private.json"
+  },
+  "reviews105": {
+    "thread_id": "PRRT_kwDOSTBMB86oT23V",
+    "comment_id": 4165056066,
+    "remote": "correction29-b8-copy-midpoint-20261002-1-remote-private.json",
+    "status": "b10_affected_validation_passed_native_role_source_blocked",
+    "before_counterexamples": "correction29-review105-before-20261002-3.xml",
+    "initial_fixture_failures_preserved": true,
+    "reader_stop": "correction29-b8-readonly-source-interruption-review105-20261002-private.json",
+    "historical_role_proof_current_ledger_audit": "correction29-review105-retained-role-proof-readonly-audit-20261002-private.json",
+    "historical_paid_records_without_current_valid_source": 9542,
+    "current_native_full_role_replay_claimed": true,
+    "new_provider_calls": 0,
+    "additional_full_invocations": 0,
+    "production_worker_kept": 22852,
+    "preservation": {
+      "docs/state/current-phase.json": {
+        "file": "correction29-before-review105-remediation-20261002\\docs\\state\\current-phase.json",
+        "sha256": "c295b9245be4944942f3b6dfb754a3c522fb9f030f7fcc24f87b6c5c4b7bb891"
+      },
+      "docs/current-handoff.md": {
+        "file": "correction29-before-review105-remediation-20261002\\docs\\current-handoff.md",
+        "sha256": "813c93fb6b870e457f389de57958f062b8be4a826842bd0b5051abbdbc13af22"
+      },
+      "docs/reports/production-pixiv-a2-summary.json": {
+        "file": "correction29-before-review105-remediation-20261002\\docs\\reports\\production-pixiv-a2-summary.json",
+        "sha256": "a9ee51fbac26c0b4f33d2490b5ce0f37a687fe8c2095a40401ee6e99780dde12"
+      },
+      "docs/reports/production-pixiv-a2-result.md": {
+        "file": "correction29-before-review105-remediation-20261002\\docs\\reports\\production-pixiv-a2-result.md",
+        "sha256": "c734eeec294a4690b9b87e055cc21a08b5b2f1166c27ecd6c0cfe8356208c1c9"
+      },
+      "docs/plans/production-pixiv-a2.md": {
+        "file": "correction29-before-review105-remediation-20261002\\docs\\plans\\production-pixiv-a2.md",
+        "sha256": "c5ca92476cef6808cc66b75e7281b5039249aef6e4b12e0231a6d5f062e9c758"
+      },
+      "docs/roadmap/current-mainline-roadmap.md": {
+        "file": "correction29-before-review105-remediation-20261002\\docs\\roadmap\\current-mainline-roadmap.md",
+        "sha256": "049155ead120c95e99a926515dce22a8b4b280fbb0729b2efa03b5df9e480ec5"
+      },
+      "backend/app/services/production_pixiv_release_provenance.py": {
+        "file": "correction29-before-review105-remediation-20261002\\backend\\app\\services\\production_pixiv_release_provenance.py",
+        "sha256": "de99dbc8cc2dc2e8e17be9bfe44d83a4943f955c39f4464e13a2f0b89f7841af"
+      },
+      "scripts/production_pixiv_a2_post_full_fix.py": {
+        "file": "correction29-before-review105-remediation-20261002\\scripts\\production_pixiv_a2_post_full_fix.py",
+        "sha256": "8f302c2e89d4d1650ebdbd14cd7a8a393704378200bd2ae86933c093d3a07ddb"
+      },
+      "docs/state/production-pixiv-a2-post-full-fix.json": {
+        "file": "correction29-before-review105-remediation-20261002\\docs\\state\\production-pixiv-a2-post-full-fix.json",
+        "sha256": "5ace63a1162fcf3436cc248a681d48405d8cc18e96055f3ab4db04ac5abcbf1c"
+      },
+      "tests/test_production_pixiv_release_inputs.py": {
+        "file": "correction29-before-review105-remediation-20261002\\tests\\test_production_pixiv_release_inputs.py",
+        "sha256": "0f65d341fbb208dd21730b2af2f206d7566a0abf70a26d919414b3a1ac0b2941"
+      }
+    },
+    "before_four": "correction29-review105-before-20261002-4.xml",
+    "after_four": "correction29-review105-after-20261002-1.xml",
+    "development": "correction29-review105-development-20261002-4.xml",
+    "development_passed": 214,
+    "source_before_sha256": "de99dbc8cc2dc2e8e17be9bfe44d83a4943f955c39f4464e13a2f0b89f7841af",
+    "source_after_sha256": "e8f4580675f6f599b10a5609a963f6d7f979eeec3bac625c9719487692732d80",
+    "new_role_correction_authorized": false,
+    "original_evidence_gap_open": true,
+    "candidate_head": "b3ce5aac37559e4917744f6589a11d2424cc1960",
+    "frozen_receipt": "correction29-review105-frozen-b10-20261002-private.json",
+    "frozen_focused_passed": 929,
+    "frozen_focused_failed": 6,
+    "frozen_focused_skipped": 3,
+    "frozen_focused_warnings": 3,
+    "failed_focused_xml": "correction29-post-full-6b807c8-20261002-1-focused.xml",
+    "original_logs_preserved": true,
+    "positive_fixture_repair": {
+      "scope": [
+        "tests/test_production_pixiv_review68.py",
+        "tests/test_production_pixiv_correction29.py"
+      ],
+      "rule": "Use an actually successful complete original fixture response. Never flip ledger status or business validity.",
+      "extra_registered_test_file": "tests/test_production_pixiv_review68.py",
+      "production_source_changed": false
+    },
+    "previous_checkpoint_before_positive_fixture_failure": "2026-10-02T14:04:44.060576+08:00 562bc18实际完整来源、副本、原生产owned apply和普通无参数EXE、生产80/80及独立精度、系统Edge/240 HTTP/720来源层与18项完整注册契约通过；target_met=true，safe_to_merge/route_approved及Owner验收保持false。 同阶段最新对账：2026-10-02 推送后第100条P1已用真实Git原件和原生门禁复核：B5提交中旧F9字段确被拒绝，当前工作树B5/实际18门及两次文档检查通过；仅补齐六文档投影和100线程对账，不改业务/重跑全套/重做apply。旧99对账、提交前交付包装中断及两次采集器断言失败完整保留。；2026-10-02新增102号在隔离PG复现3失败/1通过，当前target_met撤回为false；保留B5原生产及全部历史完成证据，按当前A2授权修复unknown待审组件边界。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。；102号最小修复实际17PG/API与25登记契约通过并冻结，原冻结80例不变、0新调用；当前完整候选验证继续。 当前b84ed7da03adc6bbf393bf978811769c0b3c9b76正式影响验证实际通过：focused 843/3跳过，真实PG/API 142，历史88节点；16文件差量已登记，零新增全套/调用。最新完整副本及生产验收继续。 2026-10-02T16:58:03.213122+08:00 当前b84ed7d正式影响验证及独立源码/输入复算通过，开始实际当前完整副本/图与生命周期；原B5副本及原库apply历史保留，原生产服务不停止，0新增全套/Provider，三完成标志仍false。 第102条原测试字节及完整Git旧模块已新增真实PG修前3失败/1通过、当前4通过；原首轮工作文件SHA和失败原样保留，不冒称字节已复原。当前完整副本来源校验继续，0新调用。 第103/104条发布门禁意见已保存；B6副本在完整来源只读阶段停止，尚未plan/apply，实际失败及partial标记保留。当前恢复集中修复与全量验证，生产B5原worker保持。 第103/104条实际修前4失败、修后4通过；148开发回归通过/2权限跳过，完整31608来源business_valid均true。18文件差量冻结于b89ccea0859330eb28a1267f968055c002df8309，生产仍B5原worker，当前完整补测/副本/生产待执行。 B7正式focused实际896通过/13失败/3跳过/3警告，13失败均为依赖全局autocrlf的隔离仓库；本地配置修正后165相关验证通过，原失败保留，不改生产门禁或原始缓存。 当前21文件差量冻结于d967f521f39777f29a31751709db288d0bc1b023，原生可信Git/精确来源续接通过；当前补测及完整副本待完成，现有B5生产保持。 当前d967f521f39777f29a31751709db288d0bc1b023正式影响验证实际通过：focused 909/3跳过，真实PG/API 142，历史88节点；21文件差量已登记，零新增全套/调用。最新完整副本及生产验收继续。 2026-10-02T18:46:08.227251+08:00 当前d967f52正式影响验证及独立源码/输入复算通过，开始实际当前完整副本/图与生命周期；原B5副本及原库apply历史保留，原生产服务不停止，0新增全套/Provider，三完成标志仍false。 当前正常EXE/Computer Use就绪已实际验证：首次空白截图及一次刷新保留，原生产24672显示健康，自己的窗口已关闭且控制会话退出；0服务按钮/0生产写，尚非当前B8正常入口启动验收。 第105条角色来源同类遗漏实际四反例复现；B8完整副本仅只读来源阶段停止，未plan/apply，失败和原partial已保留，生产22852仍健康。原15824记录完整证明按原账本筛查，9542付费记录无当前success且业务有效来源；只读筛查尚不冒称当前完整回放。三个完成标志保持false，继续最小角色门禁及回归，不改原账本/答案/费用、不新增provider。 第105条角色门禁修复冻结于6b807c8a4403f77543770d978e9fac6228f1ddd3，22文件精确差量/可信源码身份续接通过，当前补测与完整角色来源回放待执行；业务有效性缺口尚未关闭，原B5服务仍为原PID，0新增调用/全套/生产启动。",
+    "positive_fixture_development": "correction29-review105-positive-fixture-development-20261002-1-command-private.json",
+    "positive_fixture_development_passed": 156,
+    "positive_fixture_ledger_flags_not_rewritten": true,
+    "validation": "correction29-post-full-b3ce5aa-20261002-1-validation-private.json",
+    "current_affected_validation_passed": true,
+    "current_role_readmission_pending": false,
+    "current_full_copy_pending": false,
+    "current_production_pending": false,
+    "checkpoint_before_current_affected_pass": "2026-10-02 冻结6b807c8 focused实际929通过/6失败/3跳过/3警告；六失败属于两个旧正向来源/逻辑键测试使用实际failed批次，新角色准入正确拒绝。先保存原源码/日志/收据再修复正向夹具，新增review68精确测试登记，生产源码/原账本不改；PG/88尚未执行，原B5服务保持。 两个正向夹具最小纠正冻结于b3ce5aac37559e4917744f6589a11d2424cc1960，业务来源门禁e8f4580保持；23文件精确登记，当前补测与原生角色完整回放继续。",
+    "current_native_full_role_replay_passed": false,
+    "current_native_replay": "correction29-review105-native-b3ce5aa-role-20261002-2-command-private.json",
+    "actual_native_missing_records": 9543,
+    "original_cache_and_ledger_byte_preservation_verified": true,
+    "first_wrapper_failure": "correction29-review105-native-network-guard-scope-restoration-20261002-private.json",
+    "native_missing_delta": "correction29-review105-native-missing-delta-readonly-20261002-private.json",
+    "checkpoint_before_actual_role_failure": "2026-10-02 第105条冻结b3ce5aa当前正式影响验证实际通过：focused 935/3跳过，真实PG/API 142，历史88节点；23文件注册差量与唯一新增全套对账通过。完整原生角色来源重新准入待实际结果，历史证据有效性缺口保留；0新调用/全套/生产启动。",
+    "current_full_copy_status": "blocked_unexecuted",
+    "current_production_status": "blocked_unexecuted",
+    "current_contract_closeout": "correction29-b10-current-source-blocked-20261002-1-contract-private.json"
+  },
+  "current_contract_closeout": {
+    "file": "correction29-b15-current-source-blocked-20261003-1-contract-private.json",
+    "counts": {
+      "failed": 2,
+      "passed": 9,
+      "blocked_unexecuted": 7
+    },
+    "current_complete_runtime_claimed": false
+  },
+  "historical_b5_runtime_before_current_source_refusal": {
+    "production": {
+      "active_runs": 1,
+      "bindings": 66392,
+      "bound_media": 8623,
+      "duplicate_support_count": 0
+    },
+    "quality": {
+      "case_count": 80,
+      "failed_cases": 0,
+      "independent_identity_precision_control_count": 18,
+      "independent_separation_control_count": 2,
+      "categories": {
+        "supported_multilingual_identity": 18,
+        "required_separation": 36,
+        "no_independent_identity_answer": 1,
+        "accepted_search_equivalence_only": 8,
+        "media_set_AND": 3,
+        "media_set_negative": 3,
+        "bare_name_distinct_creator_accounts": 2,
+        "suggestion_suggested_positive": 3,
+        "suggestion_suggested_negative": 3,
+        "suggestion_accepted_positive_control": 3
+      }
+    },
+    "identity_precision": {
+      "case_count": 2,
+      "case_ids": [
+        "genshin-distinct-character-class-bridge",
+        "legitimate-two-characters-one-artwork"
+      ],
+      "failed_cases": 0,
+      "retained_quality_denominator_changed": false
+    },
+    "workload": {
+      "query_count": 240,
+      "failed_queries": 0,
+      "p50_ms": 845.499,
+      "p95_ms": 1426.534,
+      "max_ms": 2732.359,
+      "source_layer_latency_ms": {
+        "p50_ms": 371.521,
+        "p95_ms": 477.266,
+        "max_ms": 1048.249
+      },
+      "applicable_source_layer_p95_gate_ms": 750,
+      "live_source_performance_rechecked": true
+    },
+    "browser": {
+      "originals_loaded": 3,
+      "thumbnails_loaded": 1,
+      "fullscreen_samples": 3,
+      "search_dom_api_equal": true,
+      "old_tag_dom_api_equal": true,
+      "recovery_read_observed": true,
+      "source_chip_concept_binding": {
+        "media_id": 714,
+        "concept_ids": [
+          99323
+        ],
+        "display_name": "Pixiv creator 67717416",
+        "query": "\"Pixiv creator 67717416\"",
+        "complete_result_count": 8,
+        "page_count": 1
+      }
+    },
+    "launcher": {
+      "new_process": true,
+      "apply_enabled": false
+    },
+    "recovery": {
+      "independent_restore": true,
+      "owned_rollback_replay": true,
+      "independent_support_preserved": true,
+      "batch_business_equivalent": true,
+      "forward_metadata_spacing": {
+        "historical_dispatch_count": 8694,
+        "forward_dispatch_count": 0,
+        "minimum_forward_dispatch_gap_seconds": null,
+        "observed_boundary": "metadata_command_dispatch",
+        "provider_internal_http_intervals_claimed": false
+      },
+      "historical_http_spacing_evidence": "Lead accepted task 43 exception; not reconstructable",
+      "historical_command_gaps_below_two_seconds": 1594,
+      "historical_minimum_command_gap_seconds": 1.740068
+    },
+    "validation": {
+      "focused": {
+        "passed": 836,
+        "failed": 0,
+        "skipped": 3,
+        "errors": 0,
+        "source_head": "562bc18b2178883e3a604b2d9e6bc01454d37080"
+      },
+      "postgresql": {
+        "passed": 125,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0,
+        "source_head": "562bc18b2178883e3a604b2d9e6bc01454d37080"
+      },
+      "non_e2e": {
+        "passed": 5268,
+        "failed": 1,
+        "skipped": 22,
+        "errors": 0,
+        "source_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+        "collected_node_count": 5291,
+        "collected_sha256": "b99f2d14536904574da1f19ddd0c97bb4c9d2439d28922d3176729cc2bb3353c",
+        "known_historical_failures": 1,
+        "validation_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+        "post_full_fix": {
+          "baseline_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+          "candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
+          "registered_files": [
+            "docs/state/production-pixiv-a2-approved-projection.json",
+            "docs/state/production-pixiv-a2-required-tests.json",
+            "scripts/check_production_pixiv_a2.py",
+            "scripts/production_pixiv_a2_evidence.py",
+            "scripts/production_pixiv_a2_full_suite.py",
+            "scripts/production_pixiv_a2_post_full_fix.py",
+            "scripts/trusted_git.py",
+            "scripts/violet_production_control.py",
+            "tests/test_production_launcher_control.py",
+            "tests/test_production_pixiv_a2.py",
+            "tests/test_production_pixiv_a2_evidence.py",
+            "tests/test_production_pixiv_a2_post_full_fix.py",
+            "tests/test_trusted_git.py"
+          ],
+          "registry_sha256": "dc1e50c75c47e587a1aa4da9a3fdc9a68091bd030e1d98304cc45a7edd055092",
+          "affected_verification": {
+            "focused": {
+              "passed": 836,
+              "failed": 0,
+              "skipped": 3,
+              "errors": 0
+            },
+            "postgresql": {
+              "passed": 125,
+              "failed": 0,
+              "skipped": 0,
+              "errors": 0
+            },
+            "historical": {
+              "passed": 88,
+              "failed": 0,
+              "skipped": 0,
+              "errors": 0
+            }
+          },
+          "additional_full_invocations": 0,
+          "behavior_neutral_claimed": false,
+          "coverage_scope": "registered source delta and affected verification"
+        }
+      },
+      "historical_non_e2e": {
+        "passed": 4541,
+        "failed": 89,
+        "skipped": 15,
+        "errors": 0,
+        "source_head": "acc28adfb106ebafcfa0034607936e6da975af80",
+        "known_historical_failures": 1,
+        "resolved_initial_failures": 88
+      }
+    }
+  },
+  "current_status": "PRODUCTION_PIXIV_A2_CORRECTION29_CURRENT_ROLE_SOURCE_BLOCKED",
+  "current_review_dispositions": {
+    "file": "correction29-review115-current-source-blocked-20261003-review-dispositions-private.json",
+    "sha256": "4d7d86c9883265c617cac395baa0422d29c997c45aab01c4e8389d926a845e66",
+    "thread_count": 115
+  },
+  "review_package": {
+    "archive": "correction29-source-blocked-review115-final-20261003-3.zip",
+    "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
+    "maximum_bytes": 100000000,
+    "external_final_receipt": "correction29-b15-final3-private-delivery-20261003-private.json",
+    "source_and_runtime_acceptance": false,
+    "required_offline_replays": 37
+  },
+  "review_package_size_failure": {
+    "archive": "correction29-source-blocked-review106-final-20261002-1.zip",
+    "bytes": 101902344,
+    "sha256": "6e4a8794597e837f543aa68b2a9856bae0df5dac2159633d79039dbafb4d3600",
+    "maximum_bytes": 100000000,
+    "size_passed": false,
+    "physical_files": 3625,
+    "logical_aliases": 754,
+    "delivery_head": "2b47c805358eeb0f36b9b22e6ad598405c231129",
+    "business_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+    "clean_extraction_verified": false,
+    "driver_sha256": "4364ddb0801ae6c30ae46a59f64fab437350c15b5618b3f7617bc214352a77a4"
+  },
+  "reviews106": {
+    "thread_id": "PRRT_kwDOSTBMB86oXKyD",
+    "comment_id": 4166406298,
+    "status": "implemented_frozen_current_validation_pending",
+    "source_snapshot": "correction29-source-blocked-final2-delivery-20261002-1-remote-private.json",
+    "root_cause": "recover_response False can mean either already valid or failed/revoked; runtime cache consumers ignored the distinction.",
+    "scope": [
+      "exact paid cache",
+      "same-input semantic cache",
+      "legacy paid cache import",
+      "read-only strict current ledger admission"
+    ],
+    "implementation": "After legitimate reserved-response recovery, require one exact success and business_valid is True (legacy field absence retained). Refuse before judgment append or migration; never re-dispatch or alter settled history.",
+    "validation": "Real isolated ledger transitions and cache paths, valid/recovered controls, complete frozen focused/PG/historical affected checks; no additional full suite.",
+    "role_cache_audit": "Different full-batch parser/partial-sibling recovery contract; current full role native provenance already rejects the complete 9543 source gaps. No role facts or response policies changed by this pair-cache fix.",
+    "new_provider_calls": 0,
+    "production_changed": false,
+    "role_source_gap_open": true,
+    "candidate_head": "20d94190bfa4c4896398ee320c5d553fae98fc7e",
+    "development": [
+      {
+        "command": "correction29-review106-runtime-development-20261002-2-command-private.json",
+        "actual_passed": 166
+      },
+      {
+        "command": "correction29-review106-contract-development-20261002-1-command-private.json",
+        "actual_passed": 156
+      }
+    ],
+    "frozen_validation": "correction29-post-full-20d9419-20261002-1-validation-private.json",
+    "native_role_invocation": "correction29-review106-native-20d9419-role-20261002-1-command-private.json",
+    "formal_affected_checks_passed": true,
+    "current_runtime_accepted": false,
+    "whole_role_missing_records": 9543,
+    "first_historical_failures_retained": 2,
+    "historical_clean_rerun_passed": 88
+  },
+  "reviews107109": {
+    "status": "current_affected_checks_passed_original_role_source_still_blocked",
+    "thread_count": 109,
+    "comments": [
+      4167310188,
+      4167310192,
+      4167310200
+    ],
+    "new_provider_calls": 0,
+    "additional_full_invocations": 0,
+    "historical_logical_backfill_independently_replayed": 1665,
+    "original_6110_rows_full_field_guard": true,
+    "role_partial_source_complete_cache_rejected": true,
+    "exact_original_historical_nodes": 88,
+    "target_met": false,
+    "candidate_head": "a64c77ee152601a816eba3a7c86f73ef1e8f4e44",
+    "development": {
+      "command": "correction29-reviews107109-development-20261003-5-command-private.json",
+      "xml": "correction29-reviews107109-development-20261003-5.xml",
+      "log": "correction29-reviews107109-development-20261003-5.log",
+      "passed": 176,
+      "first_before_regressions": {
+        "xml": "correction29-reviews107109-before-20261003-1.xml",
+        "failed": 14,
+        "passed": 2
+      },
+      "preserved_development_failures": [
+        {
+          "label": "correction29-reviews107109-development-20261003-1",
+          "failed": 2
+        },
+        {
+          "label": "correction29-reviews107109-development-20261003-3",
+          "failed": 37
+        },
+        {
+          "label": "correction29-reviews107109-development-20261003-4",
+          "failed": 4
+        }
+      ],
+      "new_provider_calls": 0,
+      "new_full_suite_invocations": 0,
+      "original_role_source_gap_not_repaired": true
+    },
+    "b13_fixture_development": {
+      "command": "correction29-b13-retained-source-fixture-development-20261003-1-command-private.json",
+      "log": "correction29-b13-retained-source-fixture-development-20261003-1.log",
+      "xml": "correction29-b13-retained-source-fixture-development-20261003-1.xml",
+      "passed": 65,
+      "failed": 0,
+      "scope": "Retained original failed-call proof plus reviews107-109; prior full bounded development176 retained separately."
+    },
+    "formal_validation": "correction29-post-full-8b42ed3-20261003-2-validation-private.json",
+    "native_role_invocation": "correction29-review111-native-8b42ed3-role-20261003-1-command-private.json",
+    "whole_role_missing_records": 9543,
+    "current_runtime_accepted": false
+  },
+  "b12_focused_negative_history": {
+    "candidate_head": "5578e7dea113a4513aab05d8567c9cb7989045c9",
+    "command": "correction29-post-full-5578e7d-20261003-1-focused-command-private.json",
+    "log": "correction29-post-full-5578e7d-20261003-1-focused.log",
+    "xml": "correction29-post-full-5578e7d-20261003-1-focused.xml",
+    "passed": 1038,
+    "failed": 2,
+    "skipped": 3,
+    "warnings": 3,
+    "failed_nodes": [
+      "tests.test_production_pixiv_release_inputs::test_role_release_rejects_actual_failed_or_recovered_invalid_call[failed-False]",
+      "tests.test_production_pixiv_release_inputs::test_role_release_rejects_actual_failed_or_recovered_invalid_call[failed-True]"
+    ],
+    "postgresql_executed": false,
+    "historical_executed": false,
+    "root_cause": "Strict producer admission prevents failed call publishing; old release fixture had no retained fact to verify.",
+    "fixture_fix": "tests/test_production_pixiv_release_inputs.py",
+    "runtime_oracle_weakened": false
+  },
+  "reviews110111": {
+    "status": "current_affected_checks_passed_original_role_source_still_blocked",
+    "thread_count": 111,
+    "development": {
+      "command": "correction29-reviews110111-development-20261003-2-command-private.json",
+      "log": "correction29-reviews110111-development-20261003-2.log",
+      "xml": "correction29-reviews110111-development-20261003-2.xml",
+      "passed": 286,
+      "failed": 0,
+      "original_counterexamples_before_failed": 16,
+      "direct_counterexamples_after_passed": 17
+    },
+    "preservation_and_plan": "correction29-reviews110111-preservation-and-plan-20261003-private.json",
+    "actual_reservation_overruns_in_original_ledger": 0,
+    "new_provider_calls": 0,
+    "production_restarted": false,
+    "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
+    "native_role_invocation": "correction29-review111-native-8b42ed3-role-20261003-1-command-private.json",
+    "whole_role_missing_records": 9543,
+    "current_runtime_accepted": false,
+    "formal_validation": "correction29-post-full-8b42ed3-20261003-2-validation-private.json",
+    "actual_before_failed": 16,
+    "actual_before_passed": 1,
+    "development_passed": 286,
+    "initial_formal_post_guard_refusal": "correction29-post-full-8b42ed3-20261003-1-sequence-private.json"
+  },
+  "current_native_role_readmission": {
+    "candidate_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+    "invocation": "correction29-review114-native-5c40475-role-20261003-1-command-private.json",
+    "exit_code": 1,
+    "missing_records": 9543,
+    "original_inputs_unchanged": true,
+    "raw_cache_unchanged": true,
+    "new_provider_calls": 0,
+    "scope_binding": "correction29-b15-role-scope-binding-20261003-private.json"
+  },
+  "review111_first_archive_oversize": {
+    "file": "correction29-source-blocked-review111-final-20261003-1-build-private.json",
+    "bytes": 102020195,
+    "sha256": "e01d51af70c8f4a1a96b261d12a0bab2a4cf79d0c6e3d85d914e54b1e2ce398c",
+    "original_archive_retained_locally": true,
+    "current_size_passed": false,
+    "next_encoding": "additional exact original text stream; no negative records or screenshots omitted"
+  },
+  "review112_live_ancestry": {
+    "file": "correction29-review112-live-ancestry-20261003-private.json",
+    "sha256": "621b70d6e827278a709deb38c319ea59bf2eb2741e0685207dbab6f17c83cae8",
+    "actual_live_merge_base": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
+    "source_changed": false,
+    "resolved": false,
+    "current_runtime_accepted": false
+  },
+  "review112_second_archive_failed_replay": {
+    "archive": "correction29-source-blocked-review111-final-20261003-2.zip",
+    "bytes": 92484894,
+    "sha256": "374fd9eeb042fde2d77afe08ab79ac88257b7e55b9847b5666633ca870bb4c37",
+    "clean_extraction_passed": true,
+    "declared_replays": 34,
+    "actual_passed_before_failure": 14,
+    "failed_replay": 15,
+    "failure_log": "correction29-source-blocked-review111-final-20261003-2-offline-15.log",
+    "original_archive_and_failed_directory_retained": true,
+    "source_export_dependency_audit": "correction29-review112-final3-baseline-export-closure-20261003-private.json",
+    "declared_old_runtime_files": 356,
+    "missing_original_files_to_restore": 79,
+    "missing_original_bytes": 1707843,
+    "source_gate_and_replay_assertions_unchanged": true
+  },
+  "reviews113114": {
+    "status": "current_affected_checks_passed_original_role_source_still_blocked",
+    "thread_count": 114,
+    "remote_snapshot": "correction29-b14-review112-final4-prefreeze-20261003-1-remote-private.json",
+    "preservation_and_plan": "correction29-reviews113114-preservation-and-plan-20261003-private.json",
+    "new_provider_calls": 0,
+    "production_restarted": false,
+    "current_role_source_accepted": false,
+    "development": {
+      "command": "correction29-reviews113114-development-20261003-2-command-private.json",
+      "log": "correction29-reviews113114-development-20261003-2.log",
+      "xml": "correction29-reviews113114-development-20261003-2.xml",
+      "passed": 450,
+      "skipped": 1,
+      "failed": 0,
+      "actual_before_failed": 22,
+      "actual_before_passed": 5,
+      "original_first_control_field_error_preserved": "correction29-reviews113114-before-20261003-1.log",
+      "original_invalid_sibling_fixture_preserved": "correction29-reviews113114-development-20261003-1.log"
+    },
+    "candidate_head": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+    "native_role_invocation": "correction29-review114-native-5c40475-role-20261003-1-command-private.json",
+    "whole_role_missing_records": 9543,
+    "current_runtime_accepted": false,
+    "formal_validation": "correction29-post-full-5c40475-20261003-1-validation-private.json"
+  },
+  "review114_third_archive_failed_replay": {
+    "archive": "correction29-source-blocked-review111-final-20261003-3.zip",
+    "bytes": 92953831,
+    "sha256": "e83c8c3051eb6b8b4ecb83b509aa0ad69dc8e46cc3df0b748353eab2d97d3f5a",
+    "clean_extraction_passed": true,
+    "declared_replays": 34,
+    "actual_passed_before_failure": 19,
+    "failed_replay": 20,
+    "failure_log": "correction29-source-blocked-review111-final-20261003-3-offline-20.log",
+    "original_archive_and_failed_directory_retained": true,
+    "root_cause": "Authenticated historical review100 code_root omitted; broader declared-source closure audit also found historical post-full/revision export omissions.",
+    "source_gate_and_replay_assertions_unchanged": true
+  },
+  "historical_b14_post_full_fix": {
+    "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
+    "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "registered_source_files": 33,
+    "status": "actual_frozen_affected_validation_passed_current_role_source_blocked",
+    "additional_full_invocations": 0,
+    "new_provider_calls": 0,
+    "behavior_neutral_claimed": false,
+    "formal_progress": {
+      "status": "finished",
+      "sequence": "correction29-post-full-8b42ed3-20261003-2-sequence-private.json"
+    },
+    "validation": "correction29-post-full-8b42ed3-20261003-2-validation-private.json",
+    "registered_files": 33,
+    "current_counts": {
+      "focused_passed": 1061,
+      "focused_skipped": 3,
+      "focused_warnings": 3,
+      "postgresql_passed": 142,
+      "historical_passed": 88
+    }
+  },
+  "review114_first_archive_failed_replay": {
+    "archive": "correction29-source-blocked-review114-final-20261003-1.zip",
+    "bytes": 94708483,
+    "sha256": "2f8ba344f8a574f81717437911fd30d0ba1630a99c48ecaa3ff686a655affc1f",
+    "actual_passed_replays": 20,
+    "failed_replay": 21,
+    "missing_original_log": "delivery-run-control-b5-final-current-documents.log",
+    "original_failed_log": "correction29-source-blocked-review114-final-20261003-1-offline-21.log",
+    "clean_bytes_and_references_passed": true,
+    "failed_archive_and_directory_preserved": true
+  },
+  "review114_exact_executable_dependency_closure": {
+    "closure": "correction29-review114-final2-executable-dependency-closure-20261003-4-private.json",
+    "closure_sha256": "474f104f6ccfe6aaaae0845fe443d98dbcb73ec4b9602712ed07deca628df53f",
+    "actual_unchanged_remaining_dependency_readers_passed": 15,
+    "additional_original_files": 7,
+    "additional_original_bytes": 295314,
+    "historical_review103104_code_root": "correction29-b10-source-20261002/candidate",
+    "historical_source_binding_refusal_preserved": true,
+    "old_document_crlf_refusal_preserved": true,
+    "git_archive_crlf_only_originals": [
+      {
+        "file": "docs/current-handoff.md",
+        "git_bytes": 24134,
+        "git_sha256": "e2d479e01ffd0acf50138db465075e0dad357a5970dc31e760072f1e8e847053",
+        "archive_bytes": 24249,
+        "archive_sha256": "46ee8e3cd08664c29fe64409457e311db45dce60870e60715a2009455045140d",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/phase-contracts.md",
+        "git_bytes": 45275,
+        "git_sha256": "acbfe05ded9113d31e06eba31bd6712a6608ebdd316608910dd1161ef4253db8",
+        "archive_bytes": 46020,
+        "archive_sha256": "5828b64e50ce510821ecc2a911bc940402f28131c913dc70ea91637f28396581",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/plans/production-pixiv-a2.md",
+        "git_bytes": 57965,
+        "git_sha256": "1d3a2efd22f1f0aa96da1a4dd2ac2976070db618299a44d7b8669e858060cf15",
+        "archive_bytes": 58276,
+        "archive_sha256": "30b38bd20473b42be20313adb91bceba81a17023244fa52b40bfc4591c2278a6",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/reports/production-pixiv-a2-result.md",
+        "git_bytes": 82931,
+        "git_sha256": "b35af550dce6e1a2b2579c90d726d61a123bd3489a1d57164023f465dfc77c24",
+        "archive_bytes": 83363,
+        "archive_sha256": "5d61288ed830d34eec1affb8eada462b65bda648b845efe54b3f972cc229c07b",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/reports/production-pixiv-a2-summary.json",
+        "git_bytes": 41340,
+        "git_sha256": "1feaad7ff642903f00e918de315ec712b3c279c6b463e726bde7fa1c2ffea612",
+        "archive_bytes": 42140,
+        "archive_sha256": "2972b0bf4aaefe54f6b66c07cae356f8ab753d2eb83f9e380f7230a14ca89b3c",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/roadmap/current-mainline-roadmap.md",
+        "git_bytes": 33089,
+        "git_sha256": "90234422facea556d480c935d5121c9443736e5bf1a261dd61ee7cfae1c7f6ab",
+        "archive_bytes": 33373,
+        "archive_sha256": "899fd050503c61fbcb9c3cca067801c8b0da91900f43f9fa209b3cb8afdb303e",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      },
+      {
+        "file": "docs/state/current-phase.json",
+        "git_bytes": 212099,
+        "git_sha256": "845e720cd00b4eb6b7532f6be51e25f660790ee0d0802cb584e4128c4902111b",
+        "archive_bytes": 215653,
+        "archive_sha256": "4999c167a4c8287edab2451e9cb7fdacba29edbdd43a5e03e5e789088fe80ddb",
+        "only_exact_crlf_conversion": true,
+        "both_original_streams_preserved": true
+      }
+    ],
+    "original_business_source_changed": false,
+    "lexical_inventory_entries": 9799,
+    "lexical_inventory_bytes": 6131235673,
+    "lexical_inventory_is_required_execution_scope": false,
+    "final36_replays_claimed_passed": false
+  },
+  "review115_live_ancestry": {
+    "file": "correction29-review115-live-ancestry-20261003-private.json",
+    "sha256": "138a1e7e327ac585b98bbb97d60c0e31332bfabde50eecb84b238b5153894c1d",
+    "actual_live_pr_head": "880dd80e0e6f2a0e0cad0d26f5c50e6255cb2aa3",
+    "actual_merge_base": "5c40475cff9176e8fca6339ca035949eb72ea1e6",
+    "native_guard_passed": true,
+    "not_reproduced_on_actual_live_PR": true,
+    "new_pytest_success_claimed": false
+  }
+}

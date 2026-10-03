@@ -1,0 +1,20 @@
+{
+  "boundary": "Private evidence is explicitly loaded and verified by evidence consumers; application roots, dotenv and startup hooks are never exempt.",
+  "schema_version": "violet.a2.ignored-inputs.v1",
+  "evidence_directories": [
+    "phase-4.4p2r-f2-gallery-dl-external-adapter-pilot",
+    "phase-4.4p2r-f3-pixiv-metadata-normalization-pilot",
+    "phase-4.4p2r-f4-pixiv-taxonomy-alias-kb",
+    "phase-4.4p2r-f5-provider-neutral-source-name-registry",
+    "pixiv-a2"
+  ],
+  "repository_files": {
+    "data/settings.json": "9bff8e74041298a63e6a65a6b3f4bab2eda245e18a95e1084933e1e8ae0b1ce6"
+  },
+  "private_files": {},
+  "candidate_profile": {
+    "private_file": "production_launcher/production-profile.json",
+    "previous_full_sha256": "c60152b86cd5c985a1dfd2dc9f435ec2ba9c7942cae526d0b47d20832da2587e",
+    "stable_fields_sha256": "755f75d1df925e363aad23f930cef26ca62cc45e7ef25134c00f2f2f29632d61"
+  }
+}

@@ -72,6 +72,8 @@ def _init_repo(path: Path) -> None:
 
 
 def test_same_head_receipt_binds_all_evidence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv('PYTHONUTF8',raising=False)
+    monkeypatch.delenv('PYTHONIOENCODING',raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo)
@@ -108,6 +110,8 @@ def test_same_head_receipt_binds_all_evidence(tmp_path: Path, monkeypatch: pytes
 
 
 def test_head_or_tree_drift_never_issues_positive_receipt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv('PYTHONUTF8',raising=False)
+    monkeypatch.delenv('PYTHONIOENCODING',raising=False)
     repo = tmp_path / "repo"
     repo.mkdir()
     _init_repo(repo)

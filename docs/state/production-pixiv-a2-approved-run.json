@@ -1,0 +1,39 @@
+{
+  "scope_fingerprint": "7e3db56668de893bfdde03dc979f16931954746c80c54f88bc41431667d30042",
+  "semantic_input_identity": {
+    "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+    "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+    "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+    "role_facts": "8baa79c1cf2af2b9375ee43a673cf50a9d83ce89b098f1d14b878c905df24845",
+    "judgments": "c06f9fcdb1e517704e6d80aeb6c8c0727cf2ebfe37365a17696502c22d4954a6",
+    "versions": {
+      "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+      "role_schema": "violet.production-pixiv-role-result.v1",
+      "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+      "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+      "extraction_schema": "source_name_candidate_extraction_compact_v2",
+      "completion": "production_pixiv_residual_roles_v1",
+      "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+      "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+      "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+      "cache_policy": "source_concept_llm_adjudication_cache_v1",
+      "decision_schema": "source_concept_pair_decision_schema_v1",
+      "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+      "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+      "model": "gpt-4.1-mini",
+      "fallback": false
+    }
+  },
+  "selection_fingerprint": "e84fb791b6d48eafc64ed82b3fd01d2ea2919ae9553931b616f6ebdb00e3a8fb",
+  "run": {
+    "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
+    "scope_key": "pixiv:production:7e3db56668de893bfdde03dc979f1693",
+    "source_mode": "production_scope",
+    "policy_version": "production_pixiv_fixed_scope_adjudication_v8",
+    "result_fingerprint": "8e0662f9ffd37d5a153e5734545a693bd9aed601eade02e951c3054a1f097b08",
+    "input_fingerprint": "c4c3aa3ead617b00af87a74e4171b38fb9d903f9330134bf5499dea7674fddce",
+    "business_fingerprint": "fcd3d7670859a63e00180581c3cbf8c496d1f63802cbf560f7d215ff0a923f30",
+    "resolver_run_id": "production-pixiv:671e11fad9ad6a7b41324a0ed9a35dda",
+    "resolver_version": "source_concept_resolver_core_v7_alias_union_approval"
+  }
+}

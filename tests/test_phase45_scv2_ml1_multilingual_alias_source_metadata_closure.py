@@ -982,7 +982,7 @@ def test_durable_documents_encode_corrected_search_semantics() -> None:
     assert "It is not identity union" in combined
     assert "media-level AND intersection" in combined
     assert current_state["phase_id"] in handoff
-    assert "SCV2-PX1" in handoff and "SCV2-PX2" in roadmap
+    assert current_state['phase_id'] in handoff and "SCV2-PX2" in roadmap
     assert "isolated ML1 database" in archived_roadmap
     assert "Interpretation erratum" in report
     erratum = summary["search_semantics_interpretation_erratum"]

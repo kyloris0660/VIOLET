@@ -241,6 +241,8 @@ Documentation, prompt memory, reviewer attention, and narrative reports are not 
 
 ### Artifact lifecycle classification
 
+项目所有者2026-09-21补充：A2及后续同类交付必须提供一个可独立复审、压缩后不超过100,000,000字节的单文件ZIP。包内保留核心原始记录、失败和负约束、实际验证与相对路径索引；不得用分卷、嵌套大包或外部下载替代必要私有证据。全量缓存、恢复备份及历史档案保留本机。交付前实测字节数和SHA-256，验证解压、索引及关键数据可读，并说明未打入材料的本机位置与用途。
+
 Every new script, tool, report, or generated artifact must be classified in the PR body or final report:
 
 1. **Durable production code** - long-term maintained runtime code with strict tests, clear interfaces, and stable semantics.

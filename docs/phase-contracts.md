@@ -64,9 +64,23 @@ outside the automated contract.
 
 ## Current Phase Boundary
 
-<!-- CURRENT_PHASE: PRODUCTION-IMPORT-RECOVERY -->
+<!-- CURRENT_PHASE: PRODUCTION-PIXIV-A2 -->
 
-当前修复契约为 `production_import_recovery_v1`，入口为
+当前契约为 `production_pixiv_a2_v1`，入口为
+`scripts/check_production_pixiv_a2.py`，统一检查器使用 `--a2-evidence`。
+它核对固定T0全量Media/work/page归宿、真实原库物化、43号授权的共享累计USD30预算（保留原USD10历史）、
+独立恢复和owned rollback/replay、独立多语言答案、240-query工作量、
+正常launcher和新浏览器实际媒体证据，以及同候选focused/PostgreSQL、历史首次
+完整non-E2E与2026-09-29单独授权新增一次完整运行的精确失败对账。新增基线
+核验实际冻结源码、完整收集节点、命令、时间、日志和JUnit；历史AI原始证据例外
+不得覆盖新失败。完成门禁还核对实时active run语义元数据、受保护批准运行身份
+和ignored行为输入；本轮metadata仅回放，真实dispatch前必须关闭已登记入口依赖债。
+公开结果仅表示工程交付，负责人接受、
+合并和A3授权均独立。本任务23号授权允许全量原库落地，不要求重复逐步审批。
+
+### 上一已接受阶段：PR #152 / 导入恢复
+
+上一修复契约为 `production_import_recovery_v1`，入口为
 `scripts/check_production_import_recovery.py`，统一检查器使用
 `--import-recovery-evidence`。它核对同候选 focused/PostgreSQL 原始测试结果、
 逐项恢复附件、日常启动锚点和重启身份、有界面 Edge 与原五样本/51绑定。
@@ -654,6 +668,53 @@ independent evidence. Its terminal status is
 
 ## Route Gate
 
+`violet.production-pixiv-a2.post-full-fix.v1` registers the bounded launcher
+runtime metadata, live source revision, complete owned business projection and
+concept-chip evidence corrections after the owner-authorized current full non-E2E
+run on d26bd0c. The full run retains its actual source HEAD and raw outcomes.
+The executable verifier separately binds every registered runtime/test/config
+blob to the new candidate and requires its current focused, PostgreSQL/API and
+88 historical-node verification. Unregistered source changes, changed blobs,
+unfinished commands and new failures reject this route. This is affected
+verification under the owner's 2026-09-29 section 2.2 instruction, with zero
+additional full runs; it is not documentation-only carry-forward or full-suite
+coverage of the new candidate. Current semantic, copy and production contracts
+still require the new candidate. Lead and Owner acceptance remain separate.
+The current exact registered set is enumerated by
+`docs/state/production-pixiv-a2-post-full-fix.json` (35 files at B15 5c40475).
+It includes the final projection collector,
+Git-protected approved business fingerprints, and real PostgreSQL drift and
+revision-trigger regressions. Updated source records cannot
+contribute retained stale binding rows to valid support; raw physical binding
+diagnostics remain available. All owned product rows and seven core tables are
+reconstructed in one actual snapshot and compared with independent protected
+approval. Browser chips bind their DOM concept IDs and visible name to the raw
+detail API, current media support, actual query and complete result pagination.
+The former seven-file, nine-file, eleven-file, thirteen-file and sixteen-file registries are historical and do not
+authorize this extended delta. Current historical verification requires the exact
+88 original unique nodes, approved Python/cwd, ordered argv and matching JUnit.
+The original 6110 typed debit records are immutable except one-way trust
+revocation and independently sealed legacy backfills. Actual charges exceeding
+a reservation or task cap remain failed business-invalid paid evidence, including
+repeated settlement and native envelope/legacy cache checks.
+
+`violet.production-pixiv-a2.source-replay-carry-forward.v1` preserves the actual
+B3 cache command and its source HEAD. It permits reuse only after exact Git
+proof that all backend and source entry blobs are unchanged except the exact
+whole-module hash-pinned literal query and release-gate corrections registered
+in `RELEASE_GATE_SOURCE_DELTAS`. These include original paid-call admission,
+immutable budget fields and historical lifetimes, complete role-cache publication,
+actual reservation/cap overruns, trusted Git transport and canonical launcher
+root verification. Current whole native role-source readmission is mandatory;
+the historical B3 success cannot bypass a current refusal.
+The bounded delta contains only these registered corrections and evidence gates,
+the approved semantic identity and
+budget ledger are unchanged, and the actual cache command finished successfully
+without provider dispatch. A separately derived input manifest records this
+provenance; the current product loader must still perform full native source
+readmission, current graph construction and actual copy/production operations.
+It does not relabel the original invocation or claim current full-suite coverage.
+
 `route_audit_contract_v1` is mandatory for route-decision phases. A route cannot
 be approved while an upstream pipeline contract is failed, deterministic-only,
 or incomplete. For SCV2-A1R summaries, it also enforces the explicit A1R status
@@ -676,3 +737,11 @@ PR #149 merge authority is consumed. Original read-only database backup and inde
 The next original-database operation requires separate owner approval and fresh actual-target selection, product and binding fingerprints. Copy acceptance never authorizes original apply. The provider-smoke template is non-executable until its work bound is actually enforced. Deferred gates: `SCV2_PX3_METADATA_REFRESH_BINDING_GATE` before metadata refresh/ongoing original use; `SCV2_PX3_POLICY_VERSION_CAPTURE_GATE` before the next PX2 policy version change. Existing multiworker and workspace debt remains open.
 
 Final restored-copy checkpoint: 852 canonical focused tests passed on implementation HEAD `306cc811fb0b49a5450ffb419edf115562045515`; independent synthetic and private PostgreSQL contracts passed. The full non-E2E suite ran once (4384 passed, 22 skipped, 11 raw failures); seven environment failures and three documentation assertions were closed by targeted validation, while missing original AI execution evidence reproduced on exact base. See [controlled-canary evidence and boundaries](development/scv2-px3-controlled-canary.md) for detail. The one-time PR #150 merge permission expires automatically when that PR is merged; original writes and normal startup remain unauthorized.
+
+Current B15 also checks exact original paid correction priors before planning,
+and always derives cached role verdict/candidates from the validated original
+answer. Legacy ambiguity, foreign input, invalid debit and missing original
+answers cannot become a paid plan. This does not admit the 9543 real upstream
+role-source gaps or grant out-of-scope role repair authority.
+
+最新115线程完整原评论已逐项对账。第115条所称8be62df2不是实际PR HEAD；实际880dd80与B15的merge-base为B15，原始Git对象及未改原生续接门禁通过，在实际交付未复现。原意见保留、未resolve，不虚构新增pytest或当前生产验收。新单ZIP要求全新解压及37项标准库离线重算，只有外部最终收据可确认实测通过。

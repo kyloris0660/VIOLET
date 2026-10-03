@@ -24,6 +24,11 @@ CHILDREN = (
 )
 
 
+def advance_projection_cache_epoch(session):
+    """Commit or roll back projection visibility together with its cache key."""
+    return session.execute(text(f'UPDATE {EPOCH} SET revision=revision+1 WHERE id=1 RETURNING revision')).scalar_one()
+
+
 def _journal_withdrawal(connection, tables, *, deleting):
     """Record only trigger-owned changes in the existing guard, never re-sign it."""
     runs = 'blombooru_source_concept_product_runs'
