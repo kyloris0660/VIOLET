@@ -249,12 +249,21 @@ def _adapt_response_record(row,unit):
 
 def _revalidate_cached_response(cached,unit):
     previous=cached.get('validated_response')
-    if not previous:return cached
+    if previous is None:
+        if unit.llm_required or cached.get('origin')!='existing_f7a_deterministic':
+            raise ValueError('production_role_unit_original_answer_required')
+        bundle=deterministic_bundle_for_unit(unit,run_id='production-pixiv-roles',run_label='production-pixiv-roles')
+        return {**cached,'verdict':bundle.record_verdicts[0].extraction_verdict,
+            'candidates':[asdict(candidate) for candidate in bundle.candidates]}
     adapted=_adapt_response_record(previous,unit)
-    if adapted==previous:return cached
+    # Cache metadata and a paid ticket do not authenticate the derived role.
+    # Validate every read even when the adapter leaves the answer unchanged.
     verdict,candidates,*_=validate_extraction_record(adapted,unit.unit_group)
+    projection=[asdict(candidate) for candidate in candidates]
+    if (adapted==previous and cached.get('verdict')==verdict.extraction_verdict
+        and cached.get('candidates')==projection):return cached
     return {**cached,'verdict':verdict.extraction_verdict,
-        'candidates':[asdict(candidate) for candidate in candidates],
+        'candidates':projection,
         'validated_response':adapted,'response_adapter_version':'production_tag_provenance_v2',
         'original_cached_response_fingerprint':canonical_fingerprint(previous)}
 

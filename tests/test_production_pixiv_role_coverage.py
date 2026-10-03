@@ -366,7 +366,9 @@ def test_nested_candidate_cannot_escape_literal_target_or_contradict_disposition
 
 
 def test_invalid_nested_candidate_does_not_poison_valid_cached_siblings(tmp_path):
+    from dataclasses import asdict
     from app.services.production_pixiv_role_extraction import _revalidate_cached_response
+    from app.services.source_name_candidate_extraction_service import validate_extraction_record
     value,vocabulary,facts,_,_=partial_facts(tmp_path)
     unit=plan_role_coverage_repair(value,vocabulary,facts)[0][0]
     previous={'verdict':'multiple_candidates_found','candidates':[candidate('MysteryKnown')],
@@ -374,6 +376,9 @@ def test_invalid_nested_candidate_does_not_poison_valid_cached_siblings(tmp_path
             'verdict':'multiple_candidates_found','candidates':[candidate('MysteryKnown')],
             'rejected_summary':{},'target_dispositions':[{'raw_value':'MysteryMissing','disposition':'candidate',
                 'candidate':candidate('MysteryMissing','invalid-role')}]}}
+    verdict,candidates,*_=validate_extraction_record(previous['validated_response'],unit.unit_group)
+    previous['verdict']=verdict.extraction_verdict
+    previous['candidates']=[asdict(row) for row in candidates]
     assert _revalidate_cached_response(previous,unit)==previous
 
 

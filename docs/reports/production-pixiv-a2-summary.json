@@ -534,7 +534,7 @@
     "thread_count": 112
   },
   "review_package": {
-    "archive": "correction29-source-blocked-review111-final-20261003-3.zip",
+    "archive": "correction29-source-blocked-review114-final-20261003-1.zip",
     "status": "current_evidence_frozen_actual_external_size_extraction_and_replay_receipt_required",
     "maximum_bytes": 100000000,
     "external_final_receipt": "correction29-b14-final-private-delivery-20261003-private.json",
@@ -732,5 +732,61 @@
     "missing_original_files_to_restore": 79,
     "missing_original_bytes": 1707843,
     "source_gate_and_replay_assertions_unchanged": true
+  },
+  "reviews113114": {
+    "status": "implemented_development_passed_new_freeze_pending",
+    "thread_count": 114,
+    "remote_snapshot": "correction29-b14-review112-final4-prefreeze-20261003-1-remote-private.json",
+    "preservation_and_plan": "correction29-reviews113114-preservation-and-plan-20261003-private.json",
+    "new_provider_calls": 0,
+    "production_restarted": false,
+    "current_role_source_accepted": false,
+    "development": {
+      "command": "correction29-reviews113114-development-20261003-2-command-private.json",
+      "log": "correction29-reviews113114-development-20261003-2.log",
+      "xml": "correction29-reviews113114-development-20261003-2.xml",
+      "passed": 450,
+      "skipped": 1,
+      "failed": 0,
+      "actual_before_failed": 22,
+      "actual_before_passed": 5,
+      "original_first_control_field_error_preserved": "correction29-reviews113114-before-20261003-1.log",
+      "original_invalid_sibling_fixture_preserved": "correction29-reviews113114-development-20261003-1.log"
+    }
+  },
+  "review114_third_archive_failed_replay": {
+    "archive": "correction29-source-blocked-review111-final-20261003-3.zip",
+    "bytes": 92953831,
+    "sha256": "e83c8c3051eb6b8b4ecb83b509aa0ad69dc8e46cc3df0b748353eab2d97d3f5a",
+    "clean_extraction_passed": true,
+    "declared_replays": 34,
+    "actual_passed_before_failure": 19,
+    "failed_replay": 20,
+    "failure_log": "correction29-source-blocked-review111-final-20261003-3-offline-20.log",
+    "original_archive_and_failed_directory_retained": true,
+    "root_cause": "Authenticated historical review100 code_root omitted; broader declared-source closure audit also found historical post-full/revision export omissions.",
+    "source_gate_and_replay_assertions_unchanged": true
+  },
+  "historical_b14_post_full_fix": {
+    "candidate_head": "8b42ed3afc1912d7ba9bb7b1756486af9c0953f7",
+    "baseline_full_suite_head": "d26bd0c5cde6865a2760a8c59b749a9fb4652ace",
+    "registered_source_files": 33,
+    "status": "actual_frozen_affected_validation_passed_current_role_source_blocked",
+    "additional_full_invocations": 0,
+    "new_provider_calls": 0,
+    "behavior_neutral_claimed": false,
+    "formal_progress": {
+      "status": "finished",
+      "sequence": "correction29-post-full-8b42ed3-20261003-2-sequence-private.json"
+    },
+    "validation": "correction29-post-full-8b42ed3-20261003-2-validation-private.json",
+    "registered_files": 33,
+    "current_counts": {
+      "focused_passed": 1061,
+      "focused_skipped": 3,
+      "focused_warnings": 3,
+      "postgresql_passed": 142,
+      "historical_passed": 88
+    }
   }
 }

@@ -50,6 +50,9 @@ def verify_correction_prior_sources(rows,config,ledger):
     if not isinstance(rows,list) or not rows:raise ValueError('correction_prior_judgments_required')
     roots=[resolver._cache_root(config),*(Path(p) for p in config.semantic_cache_dirs)]
     calls={row['id']:row for row in ledger['calls']};seen=set()
+    if len(calls)!=len(ledger['calls']):raise ValueError('correction_prior_ledger_identity_changed')
+    calls_by_key=defaultdict(list)
+    for call in calls.values():calls_by_key[call['key']].append(call)
     def load(key):
         for root in roots:
             path=resolver.checked_cache_path(root,root/'records'/(key+'.json'))
@@ -68,25 +71,39 @@ def verify_correction_prior_sources(rows,config,ledger):
         if any(row.get(k)!=derived.get(k) for k in ('judgment_id','cache_key','pair_identity','pair_payload_hash',
             'left_signal_key','right_signal_key','decision','confidence','reason_code','error_state')):
             raise ValueError('correction_prior_answer_changed')
-        source=record;chain={record['cache_key']}
+        source=record;source_key=record['cache_key'];chain={source_key}
         while source.get('reused_from_cache_key'):
             key=source['reused_from_cache_key']
             if key in chain:raise ValueError('correction_prior_reuse_cycle')
-            chain.add(key);source=load(key)
+            chain.add(key);source_key=key;source=load(key)
             if (resolver._decision_input_key(source['input_signal_summary'])!=resolver._decision_input_key(record['input_signal_summary'])
                 or resolver.llm_public_decision(source['decision'])!=resolver.llm_public_decision(record['decision'])
                 or source['confidence']!=record['confidence']
                 or source.get('provider_model')!=config.model_label
                 or source.get('prompt_template_version')!=record.get('prompt_template_version')):
                 raise ValueError('correction_prior_reuse_changed')
+        if source.get('cache_key')!=source_key:
+            raise ValueError('correction_prior_original_source_identity_changed')
+        source_metadata=resolver.llm_cache_metadata(source['input_signal_summary'],config=config)
+        expected_keys={'decision-input:'+resolver._decision_input_key(source['input_signal_summary'])}
+        if source_metadata['cache_key']==source['cache_key']:expected_keys.add(source['cache_key'])
+        if config.prompt_version==resolver.PRODUCTION_PAIR_PROMPT_VERSION:
+            expected_keys={key+':prompt:'+config.prompt_version for key in expected_keys}
         response=source.get('budget_response')
         if response:
             call=calls.get(response['reservation'])
-            if (not call or call['status']!='success' or call.get('business_valid',True) is not True
-                or call['key']!=response['key']):
+            if (not call or not AdjudicationBudget._eligible_cached_response(call)
+                or call['key']!=response['key'] or call['key'] not in expected_keys):
                 raise ValueError('correction_prior_attempt_unverified')
             if call.get('usage_known') and call['usage']!={k:response['usage'][k] for k in ('prompt_tokens','completion_tokens')}:
                 raise ValueError('correction_prior_usage_changed')
+        else:
+            # A legacy cache is evidence only when its exact original input
+            # has one settled eligible ticket, including through a reuse chain.
+            matches=[call for key in expected_keys for call in calls_by_key[key]
+                     if AdjudicationBudget._eligible_cached_response(call)]
+            if len(matches)!=1:
+                raise ValueError('correction_prior_legacy_attempt_missing_or_ambiguous')
     return len(rows)
 
 
