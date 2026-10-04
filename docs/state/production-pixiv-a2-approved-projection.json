@@ -25,34 +25,34 @@
     }
   },
   "projection": {
-    "run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
-    "product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
-    "core_business_fingerprint": "92b1ab335a514f9fd732037dc26cb75004048767740409848ee0fd06cb812650",
-    "full_core_fingerprint": "ca9beb3ef316e73c5a97b390fd01f8714f96a81bad050dd1c17e91bcaf7da141",
+    "run_key": "scv2-px3:61bf88218dee4f1236e155ee9ea10862",
+    "product_fingerprint": "61bf88218dee4f1236e155ee9ea1086265c031a9051c2ab5ba128c5f9d8b99d6",
+    "core_business_fingerprint": "630cc91e57daa8c541cf82d4e3836e1953e65c3a9659e5a7c54f2c23b05a8df6",
+    "full_core_fingerprint": "8572765075ea6c836f076b59315de24e5f9feae05b2fc2d43152441eb0e368d8",
     "core_counts": {
       "resolution_runs": 1,
       "signals": 100285,
-      "concepts": 17497,
-      "aliases": 21313,
-      "evidence": 65955,
-      "signal_links": 65955,
-      "search_index": 21313
+      "concepts": 17498,
+      "aliases": 21314,
+      "evidence": 65956,
+      "signal_links": 65956,
+      "search_index": 21314
     },
     "product_counts": {
-      "clusters": 17497,
-      "candidate_dispositions": 595167,
-      "ambiguity_records": 65978
+      "clusters": 17498,
+      "candidate_dispositions": 595168,
+      "ambiguity_records": 65980
     }
   },
   "origin": {
-    "preparation_reference_head": "6125b867c63b1911e7e0effa566b5984870a0519",
-    "preparation_working_source_receipt": "correction03-concentrated-development-20261004-2-private.json",
+    "preparation_reference_head": "923bf33361413044c435190c14f68ade10d70c88",
+    "preparation_working_source_receipt": "correction03-prefix-isolated-source-20261004-1-private.json",
     "frozen_candidate_acceptance_claimed": false,
-    "actual_isolated_projection_preparation": "correction29-correction03-projection-preparation-20261004-2-receipt-private.json",
-    "receipt_sha256": "0dd95f380b0c7cfad3a0c3f3a622864ddd83be62b406cb049c23351aeb763691",
+    "actual_isolated_projection_preparation": "correction29-correction03-prefix-projection-preparation-20261004-1-receipt-private.json",
+    "receipt_sha256": "7601d9eecab94f9e825e77e8fecd95d758022ee0d62753779c8303278ccadae5",
     "outer_transaction_rolled_back": true,
-    "independent_raw_projection": "correction29-correction03-projection-preparation-20261004-2-raw-projection-private.json",
-    "raw_projection_sha256": "9d41d9990e2dcc4fbd76e665f1790d18b8fd71a59028c7c1eb6fb2f8912e7dd7"
+    "independent_raw_projection": "correction29-correction03-prefix-projection-preparation-20261004-1-raw-projection-private.json",
+    "raw_projection_sha256": "fbdec6a8cefa73b907d58663cb532c8a5d5a34f204a0e890cb03201b320e07de"
   },
   "purpose": "Independent complete expected projection from current native source and a rollback-only isolated PostgreSQL materialization. Final frozen copy and production gates must recompute all owned rows against this protected expectation."
 }

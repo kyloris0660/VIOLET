@@ -6,7 +6,7 @@
   "branch": "codex/production-pixiv-a2",
   "pr_number": 153,
   "draft": false,
-  "candidate_head": "6125b867c63b1911e7e0effa566b5984870a0519",
+  "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
   "non_e2e_candidate_head": "acc28adfb106ebafcfa0034607936e6da975af80",
   "accepted_mainline_base": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
   "previous_phase": "PRODUCTION-IMPORT-RECOVERY",
@@ -118,9 +118,9 @@
     "2026-10-02 f9ffe6e实际完整语义来源和原生全图、只读初始plan通过，语义与批准run/product/business指纹一致；17497 clusters/595157 dispositions/65978 ambiguities，目标66392支持/8623媒体。后续副本apply/replay/rollback仍执行，旧44生产保持，0新provider。",
     "2026-10-02 f9ffe6e首次真实副本plan/apply通过，replay前原生行为门禁停止；原失败及首次apply保留，独立重查原生门禁通过且无行为文件漂移。采用独立2号调用重做原生完整来源及有序生命周期，加入原门禁准确退出轨迹，未绕过门禁；旧44生产保持，0新provider。",
     "2026-10-02T04:00:23.370334+08:00 f9ffe6e本轮真实完整来源校验及有序plan/apply/replay/rollback/重复rollback/reapply通过，完整业务投影和17表保护核验通过，标准库来源续接重算通过；逆序分批、来源变更、质量和原生产门禁仍待完成，三个许可字段保持false。",
-    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史通过；原生角色拒绝9543，18槽位9通过/2失败/7未执行，0新provider/生产写。105线程及6文档已冻结推送93ab18a；初版完整ZIP实际115724350字节超过硬上限，原包/失败保留，当前继续压缩去重与独立单包验证。B5 worker22852保留，target/safe/route均false。 第106条six-before-fail/six-after-pass、166运行路径及156契约开发回归通过；缓存账本准入集中冻结20d94190bfa4c4896398ee320c5d553fae98fc7e，26文件注册，当前正式验证和角色完整门待验；旧B5未动。 后续正式检查：2026-10-02 review106修复冻结20d9419：1003 focused通过/3跳过/3警告，142真实PG/API通过；历史首轮86通过/2环境控制拒绝失败，原日志保留，清除PYTEST_ADDOPTS后88节点全通过。26文件源码差量/80Git对象验证通过。完整原生角色9543缺口未变，18槽位9通过/2失败/7未执行；0新调用，原生产同PID保留。 当前B11首版ZIP实际101902344字节超限，失败原包保留；4份当前决定性证据已对包内旧原件做精确COPY/literal编码并实际逐字节复原，原件、失败及9543分母均不删。第二个独占ZIP仍以实际大小/干净重放收据判定交付。 2026-10-03恢复：新增107—109三项普通门禁纠偏进行中；原6110账本全字段保护、1665历史回填独立原题核对、准确88节点绑定，零新provider/全套/生产重启。 107—109及缓存快捷路径/停止分母同类修正集中冻结于5578e7dea113a4513aab05d8567c9cb7989045c9；32文件注册，正式focused/PG/88历史与全来源门待验；零新全套、provider及重启。 B12正式1038/2/3负面证据保留；旧夹具重建真实原答以验证失败来源拒绝，运行规则不改，集中冻结B13 a64c77ee152601a816eba3a7c86f73ef1e8f4e44，正式验证待执行。 B13实际1040 focused/3跳过/3警告和142隔离PG通过，原88节点正在执行，未预报通过。 111线程新增正常入口PATH-Git和超额结算缺陷，16原反例失败/修后17通过，完整有界开发286通过；原18433调用无超额、原账本不改，待B14正式验证。 集中冻结B14 8b42ed3afc1912d7ba9bb7b1756486af9c0953f7，同服务进程继续。 B14定向实际1061通过/3跳过/3警告，但测试后原门禁拒绝，首次正式序列未接受；原收据保留，后续阶段未执行。 B14第二正式序列1061定向/3跳过/3警告及测试后原门禁通过，隔离PG/原88继续；原拒绝未改写、原因未确认。 B14真实隔离PG142通过及测试后原门禁通过，原精确88正在正式复验。 B14第二正式序列1061/142/原88及原生验证收据全部通过，未追加全套；当前完整角色回放即将零调用执行。 B14当前全原生回放实际exit1/9543缺口/67.594秒，100285信号/18434缓存，前后原账本与输入缓存不变，网络0；与完整原scope逐项一致。 B14正式1061/142/原88通过；全原生100285信号/18434缓存仍9543缺口，原输入/账本/缓存不变。111线程逐项对账，18槽位9/2/7，单文件便携交付待实际终验。 当前111线程首版单包102020195字节超限，原包/日志保留；第二版改进精确文本字节池，失败证据与全部现有截图不删。 新增第112条提交祖先意见已用当前真实远端HEAD和原Git对象核验：B14是当前交付祖先，意见所称35ab1beb不是观测PR HEAD；原评论保留，不resolve、不改业务或降低9543来源门禁。 休眠后原进程/PR/main基线保持；第二包92484894字节和干净字节/引用核验通过，离线14项通过、第15项缺旧356源码导出的79份资源而拒绝。原包/目录/失败保留，全部原件1707843字节已独立核验，第三包补齐完整依赖后重新干净复验34项，不改任何断言或业务门禁。 第三包92953831字节干净字节/引用核验通过，19项离线通过后第20项缺历史review100源码目录而拒绝，原包/失败保留；远端114线程新增前驱旧格式调用绑定与角色缓存投影校验两项P1，开始零provider反例和有界修复，生产同进程保持。 113—114实际修前22失败/5通过，最小修后27通过；真实候选Sibling夹具从原F7a回答规范化，原356通过/1夹具失败/1权限跳过保留。完整有界开发450通过/1跳过，精确原输入付费前驱和每次缓存投影重验证已登记35项，准备冻结B15。 集中冻结B15 5c40475cff9176e8fca6339ca035949eb72ea1e6，同生产服务继续；当前正式focused/PG/原88及完整来源门待实际验证。 B15 focused实际1092通过/3跳过，原生测试后门禁通过；其余依赖继续。 B15 postgresql实际142通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15 historical实际88通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15当前完整原生实际exit1/9543缺口/49.969秒，100285信号/18434缓存，原输入/账本/缓存不变，网络0；完整原scope逐项一致。 B15冻结1092/142/精确88通过，当前原生仍9543缺口、18门9/2/7；114线程实际逐项对账。三个失败包负面证据与全部声明源码保留，新的单ZIP待实际干净终验。 B15首包实测94708483字节，干净bytes/SHA/JSON/XML/59678引用通过；离线20通过、第21缺历史启动日志而拒绝。原包/目录/日志保留，补齐实际文件引用闭包后重新全验。 独立依赖探查15个剩余原验证器通过，新增7份原件295314字节；历史103—104绑定准确B10源码，七当前文档仅Git archive CRLF差异。宽泛9799引用非执行缺项，原失败保留；新包36项仍待实际全验。 最新115线程原评论完整对账，第115声称8be62df2；实际PR880dd80与B15的merge-base为B15，原Git对象和未改原生guard通过，意见在实际交付未复现，未新增或冒称pytest成功。当前新包37项仍待全新终验。 第116晚到意见原文保留；实际dca84bb仍以B15为祖先，未改源码或新增pytest。使用既有文档续接更新当前116线程检查点，不为同类意见无限提交；新版单包38项待实际终验。 当前中文指南统一116线程/38重算并修正旧入口链接；旧指南及所有已执行终验保留，最终5版单包待独立实际验证。 2026-10-03最终5版单ZIP已实际交付：98289760字节，SHA 1c696c67fb147c889eef3ddaf4220c930027f18b131b6ff1fb8d838ff3f0fed9；全新解包/全部bytes、SHA、JSON、XML、70583引用及38项stdlib重算全部通过，报告/完整外部收据已复制Downloads，同一PR153回读仅LF/CRLF转换且内容相同。116原评论对账；当前完整角色9543来源仍失败，18门9/2/7，新增调用0、B5可用。已就任务2.1范围外角色来源补证请求具体裁决，未获回复前不发付费请求。原失败、原文档/收据和后续doc-only投影均保留，不新增Git提交或push。 2026-10-03收到明确逐单元来源与必要原目标补证授权；原阻断收据保留为历史。当前开工原生产stopped_verified、0活动作业；先修复固定普通入口，再恢复来源。 已恢复B5精确应用源码的独立固定目录，部署提交仅改目录绑定注册表；受控EXE/CDP真实Start健康，随后关闭调试并重开普通无参数EXE，17保护表与产品投影不变，当前新版A2未验收。；2026-10-04全量零调用扫描覆盖100285信号/15824记录，raw/账本未改，socket0；27条缺直接可用来源（12条在获批9543范围），当前派生视图15573采用/224替代/27留档、28重投影。开发实现与余项核验继续，尚未通过当前来源/新版A2验收。；2026-10-04原生零调用核验覆盖100285信号/15824原记录：获批9543范围缺直接来源0；15条范围外历史来源仅留档；当前视图15585采用/224替代/15留档、32重投影。完整当前重放的输入SHA门因文件写入竞争失败，原件保留，不申报通过。真实余项仅eimiko、原尝试1/默认可用2；未新增调用，原账本USD13.589429不变。；2026-10-04追加答复幂等、固定分母及新入口分离回归115通过，原248通过/1幂等失败保留；43项实际差量及原88节点登记，冻结当前业务实现，正式focused/PG/88、完整输入和产品验收继续。；稳定完整来源/语义重放通过，100285信号、socket0、原18434缓存文件逐字节未改；15条留档不进入语义。B16业务冻结0a857b5，实际环境门已通过，遗留自有Git测试104文件保留并验字节，日常入口不变。；B16正式focused实际1138通过/10失败/3跳过/3警告且环境门通过；发现内存缓存撤销需实时重验，部分答复旧测试需按新契约记账。首个必要补问在reservation前被无关历史malformed raw中断，实际付费0、原账本不变。当前有界修复继续，B16来源重放仅保留为该源码的历史通过，不冒称新实现门通过。；实时缓存来源撤销、malformed历史隔离及原配对问题/当前来源分离已完成有界修复，开发258通过/1权限跳过，准备B17冻结；原账本与生产profile不改，正式全集中验证继续。；B17完整100285信号/当前角色原始来源/15条留档非使用/固定目标重放通过，原18434缓存和账本逐字节不改、socket0；集中测试两次在Git超时准入前中止，未启动pytest，日志保留；唯一eimiko原目标补问继续。；准入超时已精确定位ignored完整枚举15秒限额，原命令实际19.969秒/33948字节；60秒有界时间修复与负例开发进行中，范围/路径/漂移/输入字节规则不变，仍零新费用。；枚举时间预算及真实Git历史夹具修复110通过/2权限跳过，准备集中B18冻结；逐单元语义实现与B17全部相同，原始费用/生产profile不改。；B18完整100285信号/当前角色原始来源/15条留档非使用/固定目标重放通过，原18434缓存和账本逐字节不改、socket0；既有Git超时原件保留，新60秒完整枚举前后原生门通过；唯一eimiko原目标补问继续。；唯一eimiko原目标实际补问成功，新增1次/USD0.001082，当前累计USD13.590511/余额16.409489；答案保留needs_review/0.7，原15824记录及18433账本前缀不改，固定49227目标0未记账。执行脚本父标识缺失与缓存provider初始化失败原件保留，正常路径零新调用恢复完成；最新完整图和产品验收继续。；补问后实际复验原18434缓存文件逐字节不变、原15824记录和18433账本前缀不变。完整原配对问题/当前来源回放执行中；新保护投影将在独立隔离事务准备，回滚后集中冻结，不冒称正式副本或生产验收。；隔离固定部署契约开发250通过/2项主机能力跳过；真实旧固定运行目录只读门禁由拒绝变为通过，未切换生产，待完整回放结束后集中接入。；B18完整候选回放保留真实失败：原31608配对来源与15825角色来源已验证、9070作品配对缓存计划零缺答，但实际精确缓存尝试绑定被严格拒绝；账本/输入不变，未新增调用或数据库访问，继续原答绑定核验。；实际缓存迁移来源链修复开发314通过/1权限跳过，9070当前作品及31608历史前序完整同类核对均0失败，7821遗失票据迁移均找到原票据、41当前问题保留多次原调用；账本/缓存原字节不改。8文件精确隔离实现及565源码SHA已记录，完整图与只读原库独立oracle快照准备实际启动，尚非冻结或生产验收。；原生初始全图100285信号已生成，当前作品配对准入继续；本轮全116原评论与开工相同，18433原调用逐字段不变，54未知usage均失败且严格缓存拒绝。5份858303298原字节已由标准库实际还原并核验SHA，不替代冻结或产品验收。；本轮9070作品配对、9070判断及9070实际来源核验完成，0缺答/0错误/0新调用；带入作品结果的完整上下文与剩余配对继续，仍是精确工作源码准备，冻结原生验收尚待执行。；完整100285信号上下文原生重算发现2项必要下游配对问题已改变，22536项兼容、2项缺答；保留真实cache-only失败及旧答案，每项已有2次尝试，仍各1次合法额度，合计预留USD0.0043，按10月3日任务§2.1有界执行。；2026-10-04：离线读取器11/23/24按原参数在新独立目录实际重放均通过，Windows记录路径与宿主材料路径分开；只证明历史原证据，不算当前候选产品验收。两项下游补证首轮辅助键核对在发送前失败，零调用，保留失败；修正仅限键格式核对，原生三次寿命规则不变，续跑完整上下文。；两项必要下游输入实际认证200、原生有界调用2次成功，费用USD0.000553，旧18434账本行逐项不变；本任务合计3次/USD0.001635，累计USD13.591064，零在途。开始完整零调用图续跑，路径语义20项通过；当前B5部署8fef7ff/PID51064健康、66392有效支持/8623媒体，最新候选尚未部署。；标准库隔离回放已实际核验100285信号/15825角色来源，21个原生源码模块、零网络/数据库/新增请求，非冻结验收；44db0da旧版新鲜只读恢复计划已执行并验证原生产投影、入口和配置未变，完整副本当前候选退回/重应用仍待实际演练。；完整100285信号/31608关系图准备实际零调用完成且原缓存、账本不变；独立角色来源第三次实际回放15825记录/21源码模块通过，并核实2616读取依赖、1931原始响应及尝试文件；独立61表恢复投影仍运行，切换保护仅准备，未宣称冻结或产品通过。；完整角色原件2624文件/1078937039字节实际无损还原全部SHA一致，源池实测ZIP23733479字节并通过CRC；从全新还原目录实际重放15825角色/100285信号通过，未宣称冻结或产品验收；刷新116线程、本轮新增0，原18433调用原封保留、本轮真实3调用合计1635微美元。；当前完整图准备及独立61表恢复投影已完成，正常plan/apply在隔离外层事务中实际执行并回滚，未冒称冻结验收；精确8文件实现和47项实际源码差量、当前批准输入已集中登记，继续冻结与原生验收。；集中源码登记开发验证实际59通过，冻结B19；旧B18真实失败和B1唯一全套保留，待冻结原生CLI、focused/PG/88及完整副本/生产验收。"
+    "2026-10-02 当前b3ce5aa正式935 focused/3跳过/3警告、142真实PG/API、88历史通过；原生角色拒绝9543，18槽位9通过/2失败/7未执行，0新provider/生产写。105线程及6文档已冻结推送93ab18a；初版完整ZIP实际115724350字节超过硬上限，原包/失败保留，当前继续压缩去重与独立单包验证。B5 worker22852保留，target/safe/route均false。 第106条six-before-fail/six-after-pass、166运行路径及156契约开发回归通过；缓存账本准入集中冻结20d94190bfa4c4896398ee320c5d553fae98fc7e，26文件注册，当前正式验证和角色完整门待验；旧B5未动。 后续正式检查：2026-10-02 review106修复冻结20d9419：1003 focused通过/3跳过/3警告，142真实PG/API通过；历史首轮86通过/2环境控制拒绝失败，原日志保留，清除PYTEST_ADDOPTS后88节点全通过。26文件源码差量/80Git对象验证通过。完整原生角色9543缺口未变，18槽位9通过/2失败/7未执行；0新调用，原生产同PID保留。 当前B11首版ZIP实际101902344字节超限，失败原包保留；4份当前决定性证据已对包内旧原件做精确COPY/literal编码并实际逐字节复原，原件、失败及9543分母均不删。第二个独占ZIP仍以实际大小/干净重放收据判定交付。 2026-10-03恢复：新增107—109三项普通门禁纠偏进行中；原6110账本全字段保护、1665历史回填独立原题核对、准确88节点绑定，零新provider/全套/生产重启。 107—109及缓存快捷路径/停止分母同类修正集中冻结于5578e7dea113a4513aab05d8567c9cb7989045c9；32文件注册，正式focused/PG/88历史与全来源门待验；零新全套、provider及重启。 B12正式1038/2/3负面证据保留；旧夹具重建真实原答以验证失败来源拒绝，运行规则不改，集中冻结B13 a64c77ee152601a816eba3a7c86f73ef1e8f4e44，正式验证待执行。 B13实际1040 focused/3跳过/3警告和142隔离PG通过，原88节点正在执行，未预报通过。 111线程新增正常入口PATH-Git和超额结算缺陷，16原反例失败/修后17通过，完整有界开发286通过；原18433调用无超额、原账本不改，待B14正式验证。 集中冻结B14 8b42ed3afc1912d7ba9bb7b1756486af9c0953f7，同服务进程继续。 B14定向实际1061通过/3跳过/3警告，但测试后原门禁拒绝，首次正式序列未接受；原收据保留，后续阶段未执行。 B14第二正式序列1061定向/3跳过/3警告及测试后原门禁通过，隔离PG/原88继续；原拒绝未改写、原因未确认。 B14真实隔离PG142通过及测试后原门禁通过，原精确88正在正式复验。 B14第二正式序列1061/142/原88及原生验证收据全部通过，未追加全套；当前完整角色回放即将零调用执行。 B14当前全原生回放实际exit1/9543缺口/67.594秒，100285信号/18434缓存，前后原账本与输入缓存不变，网络0；与完整原scope逐项一致。 B14正式1061/142/原88通过；全原生100285信号/18434缓存仍9543缺口，原输入/账本/缓存不变。111线程逐项对账，18槽位9/2/7，单文件便携交付待实际终验。 当前111线程首版单包102020195字节超限，原包/日志保留；第二版改进精确文本字节池，失败证据与全部现有截图不删。 新增第112条提交祖先意见已用当前真实远端HEAD和原Git对象核验：B14是当前交付祖先，意见所称35ab1beb不是观测PR HEAD；原评论保留，不resolve、不改业务或降低9543来源门禁。 休眠后原进程/PR/main基线保持；第二包92484894字节和干净字节/引用核验通过，离线14项通过、第15项缺旧356源码导出的79份资源而拒绝。原包/目录/失败保留，全部原件1707843字节已独立核验，第三包补齐完整依赖后重新干净复验34项，不改任何断言或业务门禁。 第三包92953831字节干净字节/引用核验通过，19项离线通过后第20项缺历史review100源码目录而拒绝，原包/失败保留；远端114线程新增前驱旧格式调用绑定与角色缓存投影校验两项P1，开始零provider反例和有界修复，生产同进程保持。 113—114实际修前22失败/5通过，最小修后27通过；真实候选Sibling夹具从原F7a回答规范化，原356通过/1夹具失败/1权限跳过保留。完整有界开发450通过/1跳过，精确原输入付费前驱和每次缓存投影重验证已登记35项，准备冻结B15。 集中冻结B15 5c40475cff9176e8fca6339ca035949eb72ea1e6，同生产服务继续；当前正式focused/PG/原88及完整来源门待实际验证。 B15 focused实际1092通过/3跳过，原生测试后门禁通过；其余依赖继续。 B15 postgresql实际142通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15 historical实际88通过/0跳过，原生测试后门禁通过；其余依赖继续。 B15当前完整原生实际exit1/9543缺口/49.969秒，100285信号/18434缓存，原输入/账本/缓存不变，网络0；完整原scope逐项一致。 B15冻结1092/142/精确88通过，当前原生仍9543缺口、18门9/2/7；114线程实际逐项对账。三个失败包负面证据与全部声明源码保留，新的单ZIP待实际干净终验。 B15首包实测94708483字节，干净bytes/SHA/JSON/XML/59678引用通过；离线20通过、第21缺历史启动日志而拒绝。原包/目录/日志保留，补齐实际文件引用闭包后重新全验。 独立依赖探查15个剩余原验证器通过，新增7份原件295314字节；历史103—104绑定准确B10源码，七当前文档仅Git archive CRLF差异。宽泛9799引用非执行缺项，原失败保留；新包36项仍待实际全验。 最新115线程原评论完整对账，第115声称8be62df2；实际PR880dd80与B15的merge-base为B15，原Git对象和未改原生guard通过，意见在实际交付未复现，未新增或冒称pytest成功。当前新包37项仍待全新终验。 第116晚到意见原文保留；实际dca84bb仍以B15为祖先，未改源码或新增pytest。使用既有文档续接更新当前116线程检查点，不为同类意见无限提交；新版单包38项待实际终验。 当前中文指南统一116线程/38重算并修正旧入口链接；旧指南及所有已执行终验保留，最终5版单包待独立实际验证。 2026-10-03最终5版单ZIP已实际交付：98289760字节，SHA 1c696c67fb147c889eef3ddaf4220c930027f18b131b6ff1fb8d838ff3f0fed9；全新解包/全部bytes、SHA、JSON、XML、70583引用及38项stdlib重算全部通过，报告/完整外部收据已复制Downloads，同一PR153回读仅LF/CRLF转换且内容相同。116原评论对账；当前完整角色9543来源仍失败，18门9/2/7，新增调用0、B5可用。已就任务2.1范围外角色来源补证请求具体裁决，未获回复前不发付费请求。原失败、原文档/收据和后续doc-only投影均保留，不新增Git提交或push。 2026-10-03收到明确逐单元来源与必要原目标补证授权；原阻断收据保留为历史。当前开工原生产stopped_verified、0活动作业；先修复固定普通入口，再恢复来源。 已恢复B5精确应用源码的独立固定目录，部署提交仅改目录绑定注册表；受控EXE/CDP真实Start健康，随后关闭调试并重开普通无参数EXE，17保护表与产品投影不变，当前新版A2未验收。；2026-10-04全量零调用扫描覆盖100285信号/15824记录，raw/账本未改，socket0；27条缺直接可用来源（12条在获批9543范围），当前派生视图15573采用/224替代/27留档、28重投影。开发实现与余项核验继续，尚未通过当前来源/新版A2验收。；2026-10-04原生零调用核验覆盖100285信号/15824原记录：获批9543范围缺直接来源0；15条范围外历史来源仅留档；当前视图15585采用/224替代/15留档、32重投影。完整当前重放的输入SHA门因文件写入竞争失败，原件保留，不申报通过。真实余项仅eimiko、原尝试1/默认可用2；未新增调用，原账本USD13.589429不变。；2026-10-04追加答复幂等、固定分母及新入口分离回归115通过，原248通过/1幂等失败保留；43项实际差量及原88节点登记，冻结当前业务实现，正式focused/PG/88、完整输入和产品验收继续。；稳定完整来源/语义重放通过，100285信号、socket0、原18434缓存文件逐字节未改；15条留档不进入语义。B16业务冻结0a857b5，实际环境门已通过，遗留自有Git测试104文件保留并验字节，日常入口不变。；B16正式focused实际1138通过/10失败/3跳过/3警告且环境门通过；发现内存缓存撤销需实时重验，部分答复旧测试需按新契约记账。首个必要补问在reservation前被无关历史malformed raw中断，实际付费0、原账本不变。当前有界修复继续，B16来源重放仅保留为该源码的历史通过，不冒称新实现门通过。；实时缓存来源撤销、malformed历史隔离及原配对问题/当前来源分离已完成有界修复，开发258通过/1权限跳过，准备B17冻结；原账本与生产profile不改，正式全集中验证继续。；B17完整100285信号/当前角色原始来源/15条留档非使用/固定目标重放通过，原18434缓存和账本逐字节不改、socket0；集中测试两次在Git超时准入前中止，未启动pytest，日志保留；唯一eimiko原目标补问继续。；准入超时已精确定位ignored完整枚举15秒限额，原命令实际19.969秒/33948字节；60秒有界时间修复与负例开发进行中，范围/路径/漂移/输入字节规则不变，仍零新费用。；枚举时间预算及真实Git历史夹具修复110通过/2权限跳过，准备集中B18冻结；逐单元语义实现与B17全部相同，原始费用/生产profile不改。；B18完整100285信号/当前角色原始来源/15条留档非使用/固定目标重放通过，原18434缓存和账本逐字节不改、socket0；既有Git超时原件保留，新60秒完整枚举前后原生门通过；唯一eimiko原目标补问继续。；唯一eimiko原目标实际补问成功，新增1次/USD0.001082，当前累计USD13.590511/余额16.409489；答案保留needs_review/0.7，原15824记录及18433账本前缀不改，固定49227目标0未记账。执行脚本父标识缺失与缓存provider初始化失败原件保留，正常路径零新调用恢复完成；最新完整图和产品验收继续。；补问后实际复验原18434缓存文件逐字节不变、原15824记录和18433账本前缀不变。完整原配对问题/当前来源回放执行中；新保护投影将在独立隔离事务准备，回滚后集中冻结，不冒称正式副本或生产验收。；隔离固定部署契约开发250通过/2项主机能力跳过；真实旧固定运行目录只读门禁由拒绝变为通过，未切换生产，待完整回放结束后集中接入。；B18完整候选回放保留真实失败：原31608配对来源与15825角色来源已验证、9070作品配对缓存计划零缺答，但实际精确缓存尝试绑定被严格拒绝；账本/输入不变，未新增调用或数据库访问，继续原答绑定核验。；实际缓存迁移来源链修复开发314通过/1权限跳过，9070当前作品及31608历史前序完整同类核对均0失败，7821遗失票据迁移均找到原票据、41当前问题保留多次原调用；账本/缓存原字节不改。8文件精确隔离实现及565源码SHA已记录，完整图与只读原库独立oracle快照准备实际启动，尚非冻结或生产验收。；原生初始全图100285信号已生成，当前作品配对准入继续；本轮全116原评论与开工相同，18433原调用逐字段不变，54未知usage均失败且严格缓存拒绝。5份858303298原字节已由标准库实际还原并核验SHA，不替代冻结或产品验收。；本轮9070作品配对、9070判断及9070实际来源核验完成，0缺答/0错误/0新调用；带入作品结果的完整上下文与剩余配对继续，仍是精确工作源码准备，冻结原生验收尚待执行。；完整100285信号上下文原生重算发现2项必要下游配对问题已改变，22536项兼容、2项缺答；保留真实cache-only失败及旧答案，每项已有2次尝试，仍各1次合法额度，合计预留USD0.0043，按10月3日任务§2.1有界执行。；2026-10-04：离线读取器11/23/24按原参数在新独立目录实际重放均通过，Windows记录路径与宿主材料路径分开；只证明历史原证据，不算当前候选产品验收。两项下游补证首轮辅助键核对在发送前失败，零调用，保留失败；修正仅限键格式核对，原生三次寿命规则不变，续跑完整上下文。；两项必要下游输入实际认证200、原生有界调用2次成功，费用USD0.000553，旧18434账本行逐项不变；本任务合计3次/USD0.001635，累计USD13.591064，零在途。开始完整零调用图续跑，路径语义20项通过；当前B5部署8fef7ff/PID51064健康、66392有效支持/8623媒体，最新候选尚未部署。；标准库隔离回放已实际核验100285信号/15825角色来源，21个原生源码模块、零网络/数据库/新增请求，非冻结验收；44db0da旧版新鲜只读恢复计划已执行并验证原生产投影、入口和配置未变，完整副本当前候选退回/重应用仍待实际演练。；完整100285信号/31608关系图准备实际零调用完成且原缓存、账本不变；独立角色来源第三次实际回放15825记录/21源码模块通过，并核实2616读取依赖、1931原始响应及尝试文件；独立61表恢复投影仍运行，切换保护仅准备，未宣称冻结或产品通过。；完整角色原件2624文件/1078937039字节实际无损还原全部SHA一致，源池实测ZIP23733479字节并通过CRC；从全新还原目录实际重放15825角色/100285信号通过，未宣称冻结或产品验收；刷新116线程、本轮新增0，原18433调用原封保留、本轮真实3调用合计1635微美元。；当前完整图准备及独立61表恢复投影已完成，正常plan/apply在隔离外层事务中实际执行并回滚，未冒称冻结验收；精确8文件实现和47项实际源码差量、当前批准输入已集中登记，继续冻结与原生验收。；集中源码登记开发验证实际59通过，冻结B19；旧B18真实失败和B1唯一全套保留，待冻结原生CLI、focused/PG/88及完整副本/生产验收。；完整投影准备原件7115475815字节，实际隔离apply与外层回滚通过；衔接文件落盘时序首拒保留且未改源码/生产，第二整合成功、59登记测试通过，业务B19已冻结；恢复worker的ready/trigger/提交收据原子发布及父子Python身份检查准备完成，仍需真实副本演练。；B19 focused实际1218通过/3跳过。；B19 postgresql实际142通过/0跳过。；B19 historical实际88通过/0跳过。；冻结B19独立原始投影全行标准库复算通过，7表及595167候选处置与受保护预期一致，非新库验收；恢复worker实际连接前置拒绝和分块JSON读取224项、引用边界7项通过，生产切换及完整单包仍待实际验证。；B19原生角色阶段实际15825记录/1929原raw通过、49227固定目标完整记账且无未归宿，完整CLI仍运行且账本不变；最新只读B5 PID51064/8012正常、无作业，新候选未部署；678642保护子记录压缩用原哈希逐项核对通过，单包仍待实际构建还原。；完整准备源池2644文件/10519014480原字节实际无损还原，新目录577源码/97 Git对象及完整准备投影原生标准库复算通过；首试压214739399字节超过100MB、原文件与收据保留，595167配对键按冻结函数精确复算用于无损压缩，新编码还原/256MB字典试压仍执行，非最终单包或新库验收。；哈希去重编码实际还原2644文件/10519014480原字节并逐项SHA一致，256MB字典试压152348946字节仍超限、失败包与收据保留；配方整数编码76往返/11非法解码/3非法输入检查通过，独立全量还原和体积实测仍执行，非最终审阅包或新库验收。；冻结B19作品9070配对原生缓存判断及原始来源逐项回放完成，错误/缺答/新增调用均0，账本SHA不变；作品上下文与剩余配对继续，尚非完整CLI成功或副本/生产通过。；冻结剩余22538配对准入全部兼容，缺口/新增调用上限/预留均0、账本SHA不变，实际缓存与来源重放继续；三种配方编码均实际完整还原2644文件/10519014480字节且全部SHA一致，218728754/165137438/122223333/102764021字节试压均超限并保留，派生去重全量还原与512MB字典实测仍执行，非完整图、副本、生产或最终单包验收。；派生去重编码实际完整还原2644文件/10519014480字节及全部SHA，512MB字典标准ZIP实测97479675字节并通过原生解码/CRC，此为准备池而非最终交付；626775实际边键原生散列已核验，编码读取40真记录及17坏例通过，其完整还原/试压继续。；原生边键编码实际全量还原2644文件/10519014480字节及全部SHA，含完整7115475815字节原投影与2309529577字节派生投影；标准ZIP实测92180979字节、原解码/CRC通过，当前语义/副本/生产/最终文档仍需纳入，尚非最终交付；冻结测试已完、原生完整图继续，最新只读B5可用且零写入。；扩展证据池实际还原3446文件/10662794581字节且全部SHA匹配；标准ZIP实测101406247字节，原解码与CRC通过但超出100000000字节上限，非最终包；有界片段/排序抽样未改善压缩，不采用，原生完整图继续。；当前入口已由旧B18失败/待修字段对齐到实际运行B19原生完整图；旧字段与原失败完整另存，不把历史失败当当前阻断；B19原角色15825/固定目标49227无未记账，完整语义/副本/生产仍待实际执行。；扩展证据池实际还原3446文件/10662794581字节且全部SHA匹配；标准ZIP实测92295709字节，原解码与CRC通过；全量3260784原引用记录往返一致、原解码函数AST未变，非最终包；有界片段/排序抽样未改善压缩，不采用，原生完整图继续。；B19实际31608选择/31608判断/31608缓存命中，错误/缺答/新调用/缓存写入均0；9070+22538原来源逐项核验收据齐备，原账本SHA不变；原生最终聚类及语义manifest仍在执行，未宣称CLI/副本/生产完成。；后续实际检查点：2026-10-04 B19原生完整CLI实际exit0：100285信号/626775边/17497概念，31608配对及原来源完整；原账本和输入SHA保持，provider/数据库活动0。新鲜副本备份及独立标准库完整来源重算实际启动；当前副本、生产和最终18门仍待完成，三个完成标志保持false。；新鲜备份463686633字节已真实恢复到独立副本，61表与原快照一致；本任务开工116线程逐ID/评论正文与当前远端一致，0本轮新线程/0新评论，PR仍OPEN。当前完整副本闭环继续，未生产切换。；35534个文件/11607741098原字节已实际无损还原，全部SHA一致，32063份当前关系缓存链原件在内；512MiB标准ZIP试压等待可用内存门槛，尚非最终包。11:46日常B5同PID51064/66392有效支持/8623媒体继续健康、无活动作业或缺失，原生产未切换。；完整35534文件池标准ZIP实际101379240字节、CRC通过但超100MB上限1379240字节，原件全保留；继续可逆编码实测，最终交付尚未通过。；冻结B19标准库独立原生复放实际0退出：15825角色/100285信号/31608判断、23原生源码模块与完整图Git身份全通过，71538实际读取依赖/733983592字节已登记，0网络/0数据库/0新增调用、账本不变；最终包完整依赖还原及副本/生产验收仍待完成。12:24 B5普通入口健康、PID51064、无活动作业或缺失媒体。；同一35534文件原池采用标准LZMA长匹配后实际93933662字节、标准ZIP解码及CRC通过，减少7445578字节；旧超限试验保留，尚缺71538完整读取依赖及最终副本/生产/文档，未冒称最终ZIP通过。；完整原生读取闭包已实测恢复72361文件、11908495599原字节，四阶段实际退出0且全部SHA一致；完整来源ZIP正在实测，未申报最终包或生产成功。；最新副本五次实际操作及Git保护完整投影验算通过，66391有效支持；与B5逐条只读差分定位1条支持移除/3266条概念重定位并保留完整原件，owned恢复及质量仍待实测，不替代生产验收。；72361文件完整来源标准ZIP实际101494584字节、CRC通过但超上限1494584字节；失败原件保留，继续无损传输压缩，不删来源或误报最终交付。；同一72361来源文件原样合流后完整标准ZIP实际97777071字节、CRC和全部解码SHA通过，9项损坏/路径/冲突负例拒绝；余量2222929字节尚需容纳最终产品/文档，不申报最终审阅包通过。；完整来源运输初次干净解压实际退出1：两个逐字节相同的启动文件与来源池重叠触发原始还原器独占目标保护；原失败保留，独立空目录还原及全量SHA核对后的独占复制修复已通过5项真实端到端正负例，完整干净重试进行中。；本候选副本生命周期实际退出0，44db0da owned 回退及B19重新应用完成，旧版完整owned投影与B19最终投影均原生重算通过，17保护表及独立支持保持，分批等价和产品质量继续。；完整来源池追加22份已完成副本证据后，72383原件共15632240430字节；新增3723744831字节原生还原及所有SHA通过，旧条目/数据前缀原样保留，追加/编码/还原实际均退出0，含完整副本投影及两套支持差异原件。最终产品材料与完整ZIP仍待收口。；最新完整副本6阶段实际均退出0，8565聚合/31608判断的单次与逆序分批续跑全部业务投影一致，source update/delete外层回滚与后续17保留复核通过，同模式筛查完成；本候选质量/真实Edge/workload已开始。；质量测试启动器两次验收前失败均保留：初始化前按值导入会话工厂、原生连接options覆盖环境只读参数。仅修复隔离启动器，显式逐连接只读及真实API身份实际退出0，当前质量续跑不重跑已通过副本序列。；本候选真实副本质量出现1条作品召回失败（身份通过、缺Media 13358），原问题/原答/寿命已零调用核对，输入外答案继续拒绝，禁止生产apply。完整核心来源ZIP实测121,696,347字节，全部原字节SHA验证通过但超100MB，保留原件继续无损优化。；独立余项实际完成：同名创作者、suggestion、240 HTTP/720源层与真实Edge均退出0，当前质量1失败及holdout身份参数失败保留。来源传输原型全新目录72,361原件bytes/SHA/语法实际通过（97,806,997字节，仅来源原型）。受限前缀关键词草稿全量100,285信号只改变1条，保持unknown与原判断，10项回归通过，尚未改业务源码或申报产品完成。；完整核心证据块字节平面传输已实际全量逆变换退出0：1,276,757块、1,258,604,053整数、2,989,970,909原始字节SHA一致，原生池解码器未改；全量普通ZIP大小测量继续，未申报最终小包通过。；当前B19追加3项真实对照重跑退出0且owned服务器退出；独立固定B19代码副本仅加入受限前缀修复，10项原生回归退出0，当前完整图准备零调用继续。v4传输包7项真实端到端/负例退出0，完整核心实测大小及全新解包仍待完成。；受限前缀修复已备份并实际独立恢复全部61表，备份463,686,633字节，原生产写入0。完整核心字节平面ZIP实测114,973,121字节，普通ZIP CRC/解码SHA和原始块逆变换通过，但大小门真实拒绝；失败原件保留，排序样本无收益不采用，继续无损小包修复。；B19完整18门实际结束：14通过/4失败，其中15项生产前置14通过，唯一真实余项为原神召回缺13358。新生产等待器实际拒绝，服务停止/切换排队为false，原生产写入0；受限原观察修复在独立目录继续，完整图准备未冒充冻结验收。；独立修复已完成100,285信号初始图及9,070作品配对原答复用，新增调用0，剩余完整配对继续。当前阶段的条件续接驱动已准备，只有独立投影准备实际通过才登记/冻结，再执行真实完整副本；未排队生产切换。新无损类型拆流的9项逆变换边界及7项普通ZIP到原生V9解码检查通过，全量逆变换和实际单包大小继续，未宣称样本等于全量。；剩余22,538配对实际准入已生成，缺失0/可dispatch上限0/预留0/新增调用0，继续原答核验。集中登记组在执行前去掉整组权限跳过来源，仅选新增10例、登记组及3条具体Git反例；原等待器精确owned退出(-1)并留原快照/恢复审计，替代等待器接续，完整正式focused清单未缩减。；2026-10-04实际完整来源准备结束：100285信号/31608配对全部原答复用，账本与原缓存不变，socket/provider为0；独立副本投影仍待实际完成。全量无损拆流及逆变换1276757块/1258604053整数通过，2989970909原字节SHA完全一致；标准ZIP首轮实际内存8GiB门禁失败保留，仅压缩阶段在内存恢复后重试，大小与最终包尚未通过。三个完成标志仍false。；完整核心来源普通ZIP实测78259309字节/低于100000000，全部压缩成员解码SHA和CRC通过；全量72383原件的新目录还原及最终当前产品交付仍待实际核验，不把来源试包冒称最终验收。；完整核心原件新目录首轮还原实际失败保留，原因是已声明且SHA校验的重复空数据流别名未计入成员检查；校验器最小修复后11正负回归通过，另一个全新目录完整还原继续，原生解码器与全部原件SHA/路径/数量/语法门禁未改。；完整核心来源单ZIP在全新目录实际还原72383原件/15632240430原始字节，全部SHA、格式、存储恢复与引用检查实际通过；该来源包不代替当前B20产品、生产和最终交付验收。；受限前缀召回的实际独立完整图与原生隔离投影准备完成，外层事务回滚，集中源码登记验证通过；冻结B20，保留B19质量1失败和完整契约实际结果，继续新候选原生验收。"
   ],
-  "next_required_checkpoint": "B19_actual_native_current_graph_and_focused_PG_historical_then_full_copy_and_production",
+  "next_required_checkpoint": "B20_actual_current_source_graph_focused_PG_historical_full_copy_then_conditional_original_production",
   "durable_links": [
     {
       "label": "A2实施方案",
@@ -374,7 +374,7 @@
       "operator": "执行代理依据项目所有者授权完成"
     }
   ],
-  "updated_at": "2026-10-03T23:20:09.068971+00:00",
+  "updated_at": "2026-10-04T11:00:16.763820+00:00",
   "production_candidate_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
   "correction17_progress": {
     "current_execution": {
@@ -3659,11 +3659,15 @@
     "owner_acceptance": false,
     "new_production_deployed": false
   },
-  "active_blocker": null,
+  "active_blocker": {
+    "code": "current_copy_recall_gap_and_final_transport_size",
+    "scope": "当前副本的一条作品召回反例及完整核心来源包实测超限；身份判断通过，生产前置未全部通过。",
+    "resolution": "复用合法原观察修复当前召回，不恢复输入外答案、不重问已有处置；完成独立余项与无损去重后重新执行实际受影响门禁。"
+  },
   "correction03": {
     "authorization_file": "VIOLET-A2-来源恢复与最终收口执行任务-20261003.md",
     "authorization_sha256": "928faaa4bc04a5f7e021023e4c87341c5da5d44c9eafd3194d96bde89af0bf75",
-    "status": "B19_concentrated_source_frozen_native_validation_pending",
+    "status": "B20_prefix_keyword_frozen_current_native_validation_pending",
     "source_record_scope": 9543,
     "shared_unit_source_contract_authorized": true,
     "original_ledger_failure_rewrite_authorized": false,
@@ -3688,15 +3692,15 @@
     "native_record_count": 15824,
     "unavailable_direct_records": 15,
     "unavailable_direct_within_approved_scope": 0,
-    "current_source_gate_passed": true,
+    "current_source_gate_passed": false,
     "current_business_implementation_unfrozen": false,
     "source_derivation_receipt": "correction03-derived-20261004-3-receipt-private.json",
-    "current_replay": "correction03-current-replay-20261004-5-receipt-private.json",
-    "current_replay_status": "B18_all_original_sources_and_current_view_passed_one_legal_original_target_pending",
-    "pending_original_target_plan": "correction03-remaining-plan-20261004-1-plan-private.json",
+    "current_replay": "correction29-correction03-b19-cache-20261004-1-role-source-replay-private.json",
+    "current_replay_status": "B19_original_role_sources_and_target_accounting_passed_complete_semantic_graph_running",
+    "pending_original_target_plan": "correction03-original-target-20261004-3-result-private.json",
     "pending_legal_original_targets": 0,
     "new_provider_calls": 3,
-    "registered_source_files": 47,
+    "registered_source_files": 48,
     "development_checks": {
       "label": "correction03-source-test-20261004-17",
       "passed": 115,
@@ -3705,7 +3709,7 @@
       "previous_idempotence_failure_preserved": "correction03-source-test-20261004-16.log"
     },
     "additional_full_non_e2e_invocations": 0,
-    "business_candidate_head": "6125b867c63b1911e7e0effa566b5984870a0519",
+    "business_candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
     "owned_test_fixture_preservation": "correction03-owned-runtime-fixture-preservation-20261004-private.json",
     "historical_b16_zero_call_replay": "correction03-current-replay-20261004-3-receipt-private.json",
     "b16_focused": {
@@ -3721,11 +3725,7 @@
       "paid_calls": 0,
       "status": "aborted_before_reservation_unrelated_malformed_historical_raw"
     },
-    "pending_business_fixes": [
-      "live_ledger_and_raw_revalidation_on_in_memory_cache_hit",
-      "retained_unrelated_malformed_raw_cannot_block_an_independent_legal_target",
-      "separate_original_paid_pair_question_from_current_role_source_authority"
-    ],
+    "pending_business_fixes": [],
     "bounded_fixes_development": {
       "label": "correction03-revocation-test-20261004-3",
       "passed": 258,
@@ -3777,10 +3777,13 @@
       "call_count": 18436,
       "unknown_usage_count": 54,
       "reserved_count": 0,
-      "new_actual_paid_usd": 0.001082,
+      "new_actual_paid_usd": 0.001635,
       "ledger_sha256": "93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d",
       "this_task_new_calls": 3,
-      "this_task_added_microusd": 1635
+      "this_task_added_microusd": 1635,
+      "original_target_added_usd": 0.001082,
+      "necessary_downstream_added_usd": 0.000553,
+      "this_task_added_usd": 0.001635
     },
     "original_18433_call_rows_unchanged": true,
     "cached_projection_recovery": {
@@ -3794,8 +3797,8 @@
       "identity_confirmed": false
     },
     "post_paid_original_preservation": "correction03-post-paid-original-preservation-20261004-private.json",
-    "current_complete_graph_command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
-    "current_graph_status": "failed_at_exact_work_cached_attempt_binding",
+    "current_complete_graph_command": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+    "current_graph_status": "B20_exact_frozen_native_source_and_graph_pending",
     "independent_expected_projection_preparation_authorized_in_isolated_copy": true,
     "independent_expected_projection_preparation_claims_product_acceptance": false,
     "fixed_runtime_contract_development": {
@@ -3805,18 +3808,7 @@
       "skipped": 2,
       "production_acceptance_claimed": false
     },
-    "current_graph_failure": {
-      "command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
-      "log": "correction29-correction03-b18-cache-20261004-1.log",
-      "actual_exit_code": 1,
-      "error": "adjudication_cached_response_attempt_not_unique",
-      "ledger_unchanged": true,
-      "new_provider_calls": 0,
-      "database_accessed": false,
-      "role_sources_verified_records": 15825,
-      "original_target_accounting_unaccounted": 0,
-      "original_31608_pair_sources_verified": true
-    },
+    "current_graph_failure": null,
     "concentrated_source_development": {
       "status": "integrated_independent_inputs_prepared_unfrozen",
       "receipt": "correction03-concentrated-development-20261004-private.json",
@@ -3898,7 +3890,25 @@
       "oracle_projection_status": "running",
       "projection_receipt": "correction29-correction03-projection-preparation-20261004-2-receipt-private.json",
       "original_database_accessed_for_projection": false,
-      "outer_transaction_rolled_back": true
+      "outer_transaction_rolled_back": true,
+      "independent_expected_projection_finished": true,
+      "raw_projection": "correction29-correction03-projection-preparation-20261004-2-raw-projection-private.json",
+      "raw_projection_bytes": 7115475815,
+      "raw_projection_sha256": "9d41d9990e2dcc4fbd76e665f1790d18b8fd71a59028c7c1eb6fb2f8912e7dd7",
+      "complete_core_counts": {
+        "resolution_runs": 1,
+        "signals": 100285,
+        "concepts": 17497,
+        "aliases": 21313,
+        "evidence": 65955,
+        "signal_links": 65955,
+        "search_index": 21313
+      },
+      "complete_product_counts": {
+        "clusters": 17497,
+        "candidate_dispositions": 595167,
+        "ambiguity_records": 65978
+      }
     },
     "portable_historical_readers": {
       "status": "actual_three_historical_replays_passed",
@@ -3976,7 +3986,7 @@
       "role_dependency_receipt_sha256": "c531e501b7b9f72f330028bcfd7f387fccfd0454994f703de0687a8079504902",
       "original_role_raw_files": 1931,
       "all_current_role_original_files_retained": true,
-      "status": "complete_role_materialization_and_actual_stdlib_replay_passed_final_package_pending",
+      "status": "preparation_pool_materialization_and_fresh_native_replay_passed_final_closure_and_size_pending",
       "final_package_and_fresh_extract_replays_pending": true,
       "materialized_files": 2624,
       "materialized_bytes": 1078937039,
@@ -3985,19 +3995,482 @@
       "source_pool_size_probe_sha256": "09b32abed10236f54c9b5d9fa5affad37251838219c39bb29ba93449915ad66f",
       "source_pool_probe_bytes": 23733479,
       "actual_fresh_materialized_role_replay": "correction03-fresh-role-atoms-stdlib-replay-20261004-1-private.json",
-      "actual_fresh_materialized_role_replay_sha256": "01012d045432f8982904adf36506cb514a664ef0cf5a5ed683612a1dd62df8df"
+      "actual_fresh_materialized_role_replay_sha256": "01012d045432f8982904adf36506cb514a664ef0cf5a5ed683612a1dd62df8df",
+      "large_original_json_syntax_reader_probe": "correction03-large-json-reader-native-parity-20261004-1-private.json",
+      "large_original_json_syntax_reader_probe_sha256": "463f5040facd178bfe7031718b7ae6272e0fb81d1cbe36d2c0fba119450642db",
+      "large_original_json_syntax_probe_checks": 224,
+      "literal_reference_boundary_checks": 7,
+      "exact_hash_recipe_preparation": {
+        "receipt": "correction29-correction03-native-prepared-projection-20261004-1-hash-recipes-private.json",
+        "receipt_sha256": "c6ddd63b505cb64864abc4fd816ad16cd3983101fa04924d86cb0bc894a9e726",
+        "actual_protected_child_rows": 678642,
+        "both_original_child_hashes_matched": true,
+        "recipes": "correction29-correction03-native-prepared-projection-20261004-1-hash-recipes.jsonl",
+        "recipes_sha256": "395fce35970123b202803a233390be7bc752ac64727a61c335c006b275bb1559",
+        "original_bytes_changed": false,
+        "final_pool_materialization_and_size_pending": true
+      },
+      "preparation_materialized_files": 2644,
+      "preparation_materialized_bytes": 10519014480,
+      "preparation_materialization_log": "correction03-source-projection-atoms-materialize-20261004-1.log",
+      "preparation_materialization_log_sha256": "64857c3e23fb9901c5e885d2ec2e41c32618bbb4ad1dd97eb9d249473e7abb16",
+      "fresh_git_replay_log": "correction03-fresh-source-projection-frozen-git-20261004-2.log",
+      "fresh_git_replay_log_sha256": "27b44fdfb7c04d3d3a0685ca9b9ecf53c92c9890cf22b890e8808ccd76656ae1",
+      "fresh_git_source_paths": 577,
+      "fresh_git_objects": 97,
+      "fresh_native_original_projection_replay": "correction03-source-projection-atoms-materialized-20261004-1/correction03-fresh-source-projection-native-stdlib-replay-20261004-1-private.json",
+      "fresh_native_original_projection_replay_sha256": "4be4cdca6e2d133c4b42644e0285b517692037d8dd931bf5b247f512b029acc3",
+      "actual_fresh_postgresql_browser_or_owner_acceptance_claimed": false,
+      "oversized_preparation_probe": "correction03-source-projection-atoms-size-probe-20261004-1-private.json",
+      "oversized_preparation_probe_sha256": "df8cee902bff7b90da2dcef4c3d05aee4100babcf37ed5536baee717b1aecd7e",
+      "oversized_preparation_probe_bytes": 214739399,
+      "oversized_preparation_probe_preserved": true,
+      "exact_pair_hash_recipe_proof": "correction29-correction03-native-pair-keys-20261004-1-hash-recipes-private.json",
+      "exact_pair_hash_recipe_proof_sha256": "ff3cc98ff66ef01833a9003eeec11ec991f9ffeed3ec904afacf555840f8de04",
+      "exact_pair_hashes_verified": 595167,
+      "hash_atom_pool_materialization_log": "correction03-source-projection-hash-atoms-materialize-20261004-1.log",
+      "hash_atom_pool_materialization_log_sha256": "3c0c4ff22d72a405c3819924536ae1a3662a1a124ff6fc30fbcf299f05782d2d",
+      "hash_atom_pool_original_files": 2644,
+      "hash_atom_pool_original_bytes": 10519014480,
+      "retained_oversize_hash_dictionary_probe": "correction03-source-projection-hash-atoms-size256-probe-20261004-1-private.json",
+      "retained_oversize_hash_dictionary_probe_sha256": "39d0869fda61ef822caa1291c100dcd6f672c067d30f13c70274bc685a60bb07",
+      "retained_oversize_hash_dictionary_probe_bytes": 152348946,
+      "recipe_numeric_boundary_probe": "correction03-recipe-varints-native-functions-probe-20261004-1-private.json",
+      "recipe_numeric_boundary_probe_sha256": "1d0944cc116d7e1b538d4d1a74c39c22a5ff765e4f3e439eab79cd3ff9afd9f3",
+      "new_recipe_block_pool_full_materialization_and_size_pending": true,
+      "actual_complete_recipe_restorations": [
+        {
+          "log": "correction03-source-projection-block-atoms-materialize-20261004-2.log",
+          "log_sha256": "730832821d5f69a22910c0278fad844a5bb54b677e9b0a2ea2cfaf0472033d22",
+          "original_files": 2644,
+          "original_bytes": 10519014480,
+          "all_original_sha_and_bytes_match": true
+        },
+        {
+          "log": "correction03-source-projection-absolute-atoms-materialize-20261004-1.log",
+          "log_sha256": "745120b3c0d598053bfe1091324de74e502adcfc168c3718ccdc1f599669b7df",
+          "original_files": 2644,
+          "original_bytes": 10519014480,
+          "all_original_sha_and_bytes_match": true
+        },
+        {
+          "log": "correction03-source-projection-binary-atoms-materialize-20261004-1.log",
+          "log_sha256": "745120b3c0d598053bfe1091324de74e502adcfc168c3718ccdc1f599669b7df",
+          "original_files": 2644,
+          "original_bytes": 10519014480,
+          "all_original_sha_and_bytes_match": true
+        }
+      ],
+      "retained_oversized_recipe_attempts": [
+        {
+          "receipt": "correction03-source-projection-block-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "9f81ea1a273e21f711d44d8d432e3575b78212ff5fc5590e4af92359fe350a36",
+          "archive_bytes": 218728754,
+          "archive_sha256": "6a28b335140b63dd9cd12f7d7bfc98f9a0a405e40ea4879fd963722d2e53d811",
+          "within_limit": false,
+          "preserved": true
+        },
+        {
+          "receipt": "correction03-source-projection-absolute-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "cc2d8ffeb120914f34a37c7fb10d4cefc0e1344c0f229d55d53bcc93b1c604f3",
+          "archive_bytes": 165137438,
+          "archive_sha256": "79d65f8c0fc0cc7dc709d6a1cbc74a6bb5af3b873ce7e152e4c494146e3db436",
+          "within_limit": false,
+          "preserved": true
+        },
+        {
+          "receipt": "correction03-source-projection-binary-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "4b8ee05a4eb2419f7302ae64070afea6830dcb4d1799193df230e646a62a4902",
+          "archive_bytes": 122223333,
+          "archive_sha256": "d937d35f6152bec6e4eaa1ef4b3c804b0358a4f130971721c17b52c7fa3d94b0",
+          "within_limit": false,
+          "preserved": true
+        },
+        {
+          "receipt": "correction03-source-projection-derived-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "44a3416e0e87c39640bca4b622bd6b47a2e02365969632496c1da3baa556b839",
+          "archive_bytes": 102764021,
+          "archive_sha256": "50db4f08bf7615edc0e9bb5aa42affd0e75047fc8310897ae831c13ba8517ca8",
+          "within_limit": false,
+          "preserved": true
+        }
+      ],
+      "derived_file_pool_complete_restoration_pending": false,
+      "larger_dictionary_measurement_pending": false,
+      "actual_derived_pool_restoration": {
+        "log": "correction03-source-projection-derived-atoms-materialize-20261004-1.log",
+        "log_sha256": "0d87016ed687d617446a0f9a559d78e0af7e083df38f46d6c16b9c643905f11b",
+        "original_files": 2644,
+        "original_bytes": 10519014480,
+        "all_original_sha_and_bytes_match": true
+      },
+      "actual_512_dictionary_preparation_pool": {
+        "receipt": "correction03-source-projection-derived-atoms-size512-probe-20261004-1-private.json",
+        "receipt_sha256": "32c44421654be0605bccdd792ecf5bae31d70579e036aef7ddb27b89cec683ef",
+        "archive_bytes": 97479675,
+        "archive_sha256": "2f8f9a82b641e9c7013e293f79fe10dcc5ffbe4fbefc1f8ce9023d4c1b4e4765",
+        "standard_decoder_and_crc_passed": true,
+        "final_review_package": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "native_edge_recipe_preparation": {
+        "receipt": "correction29-correction03-native-edge-keys-20261004-2-hash-recipes-private.json",
+        "receipt_sha256": "b35e32c4b95c0f05cfaada67e4e13104644c74af2ef3d5770044d2b0c3c32c2b",
+        "actual_candidate_rows": 595167,
+        "exact_native_edge_keys": 626775,
+        "decoder_probe": "correction03-native-edge-decoder-probe-20261004-1-private.json",
+        "decoder_probe_sha256": "ee1e9a0c9e2e3f4ce06f33ca2dfb9e96973b9695d683f0322b7edca02396b5ad",
+        "actual_native_roundtrips": 40,
+        "corrupt_recipes_rejected": 17,
+        "actual_complete_materialization_and_size_measurement_pending": false
+      },
+      "actual_complete_native_edge_pool": {
+        "index": "correction29-correction03-source-projection-edge-atoms-20261004-1-index.json",
+        "index_sha256": "0afe93585942f6d40576e02c2e91a8cdaa07e8b8442930b86747cb8cf6f0dada",
+        "actual_materializer_log": "correction03-source-projection-edge-atoms-materialize-20261004-1.log",
+        "actual_materializer_log_sha256": "2c6cb3f7590ff97612957d9a771448995eac788c81f4de79e41821f8105b1b6e",
+        "actual_materializer_observed_exit_code": 0,
+        "original_files": 2644,
+        "original_bytes": 10519014480,
+        "all_original_sha_and_bytes_match": true,
+        "native_edge_atoms": 626775,
+        "actual_standard_zip_probe": "correction03-source-projection-edge-atoms-size512-probe-20261004-1-private.json",
+        "actual_standard_zip_probe_sha256": "f97c5fec0c0da7f3b81552f39e1a268fa2c62562190f647a60ffa7709c253d9d",
+        "actual_probe_observed_exit_code": 0,
+        "archive_bytes": 92180979,
+        "archive_sha256": "53b7f942a9ee6da0e7b168f822c01fd824f8cfee8c9c2304f0971315907a6e98",
+        "standard_decoder_crc_passed": true,
+        "final_review_package": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_static_shared_pool": {
+        "index": "correction29-correction03-source-projection-static-shared-atoms-20261004-3-index.json",
+        "index_sha256": "ad9bff5ce32a276579cd5ee4e7c264d382980d7ea5008cf897db12df990a3183",
+        "actual_materializer_log": "correction03-source-projection-static-shared-atoms-materialize-20261004-3.log",
+        "actual_materializer_log_sha256": "c2321d070bd660fcc87a0fdf6f1a5c4a26559c75f21a9ce09a565758344f7c43",
+        "actual_materializer_observed_exit_code": 0,
+        "original_files": 3446,
+        "original_bytes": 10662794581,
+        "all_original_sha_and_bytes_match": true,
+        "actual_standard_zip_probe": "correction03-source-projection-static-shared-atoms-size512-probe-20261004-3-private.json",
+        "actual_standard_zip_probe_sha256": "8cbd3bf0d4e1e1dfa61363543064c944352610ed11abbefea4d7704ac0b8e82b",
+        "actual_probe_observed_exit_code": 0,
+        "archive_bytes": 101406247,
+        "archive_sha256": "0ba00474199020ddab3644ea3007c9bb263f488f0ee51c90850ef633f4c91007",
+        "standard_decoder_crc_passed": true,
+        "within_required_single_file_cap": false,
+        "final_review_package": false,
+        "bounded_subblock_and_order_samples_improved_compression": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_binary_atom_wire_pool": {
+        "index": "correction29-correction03-source-projection-binary-atom-wire-20261004-1-index.json",
+        "index_sha256": "3a3138a715f9e24cec4ed4094e253ee1517ff26cfc147870e284e4b3b36f8d8d",
+        "actual_materializer_log": "correction03-source-projection-binary-atom-wire-materialize-20261004-1.log",
+        "actual_materializer_log_sha256": "c2321d070bd660fcc87a0fdf6f1a5c4a26559c75f21a9ce09a565758344f7c43",
+        "actual_materializer_observed_exit_code": 0,
+        "original_files": 3446,
+        "original_bytes": 10662794581,
+        "all_original_sha_and_bytes_match": true,
+        "actual_standard_zip_probe": "correction03-source-projection-binary-atom-wire-size512-probe-20261004-1-private.json",
+        "actual_standard_zip_probe_sha256": "1b05f3bd302590b1ab53ee337841b871c8a98554b74ea8d4140a56706b1116c1",
+        "actual_probe_observed_exit_code": 0,
+        "archive_bytes": 92295709,
+        "archive_sha256": "92d4487c54d41f4c7f1353120ab4e4a1327e18e6e4e276b0a20b21fc8ce7ac4f",
+        "standard_decoder_crc_passed": true,
+        "within_required_single_file_cap": true,
+        "final_review_package": false,
+        "native_decoder_sha256": "f27f87d57022ab3eb456b21353ddf46c7c33110640f13f3eb83d4e61a586610e",
+        "binary_atom_wire_sha256": "85eb8e6cf7a34f8e77eaa5c0921204a5d470bc43fb4a8366c404d93fea9b5c74",
+        "all_3260784_original_atom_rows_roundtrip_verified": true,
+        "all_previous_native_decoder_functions_ast_unchanged": true,
+        "boundary_probe": "correction03-binary-atom-wire-probe-20261004-1-private.json",
+        "boundary_probe_sha256": "ac08ca1083af6003ca727697a24a0b24a93e35c19c216a1a68f6ae2bf40ca298",
+        "bounded_subblock_and_order_samples_improved_compression": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "current_preferred_complete_pool_index": "correction29-correction03-core-projection-binary-atom-wire-20261004-1-index.json",
+      "actual_complete_pair_source_pool_materialization": {
+        "index": "correction29-correction03-complete-pair-binary-atom-wire-20261004-1-index.json",
+        "index_sha256": "ecbaa56bf5dc1d18a74d549663f67c6cc6f00776ad94a11ccea0bc1e3f4c7cc3",
+        "actual_materializer_log": "correction03-complete-pair-pool-continuation-20261004-1-complete-materialization.log",
+        "actual_materializer_log_sha256": "87da4da1948113a4bdf2aaa3157a2235b31abb0b3d9c79402536afd68926b30b",
+        "actual_materializer_exit_code": 0,
+        "original_files": 35534,
+        "original_bytes": 11607741098,
+        "all_original_sha_and_bytes_match": true,
+        "actual_current_pair_cache_chain_files": 32063,
+        "standard_zip_compression_pending_memory_preflight": false,
+        "final_review_package": false,
+        "current_native_read_dependencies_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_pair_source_pool_standard_zip_size": {
+        "receipt": "correction03-complete-pair-binary-atom-wire-size512-probe-20261004-1-private.json",
+        "receipt_sha256": "ae89e3246110d51755c1507cdf693f539ba6c04186f17dd6f4052acd9b045756",
+        "archive": "correction03-complete-pair-binary-atom-wire-size512-probe-20261004-1.zip",
+        "archive_sha256": "df5110cbbeafb903ca5dc9ee6f8989133d1fdbaa48306b2c2663e7c8269f39d0",
+        "actual_bytes": 101379240,
+        "required_max_bytes": 100000000,
+        "over_limit_bytes": 1379240,
+        "standard_zip_crc_passed": true,
+        "final_review_package": false,
+        "all_originals_retained": true,
+        "current_native_dependencies_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_pair_source_pool_longmatch_standard_zip_size": {
+        "receipt": "correction03-complete-pair-longmatch512-size-probe-20261004-1-private.json",
+        "receipt_sha256": "7dd7cf768df960fba813e28dee94efdd94e531514143fb5440500a50c562a25e",
+        "archive": "correction03-complete-pair-longmatch512-size-probe-20261004-1.zip",
+        "archive_sha256": "207e5b15ec375c93317e0d2963b27a366aa21856508b0b6023409ac869383c27",
+        "actual_bytes": 93933662,
+        "required_max_bytes": 100000000,
+        "headroom_before_remaining_materials": 6066338,
+        "source_index": "correction29-correction03-complete-pair-binary-atom-wire-20261004-1-index.json",
+        "source_index_sha256": "ecbaa56bf5dc1d18a74d549663f67c6cc6f00776ad94a11ccea0bc1e3f4c7cc3",
+        "standard_zip_crc_passed": true,
+        "original_source_bytes_changed": false,
+        "nice_len": 273,
+        "dictionary_bytes": 536870912,
+        "encoder_sha256": "eb631765e4b5b0bc0c15cec5e0f98416adc89ed2d02d3ad2f7d0370d5233a6df",
+        "final_review_package": false,
+        "prior_over_limit_trial_retained": true,
+        "complete_native_dependencies_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_native_read_dependency_pool": {
+        "receipt": "correction03-native-dependency-pool-continuation-20261004-1-private.json",
+        "receipt_sha256": "a38495c4b81cdaa7d7284b2ca05361c5f3dbb0168359cb31b7b94f7322f8f363",
+        "wire_index": "correction29-correction03-native-read-dependencies-binary-atom-wire-20261004-1-index.json",
+        "wire_index_sha256": "045c2e870f26bced2fb0038b6c85d8a1687131cb5c8cd37a216c454d8501f273",
+        "original_files": 72361,
+        "original_bytes": 11908495599,
+        "all_original_sha_and_bytes_match": true,
+        "actual_four_stages_exit_zero": true,
+        "full_materialization_log": "correction03-native-dependency-pool-continuation-20261004-1-complete-materialization.log",
+        "full_materialization_log_sha256": "1a58d2a5c40d700b9685f25c08e4b3573cbb75a3ad0098cfb83f63707444a4de",
+        "actual_native_read_dependencies_manifest": "correction03-complete-native-read-dependencies-20261004-1-private.json",
+        "actual_native_read_dependencies_manifest_sha256": "ef75ce5296488c3c654cb20125e18e69cfedbd2f7b7fcac108a2c9f8b08c49c9",
+        "actual_standard_zip_size_pending": false,
+        "final_review_package": false,
+        "production_actions": 0,
+        "provider_calls": 0,
+        "desktop_actions": 0
+      },
+      "actual_complete_native_source_pool_standard_zip_size": {
+        "receipt": "correction03-full-native-read-dependencies-longmatch512-size-probe-20261004-1-private.json",
+        "receipt_sha256": "1a27f10497ee16354bd29a11b238f85a8633a6403e6ffbe7d8159aa8f91a43d2",
+        "archive": "correction03-full-native-read-dependencies-longmatch512-size-probe-20261004-1.zip",
+        "archive_sha256": "67ba56cb0d83ada939e1982be0557fdcea2745cab1ba04a86624361755999742",
+        "actual_bytes": 101494584,
+        "required_max_bytes": 100000000,
+        "excess_bytes": 1494584,
+        "size_gate_passed": false,
+        "standard_zip_crc_passed": true,
+        "all_original_source_bytes_preserved": true,
+        "final_review_package": false,
+        "lossless_transport_optimization_continues": true,
+        "copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_native_joined_source_pool_standard_zip_size": {
+        "receipt": "correction03-full-native-joined-complete-source-size-probe-20261004-1-private.json",
+        "receipt_sha256": "743acae81f36697cdee79bc70d3bf1053c6bc4479560be3b622a82ae71c85485",
+        "archive": "correction03-full-native-joined-complete-source-size-probe-20261004-1.zip",
+        "archive_sha256": "ab3ee91fac407e02a5c22d55f15341d58f92d751a492714b4d6d7058a77af8ef",
+        "actual_bytes": 97777071,
+        "required_max_bytes": 100000000,
+        "headroom_before_remaining_results": 2222929,
+        "standard_zip_crc_and_all_decoded_sha_passed": true,
+        "original_files": 72361,
+        "original_bytes": 11908495599,
+        "all_original_source_bytes_preserved": true,
+        "original_native_pool_decoder_changed": false,
+        "custom_zip_decoder": false,
+        "sections_manifest": "correction03-full-native-joined-metadata-size-probe-20261004-1-sections-private.json",
+        "sections_manifest_sha256": "9baf5f611054020de434c03887be8045624a8eff1e3215d3400edae3bb4d3222",
+        "actual_negative_cases": 9,
+        "negative_cases": "correction03-joined-section-guard-probe-20261004-1-private.json",
+        "negative_cases_sha256": "54c6afc26a0aca9a3ba23decd3299b134d192e9eecc9e326ac5b49bfd327f9a5",
+        "final_review_package": false,
+        "remaining_copy_production_and_final_documents_still_required": true,
+        "prior_oversize_trials_retained": true
+      },
+      "actual_full_source_transport_bootstrap_overlap_repair": {
+        "observed_failure": "correction29-correction03-joined-full-source-package-integration-20261004-1-coordinator-private.json",
+        "observed_failure_sha256": "515da1cca3d464b165ff9d19f2c8cfbd122feb90c025ea37ca855be68b713c12",
+        "actual_build_exit": 0,
+        "actual_fresh_extraction_exit": 1,
+        "reason": "Exact duplicate bootstrap originals met the unchanged native decoder exclusive-destination guard.",
+        "failed_archive_and_extraction_retained": true,
+        "repair": "Run the unchanged native decoder in an independent empty owned directory; validate all reconstructed bytes and exact overlaps before exclusive transfer.",
+        "native_decoder_changed": false,
+        "original_source_pool_changed": false,
+        "actual_bounded_end_to_end_cases": 5,
+        "probe": "correction03-package-bootstrap-overlap-probe-20261004-1-private.json",
+        "probe_sha256": "93c97f7c92278ee1a310f481e342ac465535a96aceb58b530e13511c987e05a4",
+        "verifier": "correction03_verify_package_atoms_standalone_20261004_4.py",
+        "verifier_sha256": "627459b34c50b93f02197691279c247e614e517242da702b4cfc12f37e47ebfe",
+        "complete_fresh_retry": "correction29-correction03-joined-full-source-package-integration-20261004-2-coordinator-private.json",
+        "complete_fresh_retry_acceptance_pending": true,
+        "final_product_delivery_claimed": false
+      },
+      "actual_completed_core_projection_pool_extension": {
+        "receipt": "correction03-core-projection-pool-continuation-20261004-1-private.json",
+        "receipt_sha256": "495fef191f42695ec6d300ac5396cee760eb28a283c0732b1d0c3bb6982d0f6b",
+        "wire_index": "correction29-correction03-core-projection-binary-atom-wire-20261004-1-index.json",
+        "wire_index_sha256": "5377a42a5ced120b4b9734ad9f6db42f42f5771114db41f73a87817465060104",
+        "original_files": 72383,
+        "original_bytes": 15632240430,
+        "actual_restored_added_files": 22,
+        "actual_restored_added_bytes": 3723744831,
+        "all_previous_entries_and_data_prefixes_identical": true,
+        "all_added_original_bytes_and_sha_restored": true,
+        "actual_stage_exit_codes": [
+          0,
+          0,
+          0
+        ],
+        "original_native_decoder_changed": false,
+        "full_current_copy_projection_and_complete_support_difference_sources_included": true,
+        "actual_complete_standard_zip_size_measurement_running": true,
+        "fresh_complete_final_archive_and_product_results_pending": true,
+        "final_review_package": false
+      },
+      "actual_complete_source_transport_fresh_integration": {
+        "receipt": "correction29-correction03-joined-full-source-package-integration-20261004-2-coordinator-private.json",
+        "receipt_sha256": "8de6888807b6459292cf00596c5b85faff2b503b0e59f7341b29aa39cd8516ee",
+        "archive_bytes": 97806997,
+        "archive_sha256": "b9a547237c1ac9e07c8cc61c66471d7cc2341d59446dca7dd06fcad80b1c46f2",
+        "original_files": 72361,
+        "all_original_sha_syntax_and_storage_recovery_verified": true,
+        "actual_stage_exit_codes": [
+          0,
+          0
+        ],
+        "source_transport_only": true,
+        "final_current_core_quality_production_and_docs_still_pending": true
+      },
+      "complete_native_block_byte_plane_restoration": {
+        "manifest": "correction03-complete-core-block-planes-20261004-1-manifest.json",
+        "manifest_sha256": "79c9323914095e432ed036b1d8c9fb853404b7ac05990b90afe3b859288cb12e",
+        "actual_exit_code": 0,
+        "actual_log": "correction03-complete-core-block-planes-20261004-1-native-restoration.log",
+        "actual_log_sha256": "5bfe90fa2d43027c84663f83a5d56a796778e646a59ace91087ad7346ab1cf52",
+        "original_blocks": 1276757,
+        "original_integers": 1258604053,
+        "original_bytes": 2989970909,
+        "original_sha256": "f7e49d7a4754445398e122b497a8fab5d5d351eaf38fc0935abdda2a9aeaadc1",
+        "original_native_pool_decoder_changed": false,
+        "all_original_evidence_unchanged": true,
+        "complete_source_zip_actual_size_pending": true,
+        "final_review_bundle_accepted": false
+      },
+      "byte_plane_package_integration_guard_probe": {
+        "receipt": "correction03-plane-package-integration-guard-probe-20261004-1-private.json",
+        "receipt_sha256": "27cd04fab320cd07bf5951dd18583201ec3e60a3c68e08ff10a27c375ebff14c",
+        "actual_exit_code": 0,
+        "actual_verifier_cases": 7,
+        "whole_native_v9_original_bytes_recovered": true,
+        "current_complete_core_package_acceptance_claimed": false
+      },
+      "complete_core_byte_plane_size_failure": {
+        "receipt": "correction03-complete-core-plane-source-size-probe-20261004-1-private.json",
+        "receipt_sha256": "e54b1f98de35d9eebda95931e168a674438f60250010c1b2c9c8412e06f96c73",
+        "archive_bytes": 114973121,
+        "archive_sha256": "22bc9462dcffda2636eb7f1a099d96abf9c2794dd80b1075af88de007231b1e3",
+        "original_files": 72383,
+        "original_bytes": 15632240430,
+        "all_standard_zip_decoded_file_sha_and_crc_passed": true,
+        "actual_complete_native_block_inverse_passed": true,
+        "single_archive_limit_passed": false,
+        "actual_guard_failure": "correction29-correction03-plane-complete-core-package-integration-20261004-1-coordinator-private.json",
+        "actual_guard_failure_sha256": "d44752f134d5a049ced74586530e049da965994f8e39056a39ea34f68efc3237",
+        "failed_attempt_preserved": true,
+        "no_material_removed_to_reduce_size": true,
+        "sorting_probe": "correction03-sorted-block-transport-size-probe-20261004-1-private.json",
+        "sorting_probe_sha256": "d7e59f7f80cd544cc6a1f2dfcf9f3871484616e0bd5f8691e3f3b4aeaa8fccc1",
+        "sorting_probe_not_adopted": true
+      },
+      "classified_native_transport": {
+        "bounded_inverse_guard": "correction03-classified-plane-guard-probe-20261004-1-private.json",
+        "bounded_inverse_guard_sha256": "b880a8b7b6471cfec342cb5f882e33f738a655af482eab2e064c870cd41046da",
+        "bounded_inverse_cases_passed": 9,
+        "bounded_standard_zip_native_integration": "correction03-classified-package-integration-guard-probe-20261004-1-private.json",
+        "bounded_standard_zip_native_integration_sha256": "b34f70f350ff3ebc230611f92223febd0940cc888477f414d41967321942adaf",
+        "bounded_integration_cases_passed": 7,
+        "complete_original_source_size_probe_pending": false,
+        "continuation": "correction03-complete-core-classified-plane-continuation-20261004-1-private.json",
+        "native_pool_decoder_changed": false,
+        "original_evidence_changed": false,
+        "final_package_claimed": false,
+        "complete_original_stream_inverse_passed": true,
+        "actual_native_blocks": 1276757,
+        "actual_native_integers": 1258604053,
+        "actual_native_bytes": 2989970909,
+        "actual_native_sha256": "f7e49d7a4754445398e122b497a8fab5d5d351eaf38fc0935abdda2a9aeaadc1",
+        "actual_original_coordinator": "correction03-complete-core-classified-plane-continuation-20261004-1-private.json",
+        "actual_original_coordinator_sha256": "5ba3038b2473d829567fe0789905d3d143096fabaa7a0c773020bc03ffe28313",
+        "actual_inverse_log": "correction03-complete-core-classified-plane-continuation-20261004-1-whole-original-stream-inverse.log",
+        "actual_inverse_log_sha256": "9c16a34291d8a03dca94f0f5d160c7e37cdb629ed2f920ebfbce8b713cd0f32a",
+        "actual_standard_zip_memory_failure_retained": true,
+        "actual_memory_guard_gib": 8,
+        "actual_zip_only_recovery": "correction03-complete-core-classified-plane-memory-recovery-20261004-1-private.json",
+        "actual_complete_core_source_zip_bytes": 78259309,
+        "actual_complete_core_source_zip_sha256": "b7fab241286dd808cee5557a5e35a9d8e41ef245bdd97987b79fca0fae7c1302",
+        "actual_complete_core_source_zip_receipt": "correction03-complete-core-classified-plane-source-size-probe-20261004-1-private.json",
+        "actual_complete_core_source_zip_receipt_sha256": "bc949b2da5e248b057b731f57959700e58867469e1a9c5cc3281774a603ab4a9",
+        "actual_zip_only_recovery_finished": true,
+        "actual_zip_only_recovery_sha256": "ee5e51e27743e41b024adb5e7a5298b84afd1c68f137a4bb49f6699ca7cb9100",
+        "actual_standard_zip_decoded_member_crc_and_sha_passed": true,
+        "fresh_full_original_materialization_pending": false,
+        "final_current_candidate_product_delivery_claimed": false,
+        "complete_extraction_alias_recovery": {
+          "original_failure": "correction29-correction03-classified-complete-core-package-integration-20261004-1-coordinator-private.json",
+          "original_failure_sha256": "dfce4f44278850fab8e863390ebc29f15eee61d6a87385c214f888161767a8d8",
+          "original_actual_stage_exit_codes": [
+            0,
+            1
+          ],
+          "bounded_guard": "correction03-classified-package-integration-guard-probe-20261004-2-private.json",
+          "bounded_guard_sha256": "11acc074d73c11f552fac07fb7e34dd9caa785d6b872e5798bac2c068f1e7cdc",
+          "actual_bounded_cases": 11,
+          "fixed_verifier": "correction03_verify_package_atoms_standalone_20261004_7.py",
+          "fixed_verifier_sha256": "a5b280f3046f943e83dba36a2b8814d492ae99603f3f1397280a7c8dd58d11d7",
+          "new_complete_continuation": "correction29-correction03-classified-complete-core-package-integration-20261004-2-coordinator-private.json",
+          "original_native_decoder_changed": false,
+          "all_original_path_byte_SHA_count_and_syntax_guards_preserved": true,
+          "complete_recovery_pending": true,
+          "final_delivery_claimed": false
+        },
+        "actual_fresh_complete_core_restoration_passed": true,
+        "actual_fresh_complete_core_original_files": 72383,
+        "actual_fresh_complete_core_original_bytes": 15632240430,
+        "actual_fresh_complete_core_zip_bytes": 78042659,
+        "actual_fresh_complete_core_zip_sha256": "e2d1e512a6f3ea84de2cafae50998405bbeccdb3e0827ed05a37d9fca70f202d",
+        "actual_fresh_complete_core_receipt": "correction29-correction03-classified-complete-core-package-integration-20261004-2-coordinator-private.json",
+        "actual_fresh_complete_core_receipt_sha256": "db00452a2dc3d95f59e0267b8fa978e30d3449cf0e9a2721cfdd1f72bbd5880a",
+        "original_sha_syntax_storage_and_reference_checks_passed": true
+      }
     },
     "task_owned_cutover_guard_preparation": {
       "status": "prepared_not_executed",
       "files": {
-        "correction03_run_owned_apply_with_recovery_20261004.py": "dc009d1cd280ecf94d305ec5799924699cfffeb3035281adb5e1d941f4cdd627",
+        "correction03_owned_recovery_worker_20261004.py": "76645d91a603757eb05ee5f715201f7bec01d74a62d6f0ef0073ef042d647a05",
+        "correction03_run_owned_apply_with_recovery_20261004.py": "5aca947f024d31c892aaf5fa9af0d4cb8703f51f87e71809ad8cc16d67c04b9e",
+        "correction03_rehearse_owned_recovery_20261004.py": "b855b5914a68a23dbb3748bf85801b455e4922eb361bd3399fa86c730dd1d96e",
         "correction03_original_owned_apply_20261004.py": "01e4be2123e6a4f3e2169d1c3dd14e134b5ecec799d7f7079f1db76d0a7c46e9",
         "correction03_prepare_fixed_release_20261004.py": "3f5ade3b7712f034d3c0d584daeab6688ab958f6a968b262423ffa955e84903c",
-        "correction03_owned_recovery_worker_20261004.py": "3523f7c3e674e3720f3fa75410ba25af8d95de1d1072c1e8671d55489ba82022"
+        "correction03_continue_frozen_copy_20261004.py": "f03bfb4604a08b03f72d9fd15af1ff410ef558d4eeb9a671da045d488e659908"
       },
       "actual_copy_owned_recovery_rehearsal_required": true,
       "prepared_worker_without_database_access_required_before_owned_service_stop": true,
-      "production_action_executed": false
+      "production_action_executed": false,
+      "latest_syntax_parsed": true,
+      "readiness_trigger_and_committed_worker_receipts": "exclusive_atomic_publication_in_native_Windows",
+      "copy_worker_parent_and_python_identity_required": true,
+      "actual_isolated_recovery_rehearsal_pending": true,
+      "production_recovery_execution_claimed": false,
+      "preconnect_probe": "correction03-recovery-preconnect-gate-20261004-1-private.json",
+      "preconnect_probe_sha256": "f98d5062b476f02df92f18af9740ffc727be0cc2640c9f140d1759173b36da77",
+      "physical_database_connection_blocked_before_admission": true
     },
     "current_ledger_review_continuity": {
       "receipt": "correction03-current-ledger-review-continuity-20261004-2-private.json",
@@ -4020,6 +4493,794 @@
       "skipped": 0,
       "failed": 0,
       "historical_full_result_changed": false
+    },
+    "concentrated_integration_recovery": {
+      "failed_log": "correction03-concentrated-source-integration-20261004-1.log",
+      "failed_log_sha256": "2747db2ae39e5b5d84e484a26343aad936cf424468ee24f2ce920cb9183ac815",
+      "failure_kind": "completed_receipt_became_visible_before_its_protected_input",
+      "source_or_production_changed_in_failed_attempt": false,
+      "actual_successful_log": "correction03-concentrated-source-integration-20261004-2.log",
+      "actual_successful_log_sha256": "8a28df9d09b488eefc906f512c073016e60216893bc0745c6b0d5ab3fe247cc7",
+      "original_failure_preserved": true,
+      "business_candidate_frozen": "923bf33361413044c435190c14f68ade10d70c88"
+    },
+    "queued_full_copy": {
+      "coordinator": "correction03-frozen-copy-continuation-20261004-1-private.json",
+      "requires_actual_frozen_native_graph_and_affected_validation": true,
+      "production_apply_in_coordinator": false,
+      "production_acceptance_claimed": false
+    },
+    "formal_progress": {
+      "sequence": "correction29-correction03-b20-affected-20261004-1-sequence-private.json",
+      "actual_stages": {},
+      "status": "pending_current_frozen_candidate"
+    },
+    "independent_prepared_projection_replay": {
+      "receipt": "correction03-prepared-projection-native-stdlib-replay-20261004-1-private.json",
+      "receipt_sha256": "ef4761a762fd1c7a532f24a7fc3eab4458467bb07b001fe8ba03eb61289f4666",
+      "full_native_original_preparation_recomputed": true,
+      "full_native_current_recorded_projection_recomputed": false,
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "complete_owned_projection": {
+        "run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
+        "product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+        "core_business_fingerprint": "92b1ab335a514f9fd732037dc26cb75004048767740409848ee0fd06cb812650",
+        "full_core_fingerprint": "ca9beb3ef316e73c5a97b390fd01f8714f96a81bad050dd1c17e91bcaf7da141",
+        "core_counts": {
+          "resolution_runs": 1,
+          "signals": 100285,
+          "concepts": 17497,
+          "aliases": 21313,
+          "evidence": 65955,
+          "signal_links": 65955,
+          "search_index": 21313
+        },
+        "product_counts": {
+          "clusters": 17497,
+          "candidate_dispositions": 595167,
+          "ambiguity_records": 65978
+        }
+      },
+      "native_source_sha256": "3557e5bc28af2598bcb123c3c45524718959a86754f73deec784f28dc83cbba5",
+      "new_postgresql_browser_or_owner_acceptance_claimed": false,
+      "derivation": "correction03-prepared-projection-stream-extraction-20261004-1-derivation-private.json",
+      "derivation_sha256": "4fdd624270fc19fe29e1181e59eea343255e87d033f9641a07025fb2705ab8d0"
+    },
+    "frozen_native_progress": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "command": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+      "command_status_at_checkpoint": "finished",
+      "complete_frozen_cli_acceptance_claimed": true,
+      "native_role_stage": "correction29-correction03-b19-cache-20261004-1-role-source-replay-private.json",
+      "native_role_stage_sha256": "55c7ba7810a6de1990ccc6142fddeda03746c39f1d7830631caf95c89f92b602",
+      "role_records": 15825,
+      "validated_raw": 1929,
+      "new_provider_calls": 0,
+      "native_original_target_completion": "correction29-correction03-b19-cache-20261004-1-role-completion-admission-private.json",
+      "native_original_target_completion_sha256": "985d8efec7cfdddc9561d8e2f013ad90b25c6c19e71cd2fadc85b71d8c1b78b1",
+      "original_targets": 49227,
+      "unaccounted_targets": 0,
+      "response_completion_asserts_identity": false,
+      "ledger_unchanged": true
+    },
+    "latest_readonly_daily_availability": {
+      "receipt": "correction29-correction03-current-b19-wait-availability-20261004-6-availability-private.json",
+      "receipt_sha256": "279a4c76554d7f997d6b923b679e50c7c0bae8ad58edd9c020195442d7b45ec2",
+      "observed_at": "2026-10-04T04:24:56.995526+00:00",
+      "runtime_state": "running_verified",
+      "runtime_directory": "production-pixiv-a2-stable-562bc18",
+      "worker_pid": 51064,
+      "active_jobs": 0,
+      "new_candidate_deployed": false,
+      "new_candidate_acceptance_claimed": false
+    },
+    "frozen_role_checkpoint_recovery": {
+      "original_failure_log": "correction03-frozen-role-progress-state-checkpoint-20261004-1.log",
+      "original_failure_log_sha256": "a3e3caf25d4ce4b0d26215e1b0d07c3e7bf0ee9b4a016d194d8d37b182f62b62",
+      "failure_kind": "absolute_local_runtime_path_in_public_projection_rejected",
+      "rejected_state": "correction03-frozen-role-checkpoint-rejected-state-20261004-1-private.json",
+      "rejected_state_sha256": "07cf3f5187b75c5308527e7d079d7c8db0ae44c0dc265914af4388ddb815af68",
+      "rejected_summary": "correction03-frozen-role-checkpoint-rejected-summary-20261004-1-private.json",
+      "rejected_summary_sha256": "779c005e75ab742fd08b5a4d296ff0e494ec3237faadfd820254f20b4b64d3ac",
+      "correction": "Public projection retains runtime directory basename; complete observed path remains in private original receipt.",
+      "native_business_source_or_production_mutated": false,
+      "original_failure_preserved": true
+    },
+    "frozen_work_source_replay": {
+      "business_candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "adjudication": "correction29-correction03-b19-cache-20261004-1-work-adjudication-private.json",
+      "adjudication_sha256": "dd883c2df24b6faca0bd40620c0028b1adfa3f4b0d58bf5bbf91578eda5b7089",
+      "source_replay": "correction29-correction03-b19-cache-20261004-1-work-source-replay-private.json",
+      "source_replay_sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+      "selected_pairs": 9070,
+      "valid_judgments": 9070,
+      "verified_sources": 9070,
+      "errors": 0,
+      "missing_answers": 0,
+      "new_provider_calls": 0,
+      "ledger_sha256_unchanged": true,
+      "actual_frozen_cli_exit_observed": false,
+      "full_graph_or_copy_acceptance_claimed": false
+    },
+    "frozen_remaining_admission": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "receipt": "correction29-correction03-b19-cache-20261004-1-remaining-correction-admission-private.json",
+      "receipt_sha256": "7cd48f8abf26cc2ce5923981f9e8d3358e69b933df5c278e00a0439bc5168bf4",
+      "selected_pairs": 22538,
+      "compatible_reuse": 22538,
+      "missing_inputs": 0,
+      "new_call_ceiling": 0,
+      "reserve_ceiling_microusd": 0,
+      "ledger_unchanged": true,
+      "actual_cache_and_original_source_replay_pending": false,
+      "full_cli_graph_copy_or_production_acceptance_claimed": false
+    },
+    "historical_b18_complete_graph_failure": {
+      "command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
+      "status": "failed_at_exact_work_cached_attempt_binding",
+      "failure": {
+        "command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
+        "log": "correction29-correction03-b18-cache-20261004-1.log",
+        "actual_exit_code": 1,
+        "error": "adjudication_cached_response_attempt_not_unique",
+        "ledger_unchanged": true,
+        "new_provider_calls": 0,
+        "database_accessed": false,
+        "role_sources_verified_records": 15825,
+        "original_target_accounting_unaccounted": 0,
+        "original_31608_pair_sources_verified": true
+      },
+      "original_current_replay": "correction03-current-replay-20261004-5-receipt-private.json",
+      "original_current_replay_status": "B18_all_original_sources_and_current_view_passed_one_legal_original_target_pending",
+      "identified_business_fixes_before_concentrated_B19_validation": [
+        "live_ledger_and_raw_revalidation_on_in_memory_cache_hit",
+        "retained_unrelated_malformed_raw_cannot_block_an_independent_legal_target",
+        "separate_original_paid_pair_question_from_current_role_source_authority"
+      ],
+      "initial_original_target_plan": "correction03-remaining-plan-20261004-1-plan-private.json",
+      "preservation_receipt": "correction03-before-current-graph-identity-alignment-20261004-private.json",
+      "preservation_receipt_sha256": "3f123a5e04ab6b93012feee61285bf27644001837024be538cb84838d8e7e943"
+    },
+    "current_complete_graph_acceptance_claimed": false,
+    "current_semantic_source_gate_passed": false,
+    "actual_complete_frozen_pair_source_replay": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "adjudication": "correction29-correction03-b19-cache-20261004-1-adjudication-private.json",
+      "adjudication_sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758",
+      "judgments": "correction29-correction03-b19-cache-20261004-1-judgments-private.json",
+      "judgments_sha256": "7148e4d2afa7aa40882f69a4d21c59421872e70448a29390fcd446f8acc8a4f7",
+      "selected_pair_count": 31608,
+      "judgment_count": 31608,
+      "cache_hits": 31608,
+      "errors": 0,
+      "missing": 0,
+      "new_provider_calls": 0,
+      "cache_writes": 0,
+      "source_proofs": {
+        "work": {
+          "file": "correction29-correction03-b19-cache-20261004-1-work-source-replay-private.json",
+          "sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+          "actual_source_count": 9070
+        },
+        "remaining": {
+          "file": "correction29-correction03-b19-cache-20261004-1-remaining-source-replay-private.json",
+          "sha256": "9eb062c09fefc215e7d21f94bdc44e9b0b581d1dafec7733d819e81c676e47e2",
+          "actual_source_count": 22538
+        }
+      },
+      "ledger_sha256": "93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d",
+      "ledger_unchanged": true,
+      "complete_native_cli_acceptance_claimed": true,
+      "current_product_acceptance_claimed": false
+    },
+    "actual_complete_frozen_native_graph": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "actual_exit_code": 0,
+      "finished_at": "2026-10-04T03:21:22.505885+00:00",
+      "files": {
+        "command-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+          "sha256": "2da3b2182a9b8aff21a3776d47fb0de79ae602ee6ef0d694577470e75637d4cf"
+        },
+        "cluster-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-cluster-private.json",
+          "sha256": "d2d5dc385e95ba02941f5a0651c16feb35da0060e4eb62d354e8f285b4563007"
+        },
+        "semantic-manifest-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-semantic-manifest-private.json",
+          "sha256": "c2d47f34482534b2d466d0c9f8e625020a326ae1c5336e1e4a55f73ff3c94888"
+        },
+        "approved-run-input-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-approved-run-input-private.json",
+          "sha256": "01ad66bf06bfb706ef5c4dc55321eb5d48800a596148936654f81b3c80e42deb"
+        }
+      },
+      "signal_count": 100285,
+      "edge_count": 626775,
+      "concept_count": 17497,
+      "selected_pair_count": 31608,
+      "judgment_count": 31608,
+      "native_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+      "native_business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+      "approved_run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
+      "approved_product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+      "ledger_unchanged": true,
+      "new_provider_calls": 0,
+      "database_activity": 0,
+      "independent_stdlib_replay_pending": false,
+      "copy_product_acceptance_claimed": false
+    },
+    "native_graph_checkpoint_projection_recovery": {
+      "original_failed_log": "correction03-complete-native-graph-state-checkpoint-20261004-1.log",
+      "failure_kind": "handoff_line_count_out_of_range_116",
+      "original_failed_projections": [
+        {
+          "file": "correction03-complete-native-graph-rejected-projection-20261004-1-state.txt",
+          "bytes": 275370,
+          "sha256": "101239724dfaa302b4d5dc583abfff94691ae089f12b8ea21e36c385217de6cf"
+        },
+        {
+          "file": "correction03-complete-native-graph-rejected-projection-20261004-1-summary.txt",
+          "bytes": 91741,
+          "sha256": "fd82911d704c00cb73c72d48475d0a17043ef9f88f6d36cb0ddd9e026dc7eebc"
+        },
+        {
+          "file": "correction03-complete-native-graph-rejected-projection-20261004-1-handoff.txt",
+          "bytes": 37769,
+          "sha256": "4a800b0efbab0c069202ed88bef2550cab38fa76396c81c74eb69e8118954af5"
+        }
+      ],
+      "correction": "Combined two adjacent actual checkpoints without dropping their facts.",
+      "native_business_source_changed": false
+    },
+    "latest_actual_fresh_copy_restore": {
+      "backup": "correction29-correction03-source-copy-20261004-1-private.json",
+      "backup_sha256": "1b9ed327fc8ce69bf0a199893072ce3281ca0cbab3207a84c72e08da347727de",
+      "restore": "correction29-correction03-source-copy-20261004-1-restore-private.json",
+      "restore_sha256": "2e2b6f75c955e48c65e713c6181a06334e65bbccae33a73929068bb92c2ef3b0",
+      "tables_verified": 61,
+      "dump_bytes": 463686633,
+      "dump_sha256": "b4b3e97213353d03cc641966d5f19abfed35908414aa4248578eec3b8c56052d",
+      "production_writes": 0,
+      "complete_copy_lifecycle_claimed": false
+    },
+    "latest_actual_remote_snapshot": {
+      "file": "correction29-correction03-current-copy-remote-20261004-1-remote-private.json",
+      "sha256": "0a58290719ca795b016045b8113a41ac637636269ab14aaa927e748e6e8c80a6",
+      "observed_at": "2026-10-04T03:27:24.963175+00:00",
+      "threads": 116,
+      "new_threads_since_this_task_opening": 0,
+      "all_original_comment_bodies_unchanged": true,
+      "reviewers_triggered": false,
+      "threads_resolved": 0,
+      "origin_main": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
+      "origin_branch_head": "dca84bbeb6543f18f5440217d54facdfc7d0f839"
+    },
+    "actual_complete_frozen_native_semantic_stdlib_replay": {
+      "receipt": "correction03-frozen-native-semantic-stdlib-replay-20261004-1-private.json",
+      "receipt_sha256": "80c42626b53f340d3ad5c47c3b0477e255242e1f7151ae8a1e2b2e2912492a0e",
+      "coordinator": "correction03-frozen-offline-source-continuation-20261004-1-private.json",
+      "coordinator_sha256": "c7f946e66ffe0655d38cd683a56898e9dc9765853ff1ca23af6ffb1d5c03e077",
+      "actual_exit_code": 0,
+      "finished_at": "2026-10-04T04:33:31.497512+00:00",
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "signal_count": 100285,
+      "role_records": 15825,
+      "selected_judgment_count": 31608,
+      "native_source_modules": 23,
+      "native_bodies_unchanged": true,
+      "all_native_sources_match_frozen_git_blobs": true,
+      "complete_business_graph_matches": true,
+      "business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+      "resolver_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+      "actual_read_dependencies": 71538,
+      "actual_read_dependency_bytes": 733983592,
+      "new_provider_calls": 0,
+      "network_calls": 0,
+      "database_executed": false,
+      "ledger_unchanged": true,
+      "whole_current_product_copy_or_production_acceptance_claimed": false,
+      "final_package_replay_still_required": true
+    },
+    "actual_current_copy_core_lifecycle": {
+      "lifecycle_receipt": "correction29-copy-923bf33-correction03-1-lifecycle-private.json",
+      "receipt_sha256_at_checkpoint": "03e4a99b383597f1f49b1f5a75b13061418bb2ef383c512a1b50c7f27adf65ae",
+      "receipt_still_running": true,
+      "native_five_operations_verified": true,
+      "approved_full_projection_verified": true,
+      "full_projection": "correction29-copy-923bf33-correction03-1-final-projection-private.json",
+      "full_projection_sha256": "d45e27282d77919897febc301b8bf18dd3dd44420c20a668d48b0c85b7c230ed",
+      "actual_valid_supports": 66391,
+      "daily_B5_valid_supports": 66392,
+      "source_difference": "correction03-live-b5-b19-support-difference-20261004-1-private.json",
+      "source_difference_sha256": "0003af0df394ef76237a00755c7e1faeef4e4470cb3f11eaeb44c59967977689",
+      "source_explanation": "correction03-live-b5-b19-support-source-explanation-20261004-1-private.json",
+      "source_explanation_sha256": "53e228825e5ca8c77acbc0357056162efc955e57c8e914717bd758929c845f54",
+      "removed_source_supports": [
+        {
+          "source_key": [
+            "production_pixiv:pixiv_tag_observation:v2:8f0adb165bd305b05a31e4f0391049b6",
+            "pixiv_tag_observation",
+            11714,
+            13358,
+            1
+          ],
+          "count": 1
+        }
+      ],
+      "retargeted_supports": 3266,
+      "owned_recovery_and_complete_quality_acceptance_pending": true,
+      "production_acceptance_claimed": false
+    },
+    "actual_completed_isolated_owned_recovery": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "receipt": "correction29-copy-923bf33-correction03-owned-recovery-1-private.json",
+      "receipt_sha256": "1b1953a22886a8677099bca729a96ff4517d74c4a7ce3c063a3d0f56dcbea483",
+      "status": "finished",
+      "actual_lifecycle_process_exit_code": 0,
+      "lifecycle": "correction29-copy-923bf33-correction03-1-lifecycle-private.json",
+      "lifecycle_sha256": "188bf24d6b563645fd35f613c0ff2d342e83d6f30eb08c5377129475cee4615a",
+      "owned_previous_baseline": "44db0da",
+      "whole_original_database_restored": false,
+      "current_candidate_restored": true,
+      "all_17_tables_and_independent_support_preserved": true,
+      "historical_projection_recomputed_from_all_owned_rows": true,
+      "final_current_projection_matches_git_protected_expectation": true,
+      "original_production_written": false,
+      "batch_source_quality_browser_and_full_contract_still_pending": true
+    },
+    "actual_completed_full_copy_sequence": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "receipt": "correction29-copy-923bf33-correction03-1-sequence-private.json",
+      "receipt_sha256": "937ef1bb1af88299d32f23e83066bc9acbf614029b9c49e8f53766089258f1d1",
+      "status": "finished",
+      "actual_six_stage_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "recovery": "correction29-copy-923bf33-correction03-1-recovery-private.json",
+      "recovery_sha256": "7e2d981f8892c6e8c27fc9449414ec54ca35375432f5051252ac82be74b0a35e",
+      "batch": "correction29-copy-923bf33-correction03-1-batch-equivalence-private.json",
+      "batch_sha256": "b6ee0f9dc754d2bc8555bc21f8c6f8bf8b277422d4d9255a37204f8c261ba9f2",
+      "aggregate_count": 8565,
+      "judgments_count": 31608,
+      "all_batch_business_checks_passed": true,
+      "source_update_delete_outer_rollback_passed": true,
+      "source": "correction29-copy-923bf33-correction03-1-source-private.json",
+      "source_sha256": "f965682e4107cfb3cc4c42003da2f41edb25bee527499fae6f3b74459b18505e",
+      "original_production_written": false,
+      "actual_current_quality_edge_workload_and_15_preproduction_gates_pending": true
+    },
+    "actual_isolated_quality_startup_recovery": {
+      "observed_failed_attempts": [
+        {
+          "receipt": "correction29-copy-923bf33-correction03-1-surfaces-coordinator-private.json",
+          "receipt_sha256": "445f6c933e4161a65bac8ac02b42f33d9785b6ede421802e3ab3e59e71fde21f",
+          "startup_log": "correction29-copy-923bf33-correction03-1-surfaces-controlled-server.log",
+          "startup_log_sha256": "167fa3c8da317c1bda376aee3dcc56938d5b1073a459029fc82193845871b238"
+        },
+        {
+          "receipt": "correction29-copy-923bf33-correction03-1-surfaces-2-coordinator-private.json",
+          "receipt_sha256": "ec89d93990a21611dc70691f374a7f0c33be1f04c13eeea39e2dfeffd0c29dc7",
+          "startup_log": "correction29-copy-923bf33-correction03-1-surfaces-2-controlled-server.log",
+          "startup_log_sha256": "8260f2d5ef0b302836651c516f4edc6492510deb25d3a5560b4a902d5e7af169"
+        }
+      ],
+      "all_failures_retained": true,
+      "business_candidate_changed": false,
+      "root_causes": [
+        "SessionLocal imported by value before module initialization.",
+        "Native explicit connect options override environmental PGOPTIONS."
+      ],
+      "bounded_same_pattern_audit": "Only the correction03 task copy-server helper matched the init_engine plus imported SessionLocal pattern.",
+      "repair": "Use the initialized module factory and explicitly enforce readonly on every native engine connection.",
+      "repaired_server": "correction03_copy_server_20261004_3.py",
+      "repaired_server_sha256": "e38190c74e758be7c8319e62c8815545f44e414a6858c6cd9f6c6452d542fc99",
+      "actual_real_api_identity_exit_code": 0,
+      "actual_readonly_launch": "correction29-copy-923bf33-correction03-1-surfaces-3-controlled-server-launch-private.json",
+      "actual_readonly_launch_sha256": "d3035a0347db71d50a9d1b19164cc866fa707dc3c70aceca4634242a5fc9d290",
+      "current_quality_surface_label": "correction29-copy-923bf33-correction03-1-surfaces-3",
+      "current_continuation": "correction03-frozen-copy-qa-recovery-20261004-2-private.json",
+      "actual_quality_workload_browser_and_15_gates_pending": true,
+      "production_written": false
+    },
+    "observed_current_quality_gap": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "quality_receipt": "correction29-copy-923bf33-correction03-1-surfaces-3-quality-private.json",
+      "quality_receipt_sha256": "85560055eeeb4ec622b36fc6e8b7c50b255582c495bd4ddec87202e97c16b615",
+      "actual_case_count": 69,
+      "failed_cases": 1,
+      "case_names": [
+        "genshinimpact",
+        "原神"
+      ],
+      "identity_pass": true,
+      "missing_recall_media_ids": [
+        [
+          13358
+        ],
+        []
+      ],
+      "native_source_diagnostic": "correction03-recall-original-source-diagnostic-20261004-1-private.json",
+      "native_source_diagnostic_sha256": "59e01bab0824d5369ddf8698ce24ab6deeb9fd6d0059bf0b0a2a7cc42868f1a1",
+      "outside_original_input_answer_remains_rejected": true,
+      "already_answered_target_not_requestioned": true,
+      "production_apply_barred": true,
+      "independent_surface_work_continues": true
+    },
+    "observed_complete_core_transport_size": {
+      "receipt": "correction03-complete-core-joined-source-size-probe-20261004-1-private.json",
+      "receipt_sha256": "d4928acde6c436edd836b29877a4794d108beda1a85819408844a420ffb06ad7",
+      "archive": "correction03-complete-core-joined-source-size-probe-20261004-1.zip",
+      "archive_bytes": 121696347,
+      "archive_sha256": "e274481051397fca50d7a4132e6481fbcf72c30fe066a92ad1ae37d41f76e335",
+      "limit_bytes": 100000000,
+      "original_files": 72383,
+      "original_bytes": 15632240430,
+      "all_original_byte_sha_after_standard_zip_passed": true,
+      "final_review_package": false,
+      "additional_final_results_still_pending": true
+    },
+    "actual_independent_copy_surfaces": {
+      "receipt": "correction29-copy-923bf33-correction03-1-surfaces-3-surfaces-private.json",
+      "receipt_sha256": "92758aa7626e65bc60afd6b3ee87c8f96abb66620b33583840ab6d4323636b0c",
+      "actual_stage_exit_codes": {
+        "quality": 1,
+        "creator-homonym": 0,
+        "suggestion": 0,
+        "holdouts": 1,
+        "workload": 0,
+        "browser": 0
+      },
+      "combined_case_count": 80,
+      "failed_quality_cases": 1,
+      "http_queries": 240,
+      "source_measurements": 720,
+      "http_latency_ms": {
+        "p50_ms": 1136.925,
+        "p95_ms": 1812.563,
+        "max_ms": 3725.764
+      },
+      "source_layer_latency_ms": {
+        "p50_ms": 441.701,
+        "p95_ms": 526.759,
+        "max_ms": 1281.705
+      },
+      "actual_browser_passed": true,
+      "actual_browser_receipt": "correction29-copy-923bf33-correction03-1-surfaces-3-browser-private.json",
+      "actual_browser_receipt_sha256": "1f8f4c6bc059715efff581f601727764e06ab59b18e5106962b2cf7f36d4256a",
+      "holdout_post_identity_parameter_failure_preserved": true,
+      "all_preproduction_gates_passed": false,
+      "production_apply_barred": true,
+      "additional_holdout_recovery": {
+        "receipt": "correction29-copy-923bf33-correction03-holdout-recovery-1-holdouts-private.json",
+        "receipt_sha256": "ac8b7b4e7b76141c0ee849d878b3f70d7759f367e4ace2b12150cac41260e65d",
+        "coordinator": "correction29-copy-923bf33-correction03-holdout-recovery-1-coordinator-private.json",
+        "coordinator_sha256": "e0562e4fc7287af360a300ae22d45265fe09d55d50706bad79d90ec63dda7fb7",
+        "actual_exit_code": 0,
+        "actual_cases": 3,
+        "failed_cases": 0,
+        "owned_test_server_stopped": true,
+        "original_failed_driver_and_log_retained": true,
+        "quality_failure_not_relabelled": true
+      }
+    },
+    "bounded_prefix_keyword_draft": {
+      "receipt": "correction03-context-unknown-full-input-probe-20261004-4-private.json",
+      "receipt_sha256": "ac1ee7af675af97e59de424dce9893eacac68ccd24ca221179dd64e1d942073f",
+      "full_input_signals": 100285,
+      "changed_signals": 1,
+      "original_first_answers_unchanged": true,
+      "typed_identity_roles_unchanged": true,
+      "work_contexts_unchanged": true,
+      "identity_qualification_and_semantic_correction_preconditions_unchanged": true,
+      "new_identity_equivalence_authorized": false,
+      "business_source_changed": false,
+      "formal_candidate_acceptance_claimed": false,
+      "draft_tests_passed": 10,
+      "draft_junit": "correction03-prefix-observation-draft-tests-20261004-2.xml",
+      "draft_junit_sha256": "595f65e87d3b1ccfae90a90f7293a71e8baf11c1ac38253ea26287ad23213371",
+      "overbroad_drafts_retained_and_not_adopted": true
+    },
+    "prefix_keyword_isolated_preparation": {
+      "source_receipt": "correction03-prefix-isolated-source-20261004-1-private.json",
+      "source_receipt_sha256": "c83dcddb580870660dc451bf4be7f59c92a32316553228e44d2c3843e3da3a79",
+      "source_root_bound_in_private_receipt": true,
+      "reference_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "actual_native_development_tests_passed": 10,
+      "junit": "correction03-prefix-isolated-native-tests-20261004-1.xml",
+      "junit_sha256": "f4de356fac234ff49d8fa2ba390bc8e191b0fc6188906853a6d463d31ee16029",
+      "full_graph_command": "correction29-correction03-prefix-preparation-20261004-1-command-private.json",
+      "graph_command_receipt_written": true,
+      "graph_initial_cache_identity_preflight_pending": false,
+      "is_frozen_acceptance": false,
+      "main_frozen_source_unchanged": true,
+      "production_entry_unchanged": true,
+      "fresh_independent_snapshot": {
+        "backup": "correction29-correction03-prefix-oracle-20261004-1-private.json",
+        "backup_sha256": "a114872853c4ebac83c242ae19fe5e2de20ad6c747ddb932c36cc11f6f47feed",
+        "restore": "correction29-correction03-prefix-oracle-20261004-1-restore-private.json",
+        "restore_sha256": "26d3a83387baec8dd835cf5bef4643a7f8550e08fbbd3a4e3ce584a194a0a275",
+        "restore_passed": true,
+        "full_table_count": 61,
+        "snapshot_bytes": 463686633,
+        "production_writes": 0,
+        "formal_candidate_acceptance_claimed": false,
+        "all_table_row_counts_and_sha_matched": true
+      },
+      "conditional_isolated_continuations": {
+        "freeze_and_exact_validation": "correction03-prefix-freeze-validation-continuation-20261004-2-private.json",
+        "freeze_and_exact_validation_driver_sha256": "6d49ee989e1d851a54894699afa024f60501829367229475d03773c7f079b225",
+        "fresh_copy_and_native_gates": "correction03-b20-frozen-copy-continuation-20261004-1-private.json",
+        "fresh_copy_and_native_gates_driver_sha256": "edd70cd952bac6efe7c77bd382314fe2e7ed5cce69ba354e859dec490ae8416a",
+        "production_writes": 0,
+        "desktop_interaction": false,
+        "remote_push": false,
+        "prior_B19_failed_contract_preserved": true,
+        "formal_new_candidate_acceptance_pending": true,
+        "original_waiter_stopped_before_any_dependent_stage": true,
+        "waiting_driver_recovery": "correction03-prefix-waiter-owned-replacement-20261004-1-private.json",
+        "waiting_driver_recovery_sha256": "deb5539493fe9cd42463e7eca8de79f784dd6bcf8a9fc9ecc122ef1cb0f6bccf",
+        "prior_actual_owned_waiter_exit_code": -1,
+        "exact_source_and_stdlib_replay": "correction03-b20-frozen-offline-source-continuation-20261004-1-private.json",
+        "conditional_backup_and_fixed_release_preparation": "correction03-b20-release-preparation-continuation-20261004-1-private.json",
+        "production_stop_or_apply_queued": false,
+        "formal_full_test_manifest_reduced": false
+      },
+      "remaining_current_input_admission": {
+        "receipt": "correction29-correction03-prefix-preparation-20261004-1-remaining-correction-admission-private.json",
+        "receipt_sha256": "7cd48f8abf26cc2ce5923981f9e8d3358e69b933df5c278e00a0439bc5168bf4",
+        "selected_pairs": 22538,
+        "missing_distinct_inputs": 0,
+        "dispatchable_call_ceiling": 0,
+        "new_provider_calls": 0,
+        "original_response_verification_and_final_graph_still_pending": true
+      },
+      "full_graph_preparation_result": {
+        "command": "correction29-correction03-prefix-preparation-20261004-1-command-private.json",
+        "command_sha256": "8da9d573f10c50b93e6d274786471eeb1ce9f4f671aa00f46843068fd1098f0c",
+        "actual_exit_code": 0,
+        "full_input_signals": 100285,
+        "selected_pairs": 31608,
+        "new_provider_calls": 0,
+        "socket_connections": 0,
+        "ledger_unchanged": true,
+        "original_cache_unchanged": true,
+        "independent_projection_pending": true,
+        "is_frozen_acceptance": false
+      }
+    },
+    "completed_current_copy_contract": {
+      "continuation": "correction03-frozen-copy-qa-recovery-20261004-2-private.json",
+      "continuation_sha256": "921bcaed1d01813023d1dcb77546a329c21fbff222b1efe864b5f24ffb1e1536",
+      "contract": "correction29-copy-923bf33-correction03-1-contract-private.json",
+      "contract_sha256": "5470d32e52356f7799e90945fde6142c41c10256a2a544f50d4fc2147f2994fa",
+      "native_gate_count": 18,
+      "native_passed": 14,
+      "native_failed": 4,
+      "preproduction_gate_count": 15,
+      "preproduction_passed": 14,
+      "actual_preproduction_gate_statuses": [
+        {
+          "name": "current_candidate_behavior",
+          "status": "passed"
+        },
+        {
+          "name": "backup_restore",
+          "status": "passed"
+        },
+        {
+          "name": "independent_t0",
+          "status": "passed"
+        },
+        {
+          "name": "fixed_mapping_and_complete_accounting",
+          "status": "passed"
+        },
+        {
+          "name": "metadata_attempts_scope_and_historical_exception",
+          "status": "passed"
+        },
+        {
+          "name": "forward_metadata_spacing",
+          "status": "passed"
+        },
+        {
+          "name": "rederived_original_budget_and_settlement",
+          "status": "passed"
+        },
+        {
+          "name": "selected_judgment_source_receipts",
+          "status": "passed"
+        },
+        {
+          "name": "current_semantic_input_readmission",
+          "status": "passed"
+        },
+        {
+          "name": "full_copy_recovery",
+          "status": "passed"
+        },
+        {
+          "name": "independent_quality",
+          "status": "failed"
+        },
+        {
+          "name": "current_live_identity_and_precision",
+          "status": "passed"
+        },
+        {
+          "name": "current_real_browser",
+          "status": "passed"
+        },
+        {
+          "name": "query_level_performance",
+          "status": "passed"
+        },
+        {
+          "name": "exact_candidate_validation",
+          "status": "passed"
+        }
+      ],
+      "remaining_preproduction_failure": "independent_quality",
+      "original_production_gates_pending": true,
+      "production_mode": false,
+      "failed_release_waiter": "correction03-release-preparation-continuation-20261004-4-private.json",
+      "failed_release_waiter_sha256": "d9ed4b587d9c720ee2e7c0ade462e1506632c32557e1d6899978d0fd4a57a847",
+      "production_writes": 0,
+      "service_stop_or_cutover_queued": false
+    },
+    "prefix_keyword_recall_implementation": {
+      "status": "development_passed_freezing",
+      "previous_business_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "semantic_source_sha256": "39623895907c4bbce535ab544419c3a997b260f13b6fc446dc2a0edc5b716d05",
+      "test_file": "tests/test_production_pixiv_prefix_keyword_recall.py",
+      "scope": "Native deterministic popularity prefix observed in its original aggregate, with the same literal already an active legal work name.",
+      "new_identity_or_work_context_authorized": false,
+      "first_answer_changed": false,
+      "business_name_or_media_id_hardcode_added": false,
+      "new_provider_calls": 0,
+      "prior_copy_contract": "correction29-copy-923bf33-correction03-1-contract-private.json",
+      "prior_failed_quality_preserved": true,
+      "formal_frozen_runtime_acceptance_pending": true,
+      "independent_input_preparation": {
+        "continuation": "correction03-prefix-projection-preparation-continuation-20261004-1-private.json",
+        "continuation_sha256": "5fe0a8ca6621fa90eb4ac61b220426229db3f30b52eb96486e6d17628753d6e5",
+        "approved_run": "correction29-correction03-prefix-preparation-20261004-1-approved-run-input-private.json",
+        "approved_projection": "correction29-correction03-prefix-projection-preparation-20261004-1-approved-projection-input-private.json",
+        "outer_transaction_rolled_back": true,
+        "frozen_acceptance_claimed": false
+      },
+      "registration_development_label": "correction03-prefix-registration-development-20261004-1",
+      "registration_development_passed": 72,
+      "registration_development_failed": 0,
+      "registration_development_skipped": 0
+    },
+    "historical_B19_source_gate_snapshot": {
+      "current_source_gate_passed": true,
+      "current_semantic_source_gate_passed": true,
+      "current_complete_graph_acceptance_claimed": true,
+      "actual_complete_frozen_native_graph": {
+        "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+        "actual_exit_code": 0,
+        "finished_at": "2026-10-04T03:21:22.505885+00:00",
+        "files": {
+          "command-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+            "sha256": "2da3b2182a9b8aff21a3776d47fb0de79ae602ee6ef0d694577470e75637d4cf"
+          },
+          "cluster-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-cluster-private.json",
+            "sha256": "d2d5dc385e95ba02941f5a0651c16feb35da0060e4eb62d354e8f285b4563007"
+          },
+          "semantic-manifest-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-semantic-manifest-private.json",
+            "sha256": "c2d47f34482534b2d466d0c9f8e625020a326ae1c5336e1e4a55f73ff3c94888"
+          },
+          "approved-run-input-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-approved-run-input-private.json",
+            "sha256": "01ad66bf06bfb706ef5c4dc55321eb5d48800a596148936654f81b3c80e42deb"
+          }
+        },
+        "signal_count": 100285,
+        "edge_count": 626775,
+        "concept_count": 17497,
+        "selected_pair_count": 31608,
+        "judgment_count": 31608,
+        "native_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+        "native_business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+        "approved_run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
+        "approved_product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+        "ledger_unchanged": true,
+        "new_provider_calls": 0,
+        "database_activity": 0,
+        "independent_stdlib_replay_pending": false,
+        "copy_product_acceptance_claimed": false
+      },
+      "actual_complete_frozen_pair_source_replay": {
+        "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+        "adjudication": "correction29-correction03-b19-cache-20261004-1-adjudication-private.json",
+        "adjudication_sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758",
+        "judgments": "correction29-correction03-b19-cache-20261004-1-judgments-private.json",
+        "judgments_sha256": "7148e4d2afa7aa40882f69a4d21c59421872e70448a29390fcd446f8acc8a4f7",
+        "selected_pair_count": 31608,
+        "judgment_count": 31608,
+        "cache_hits": 31608,
+        "errors": 0,
+        "missing": 0,
+        "new_provider_calls": 0,
+        "cache_writes": 0,
+        "source_proofs": {
+          "work": {
+            "file": "correction29-correction03-b19-cache-20261004-1-work-source-replay-private.json",
+            "sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+            "actual_source_count": 9070
+          },
+          "remaining": {
+            "file": "correction29-correction03-b19-cache-20261004-1-remaining-source-replay-private.json",
+            "sha256": "9eb062c09fefc215e7d21f94bdc44e9b0b581d1dafec7733d819e81c676e47e2",
+            "actual_source_count": 22538
+          }
+        },
+        "ledger_sha256": "93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d",
+        "ledger_unchanged": true,
+        "complete_native_cli_acceptance_claimed": true,
+        "current_product_acceptance_claimed": false
+      },
+      "actual_complete_frozen_native_semantic_stdlib_replay": {
+        "receipt": "correction03-frozen-native-semantic-stdlib-replay-20261004-1-private.json",
+        "receipt_sha256": "80c42626b53f340d3ad5c47c3b0477e255242e1f7151ae8a1e2b2e2912492a0e",
+        "coordinator": "correction03-frozen-offline-source-continuation-20261004-1-private.json",
+        "coordinator_sha256": "c7f946e66ffe0655d38cd683a56898e9dc9765853ff1ca23af6ffb1d5c03e077",
+        "actual_exit_code": 0,
+        "finished_at": "2026-10-04T04:33:31.497512+00:00",
+        "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+        "signal_count": 100285,
+        "role_records": 15825,
+        "selected_judgment_count": 31608,
+        "native_source_modules": 23,
+        "native_bodies_unchanged": true,
+        "all_native_sources_match_frozen_git_blobs": true,
+        "complete_business_graph_matches": true,
+        "business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+        "resolver_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+        "actual_read_dependencies": 71538,
+        "actual_read_dependency_bytes": 733983592,
+        "new_provider_calls": 0,
+        "network_calls": 0,
+        "database_executed": false,
+        "ledger_unchanged": true,
+        "whole_current_product_copy_or_production_acceptance_claimed": false,
+        "final_package_replay_still_required": true
+      }
+    },
+    "historical_B19_formal_progress": {
+      "sequence": "correction29-correction03-b19-affected-20261004-1-sequence-private.json",
+      "actual_stages": {
+        "focused": {
+          "passed": 1218,
+          "failed": 0,
+          "skipped": 3,
+          "errors": 0
+        },
+        "postgresql": {
+          "passed": 142,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0
+        },
+        "historical": {
+          "passed": 88,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0
+        }
+      },
+      "status": "finished"
     }
   }
 }

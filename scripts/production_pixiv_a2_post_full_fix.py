@@ -28,6 +28,7 @@ LITERAL_QUERY_BEFORE_SHA256 = 'fc2b7f14691c5a536661aed9615971f116b9a9784840d85bd
 LITERAL_QUERY_AFTER_SHA256 = '2af2abadb0a6d9671c4f8a3d6b8acfdae756b9889f665fe2884777799b75b34f'
 RELEASE_GATE_SOURCE_DELTAS = {'backend/app/services/production_pixiv_role_extraction.py': {'before_sha256': '286f861a58842384ce5b862fd67fc988c703ad3fbaaf73efc6a3a2f903ff87ca', 'after_sha256': 'c7fd5bf31279299026b4fc56a9f0fcc8b50c0eeed54dd1d41aff923c5babc61a'}, 'scripts/production_pixiv_budget_authority.py': {'before_sha256': '2094979b1c6e1427b81513e46128d6f136c660ca205215e7d841ce182a567744', 'after_sha256': '27a20b36948d1cff9ef1c9ef4f9e5e7e109c697f1777212a657e8ed325b9686a'}, 'backend/app/services/source_concept_budget.py': {'before_sha256': '236f32512630b3c5f050eaf394bd3c5215ba8eb97daa5dd915f8273586df1c57', 'after_sha256': 'da798e3fbabad3412528d44f72a2944b8395acb86554a9a0c58bfb9aaf85209d'}, 'backend/app/services/source_concept_resolver_service.py': {'before_sha256': 'b1639c8ee41001799a6bffc7d4a87cdb3b3223e7ac88c25d5145d736041f92e3', 'after_sha256': '04d20cf9fd096c3a5da0957bc1679204a6226dca1f58527ec60326999f7def2f'}, 'backend/app/services/production_pixiv_release_provenance.py': {'before_sha256': '2b73db3e16e7c54e00fccb9744489d70ca558ee5a70f3d26adec8d3cc1aabe10', 'after_sha256': '8cf46e018a7d67fee0ff2d328f1351ae680d18432222d2f891a5e5eff1d46b0b'}, 'scripts/trusted_git.py': {'before_sha256': '3cd8e062d3c897ba2eab8f84da3d6221de79c51f9fda5b1a5a0dd18d449ea4c1', 'after_sha256': '26080c26731ea8a78d76cca7492de61aa73dab2c4aca28039583fcc02dfb9691'}, 'scripts/production_pixiv_a2_evidence.py': {'before_sha256': 'cbbf71fe6594197e4503c30fd8cfc4f269659ce1350a79f2ed1ab84be15b8822', 'after_sha256': '3557e5bc28af2598bcb123c3c45524718959a86754f73deec784f28dc83cbba5'}, 'backend/app/services/production_pixiv_pair_correction.py': {'before_sha256': 'ca118bcded130e1043e9ebd3afe245faf1211e51e29c1731b16990b1c124841f', 'after_sha256': '8f094f52f3778238d4801d8fb39e9afb8bf9adae77db27fe98b5cd7d8a8a4d85'}}
 ALLOWED_FILES = frozenset({
+    'tests/test_production_pixiv_prefix_keyword_recall.py',
     'docs/state/production-pixiv-a2-approved-run.json',
     'scripts/production_pixiv_a2_service_evidence.py',
     'tests/test_production_pixiv_correction_gates.py',
@@ -72,6 +73,7 @@ REPLAY_SOURCE_FILES = frozenset({
     'scripts/run_production_pixiv_a2_product.py', 'scripts/check_python_env.py', 'scripts/trusted_git.py',
 })
 REPLAY_GATE_FILES = frozenset({
+    'tests/test_production_pixiv_prefix_keyword_recall.py',
     'docs/state/production-pixiv-a2-approved-run.json',
     'scripts/production_pixiv_a2_service_evidence.py',
     'backend/app/services/production_pixiv_pair_correction.py',

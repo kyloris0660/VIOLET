@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "6125b867c63b1911e7e0effa566b5984870a0519",
+  "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -918,7 +918,7 @@
   "correction03": {
     "authorization_file": "VIOLET-A2-来源恢复与最终收口执行任务-20261003.md",
     "authorization_sha256": "928faaa4bc04a5f7e021023e4c87341c5da5d44c9eafd3194d96bde89af0bf75",
-    "status": "B19_concentrated_source_frozen_native_validation_pending",
+    "status": "B20_prefix_keyword_frozen_current_native_validation_pending",
     "source_record_scope": 9543,
     "shared_unit_source_contract_authorized": true,
     "original_ledger_failure_rewrite_authorized": false,
@@ -943,15 +943,15 @@
     "native_record_count": 15824,
     "unavailable_direct_records": 15,
     "unavailable_direct_within_approved_scope": 0,
-    "current_source_gate_passed": true,
+    "current_source_gate_passed": false,
     "current_business_implementation_unfrozen": false,
     "source_derivation_receipt": "correction03-derived-20261004-3-receipt-private.json",
-    "current_replay": "correction03-current-replay-20261004-5-receipt-private.json",
-    "current_replay_status": "B18_all_original_sources_and_current_view_passed_one_legal_original_target_pending",
-    "pending_original_target_plan": "correction03-remaining-plan-20261004-1-plan-private.json",
+    "current_replay": "correction29-correction03-b19-cache-20261004-1-role-source-replay-private.json",
+    "current_replay_status": "B19_original_role_sources_and_target_accounting_passed_complete_semantic_graph_running",
+    "pending_original_target_plan": "correction03-original-target-20261004-3-result-private.json",
     "pending_legal_original_targets": 0,
     "new_provider_calls": 3,
-    "registered_source_files": 47,
+    "registered_source_files": 48,
     "development_checks": {
       "label": "correction03-source-test-20261004-17",
       "passed": 115,
@@ -960,7 +960,7 @@
       "previous_idempotence_failure_preserved": "correction03-source-test-20261004-16.log"
     },
     "additional_full_non_e2e_invocations": 0,
-    "business_candidate_head": "6125b867c63b1911e7e0effa566b5984870a0519",
+    "business_candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
     "owned_test_fixture_preservation": "correction03-owned-runtime-fixture-preservation-20261004-private.json",
     "historical_b16_zero_call_replay": "correction03-current-replay-20261004-3-receipt-private.json",
     "b16_focused": {
@@ -976,11 +976,7 @@
       "paid_calls": 0,
       "status": "aborted_before_reservation_unrelated_malformed_historical_raw"
     },
-    "pending_business_fixes": [
-      "live_ledger_and_raw_revalidation_on_in_memory_cache_hit",
-      "retained_unrelated_malformed_raw_cannot_block_an_independent_legal_target",
-      "separate_original_paid_pair_question_from_current_role_source_authority"
-    ],
+    "pending_business_fixes": [],
     "bounded_fixes_development": {
       "label": "correction03-revocation-test-20261004-3",
       "passed": 258,
@@ -1032,10 +1028,13 @@
       "call_count": 18436,
       "unknown_usage_count": 54,
       "reserved_count": 0,
-      "new_actual_paid_usd": 0.001082,
+      "new_actual_paid_usd": 0.001635,
       "ledger_sha256": "93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d",
       "this_task_new_calls": 3,
-      "this_task_added_microusd": 1635
+      "this_task_added_microusd": 1635,
+      "original_target_added_usd": 0.001082,
+      "necessary_downstream_added_usd": 0.000553,
+      "this_task_added_usd": 0.001635
     },
     "original_18433_call_rows_unchanged": true,
     "cached_projection_recovery": {
@@ -1049,8 +1048,8 @@
       "identity_confirmed": false
     },
     "post_paid_original_preservation": "correction03-post-paid-original-preservation-20261004-private.json",
-    "current_complete_graph_command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
-    "current_graph_status": "failed_at_exact_work_cached_attempt_binding",
+    "current_complete_graph_command": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+    "current_graph_status": "B20_exact_frozen_native_source_and_graph_pending",
     "independent_expected_projection_preparation_authorized_in_isolated_copy": true,
     "independent_expected_projection_preparation_claims_product_acceptance": false,
     "fixed_runtime_contract_development": {
@@ -1060,18 +1059,7 @@
       "skipped": 2,
       "production_acceptance_claimed": false
     },
-    "current_graph_failure": {
-      "command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
-      "log": "correction29-correction03-b18-cache-20261004-1.log",
-      "actual_exit_code": 1,
-      "error": "adjudication_cached_response_attempt_not_unique",
-      "ledger_unchanged": true,
-      "new_provider_calls": 0,
-      "database_accessed": false,
-      "role_sources_verified_records": 15825,
-      "original_target_accounting_unaccounted": 0,
-      "original_31608_pair_sources_verified": true
-    },
+    "current_graph_failure": null,
     "concentrated_source_development": {
       "status": "integrated_independent_inputs_prepared_unfrozen",
       "receipt": "correction03-concentrated-development-20261004-private.json",
@@ -1153,7 +1141,25 @@
       "oracle_projection_status": "running",
       "projection_receipt": "correction29-correction03-projection-preparation-20261004-2-receipt-private.json",
       "original_database_accessed_for_projection": false,
-      "outer_transaction_rolled_back": true
+      "outer_transaction_rolled_back": true,
+      "independent_expected_projection_finished": true,
+      "raw_projection": "correction29-correction03-projection-preparation-20261004-2-raw-projection-private.json",
+      "raw_projection_bytes": 7115475815,
+      "raw_projection_sha256": "9d41d9990e2dcc4fbd76e665f1790d18b8fd71a59028c7c1eb6fb2f8912e7dd7",
+      "complete_core_counts": {
+        "resolution_runs": 1,
+        "signals": 100285,
+        "concepts": 17497,
+        "aliases": 21313,
+        "evidence": 65955,
+        "signal_links": 65955,
+        "search_index": 21313
+      },
+      "complete_product_counts": {
+        "clusters": 17497,
+        "candidate_dispositions": 595167,
+        "ambiguity_records": 65978
+      }
     },
     "portable_historical_readers": {
       "status": "actual_three_historical_replays_passed",
@@ -1231,7 +1237,7 @@
       "role_dependency_receipt_sha256": "c531e501b7b9f72f330028bcfd7f387fccfd0454994f703de0687a8079504902",
       "original_role_raw_files": 1931,
       "all_current_role_original_files_retained": true,
-      "status": "complete_role_materialization_and_actual_stdlib_replay_passed_final_package_pending",
+      "status": "preparation_pool_materialization_and_fresh_native_replay_passed_final_closure_and_size_pending",
       "final_package_and_fresh_extract_replays_pending": true,
       "materialized_files": 2624,
       "materialized_bytes": 1078937039,
@@ -1240,19 +1246,482 @@
       "source_pool_size_probe_sha256": "09b32abed10236f54c9b5d9fa5affad37251838219c39bb29ba93449915ad66f",
       "source_pool_probe_bytes": 23733479,
       "actual_fresh_materialized_role_replay": "correction03-fresh-role-atoms-stdlib-replay-20261004-1-private.json",
-      "actual_fresh_materialized_role_replay_sha256": "01012d045432f8982904adf36506cb514a664ef0cf5a5ed683612a1dd62df8df"
+      "actual_fresh_materialized_role_replay_sha256": "01012d045432f8982904adf36506cb514a664ef0cf5a5ed683612a1dd62df8df",
+      "large_original_json_syntax_reader_probe": "correction03-large-json-reader-native-parity-20261004-1-private.json",
+      "large_original_json_syntax_reader_probe_sha256": "463f5040facd178bfe7031718b7ae6272e0fb81d1cbe36d2c0fba119450642db",
+      "large_original_json_syntax_probe_checks": 224,
+      "literal_reference_boundary_checks": 7,
+      "exact_hash_recipe_preparation": {
+        "receipt": "correction29-correction03-native-prepared-projection-20261004-1-hash-recipes-private.json",
+        "receipt_sha256": "c6ddd63b505cb64864abc4fd816ad16cd3983101fa04924d86cb0bc894a9e726",
+        "actual_protected_child_rows": 678642,
+        "both_original_child_hashes_matched": true,
+        "recipes": "correction29-correction03-native-prepared-projection-20261004-1-hash-recipes.jsonl",
+        "recipes_sha256": "395fce35970123b202803a233390be7bc752ac64727a61c335c006b275bb1559",
+        "original_bytes_changed": false,
+        "final_pool_materialization_and_size_pending": true
+      },
+      "preparation_materialized_files": 2644,
+      "preparation_materialized_bytes": 10519014480,
+      "preparation_materialization_log": "correction03-source-projection-atoms-materialize-20261004-1.log",
+      "preparation_materialization_log_sha256": "64857c3e23fb9901c5e885d2ec2e41c32618bbb4ad1dd97eb9d249473e7abb16",
+      "fresh_git_replay_log": "correction03-fresh-source-projection-frozen-git-20261004-2.log",
+      "fresh_git_replay_log_sha256": "27b44fdfb7c04d3d3a0685ca9b9ecf53c92c9890cf22b890e8808ccd76656ae1",
+      "fresh_git_source_paths": 577,
+      "fresh_git_objects": 97,
+      "fresh_native_original_projection_replay": "correction03-source-projection-atoms-materialized-20261004-1/correction03-fresh-source-projection-native-stdlib-replay-20261004-1-private.json",
+      "fresh_native_original_projection_replay_sha256": "4be4cdca6e2d133c4b42644e0285b517692037d8dd931bf5b247f512b029acc3",
+      "actual_fresh_postgresql_browser_or_owner_acceptance_claimed": false,
+      "oversized_preparation_probe": "correction03-source-projection-atoms-size-probe-20261004-1-private.json",
+      "oversized_preparation_probe_sha256": "df8cee902bff7b90da2dcef4c3d05aee4100babcf37ed5536baee717b1aecd7e",
+      "oversized_preparation_probe_bytes": 214739399,
+      "oversized_preparation_probe_preserved": true,
+      "exact_pair_hash_recipe_proof": "correction29-correction03-native-pair-keys-20261004-1-hash-recipes-private.json",
+      "exact_pair_hash_recipe_proof_sha256": "ff3cc98ff66ef01833a9003eeec11ec991f9ffeed3ec904afacf555840f8de04",
+      "exact_pair_hashes_verified": 595167,
+      "hash_atom_pool_materialization_log": "correction03-source-projection-hash-atoms-materialize-20261004-1.log",
+      "hash_atom_pool_materialization_log_sha256": "3c0c4ff22d72a405c3819924536ae1a3662a1a124ff6fc30fbcf299f05782d2d",
+      "hash_atom_pool_original_files": 2644,
+      "hash_atom_pool_original_bytes": 10519014480,
+      "retained_oversize_hash_dictionary_probe": "correction03-source-projection-hash-atoms-size256-probe-20261004-1-private.json",
+      "retained_oversize_hash_dictionary_probe_sha256": "39d0869fda61ef822caa1291c100dcd6f672c067d30f13c70274bc685a60bb07",
+      "retained_oversize_hash_dictionary_probe_bytes": 152348946,
+      "recipe_numeric_boundary_probe": "correction03-recipe-varints-native-functions-probe-20261004-1-private.json",
+      "recipe_numeric_boundary_probe_sha256": "1d0944cc116d7e1b538d4d1a74c39c22a5ff765e4f3e439eab79cd3ff9afd9f3",
+      "new_recipe_block_pool_full_materialization_and_size_pending": true,
+      "actual_complete_recipe_restorations": [
+        {
+          "log": "correction03-source-projection-block-atoms-materialize-20261004-2.log",
+          "log_sha256": "730832821d5f69a22910c0278fad844a5bb54b677e9b0a2ea2cfaf0472033d22",
+          "original_files": 2644,
+          "original_bytes": 10519014480,
+          "all_original_sha_and_bytes_match": true
+        },
+        {
+          "log": "correction03-source-projection-absolute-atoms-materialize-20261004-1.log",
+          "log_sha256": "745120b3c0d598053bfe1091324de74e502adcfc168c3718ccdc1f599669b7df",
+          "original_files": 2644,
+          "original_bytes": 10519014480,
+          "all_original_sha_and_bytes_match": true
+        },
+        {
+          "log": "correction03-source-projection-binary-atoms-materialize-20261004-1.log",
+          "log_sha256": "745120b3c0d598053bfe1091324de74e502adcfc168c3718ccdc1f599669b7df",
+          "original_files": 2644,
+          "original_bytes": 10519014480,
+          "all_original_sha_and_bytes_match": true
+        }
+      ],
+      "retained_oversized_recipe_attempts": [
+        {
+          "receipt": "correction03-source-projection-block-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "9f81ea1a273e21f711d44d8d432e3575b78212ff5fc5590e4af92359fe350a36",
+          "archive_bytes": 218728754,
+          "archive_sha256": "6a28b335140b63dd9cd12f7d7bfc98f9a0a405e40ea4879fd963722d2e53d811",
+          "within_limit": false,
+          "preserved": true
+        },
+        {
+          "receipt": "correction03-source-projection-absolute-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "cc2d8ffeb120914f34a37c7fb10d4cefc0e1344c0f229d55d53bcc93b1c604f3",
+          "archive_bytes": 165137438,
+          "archive_sha256": "79d65f8c0fc0cc7dc709d6a1cbc74a6bb5af3b873ce7e152e4c494146e3db436",
+          "within_limit": false,
+          "preserved": true
+        },
+        {
+          "receipt": "correction03-source-projection-binary-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "4b8ee05a4eb2419f7302ae64070afea6830dcb4d1799193df230e646a62a4902",
+          "archive_bytes": 122223333,
+          "archive_sha256": "d937d35f6152bec6e4eaa1ef4b3c804b0358a4f130971721c17b52c7fa3d94b0",
+          "within_limit": false,
+          "preserved": true
+        },
+        {
+          "receipt": "correction03-source-projection-derived-atoms-size256-probe-20261004-1-private.json",
+          "receipt_sha256": "44a3416e0e87c39640bca4b622bd6b47a2e02365969632496c1da3baa556b839",
+          "archive_bytes": 102764021,
+          "archive_sha256": "50db4f08bf7615edc0e9bb5aa42affd0e75047fc8310897ae831c13ba8517ca8",
+          "within_limit": false,
+          "preserved": true
+        }
+      ],
+      "derived_file_pool_complete_restoration_pending": false,
+      "larger_dictionary_measurement_pending": false,
+      "actual_derived_pool_restoration": {
+        "log": "correction03-source-projection-derived-atoms-materialize-20261004-1.log",
+        "log_sha256": "0d87016ed687d617446a0f9a559d78e0af7e083df38f46d6c16b9c643905f11b",
+        "original_files": 2644,
+        "original_bytes": 10519014480,
+        "all_original_sha_and_bytes_match": true
+      },
+      "actual_512_dictionary_preparation_pool": {
+        "receipt": "correction03-source-projection-derived-atoms-size512-probe-20261004-1-private.json",
+        "receipt_sha256": "32c44421654be0605bccdd792ecf5bae31d70579e036aef7ddb27b89cec683ef",
+        "archive_bytes": 97479675,
+        "archive_sha256": "2f8f9a82b641e9c7013e293f79fe10dcc5ffbe4fbefc1f8ce9023d4c1b4e4765",
+        "standard_decoder_and_crc_passed": true,
+        "final_review_package": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "native_edge_recipe_preparation": {
+        "receipt": "correction29-correction03-native-edge-keys-20261004-2-hash-recipes-private.json",
+        "receipt_sha256": "b35e32c4b95c0f05cfaada67e4e13104644c74af2ef3d5770044d2b0c3c32c2b",
+        "actual_candidate_rows": 595167,
+        "exact_native_edge_keys": 626775,
+        "decoder_probe": "correction03-native-edge-decoder-probe-20261004-1-private.json",
+        "decoder_probe_sha256": "ee1e9a0c9e2e3f4ce06f33ca2dfb9e96973b9695d683f0322b7edca02396b5ad",
+        "actual_native_roundtrips": 40,
+        "corrupt_recipes_rejected": 17,
+        "actual_complete_materialization_and_size_measurement_pending": false
+      },
+      "actual_complete_native_edge_pool": {
+        "index": "correction29-correction03-source-projection-edge-atoms-20261004-1-index.json",
+        "index_sha256": "0afe93585942f6d40576e02c2e91a8cdaa07e8b8442930b86747cb8cf6f0dada",
+        "actual_materializer_log": "correction03-source-projection-edge-atoms-materialize-20261004-1.log",
+        "actual_materializer_log_sha256": "2c6cb3f7590ff97612957d9a771448995eac788c81f4de79e41821f8105b1b6e",
+        "actual_materializer_observed_exit_code": 0,
+        "original_files": 2644,
+        "original_bytes": 10519014480,
+        "all_original_sha_and_bytes_match": true,
+        "native_edge_atoms": 626775,
+        "actual_standard_zip_probe": "correction03-source-projection-edge-atoms-size512-probe-20261004-1-private.json",
+        "actual_standard_zip_probe_sha256": "f97c5fec0c0da7f3b81552f39e1a268fa2c62562190f647a60ffa7709c253d9d",
+        "actual_probe_observed_exit_code": 0,
+        "archive_bytes": 92180979,
+        "archive_sha256": "53b7f942a9ee6da0e7b168f822c01fd824f8cfee8c9c2304f0971315907a6e98",
+        "standard_decoder_crc_passed": true,
+        "final_review_package": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_static_shared_pool": {
+        "index": "correction29-correction03-source-projection-static-shared-atoms-20261004-3-index.json",
+        "index_sha256": "ad9bff5ce32a276579cd5ee4e7c264d382980d7ea5008cf897db12df990a3183",
+        "actual_materializer_log": "correction03-source-projection-static-shared-atoms-materialize-20261004-3.log",
+        "actual_materializer_log_sha256": "c2321d070bd660fcc87a0fdf6f1a5c4a26559c75f21a9ce09a565758344f7c43",
+        "actual_materializer_observed_exit_code": 0,
+        "original_files": 3446,
+        "original_bytes": 10662794581,
+        "all_original_sha_and_bytes_match": true,
+        "actual_standard_zip_probe": "correction03-source-projection-static-shared-atoms-size512-probe-20261004-3-private.json",
+        "actual_standard_zip_probe_sha256": "8cbd3bf0d4e1e1dfa61363543064c944352610ed11abbefea4d7704ac0b8e82b",
+        "actual_probe_observed_exit_code": 0,
+        "archive_bytes": 101406247,
+        "archive_sha256": "0ba00474199020ddab3644ea3007c9bb263f488f0ee51c90850ef633f4c91007",
+        "standard_decoder_crc_passed": true,
+        "within_required_single_file_cap": false,
+        "final_review_package": false,
+        "bounded_subblock_and_order_samples_improved_compression": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_binary_atom_wire_pool": {
+        "index": "correction29-correction03-source-projection-binary-atom-wire-20261004-1-index.json",
+        "index_sha256": "3a3138a715f9e24cec4ed4094e253ee1517ff26cfc147870e284e4b3b36f8d8d",
+        "actual_materializer_log": "correction03-source-projection-binary-atom-wire-materialize-20261004-1.log",
+        "actual_materializer_log_sha256": "c2321d070bd660fcc87a0fdf6f1a5c4a26559c75f21a9ce09a565758344f7c43",
+        "actual_materializer_observed_exit_code": 0,
+        "original_files": 3446,
+        "original_bytes": 10662794581,
+        "all_original_sha_and_bytes_match": true,
+        "actual_standard_zip_probe": "correction03-source-projection-binary-atom-wire-size512-probe-20261004-1-private.json",
+        "actual_standard_zip_probe_sha256": "1b05f3bd302590b1ab53ee337841b871c8a98554b74ea8d4140a56706b1116c1",
+        "actual_probe_observed_exit_code": 0,
+        "archive_bytes": 92295709,
+        "archive_sha256": "92d4487c54d41f4c7f1353120ab4e4a1327e18e6e4e276b0a20b21fc8ce7ac4f",
+        "standard_decoder_crc_passed": true,
+        "within_required_single_file_cap": true,
+        "final_review_package": false,
+        "native_decoder_sha256": "f27f87d57022ab3eb456b21353ddf46c7c33110640f13f3eb83d4e61a586610e",
+        "binary_atom_wire_sha256": "85eb8e6cf7a34f8e77eaa5c0921204a5d470bc43fb4a8366c404d93fea9b5c74",
+        "all_3260784_original_atom_rows_roundtrip_verified": true,
+        "all_previous_native_decoder_functions_ast_unchanged": true,
+        "boundary_probe": "correction03-binary-atom-wire-probe-20261004-1-private.json",
+        "boundary_probe_sha256": "ac08ca1083af6003ca727697a24a0b24a93e35c19c216a1a68f6ae2bf40ca298",
+        "bounded_subblock_and_order_samples_improved_compression": false,
+        "current_semantic_copy_production_and_final_documents_still_required": true
+      },
+      "current_preferred_complete_pool_index": "correction29-correction03-core-projection-binary-atom-wire-20261004-1-index.json",
+      "actual_complete_pair_source_pool_materialization": {
+        "index": "correction29-correction03-complete-pair-binary-atom-wire-20261004-1-index.json",
+        "index_sha256": "ecbaa56bf5dc1d18a74d549663f67c6cc6f00776ad94a11ccea0bc1e3f4c7cc3",
+        "actual_materializer_log": "correction03-complete-pair-pool-continuation-20261004-1-complete-materialization.log",
+        "actual_materializer_log_sha256": "87da4da1948113a4bdf2aaa3157a2235b31abb0b3d9c79402536afd68926b30b",
+        "actual_materializer_exit_code": 0,
+        "original_files": 35534,
+        "original_bytes": 11607741098,
+        "all_original_sha_and_bytes_match": true,
+        "actual_current_pair_cache_chain_files": 32063,
+        "standard_zip_compression_pending_memory_preflight": false,
+        "final_review_package": false,
+        "current_native_read_dependencies_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_pair_source_pool_standard_zip_size": {
+        "receipt": "correction03-complete-pair-binary-atom-wire-size512-probe-20261004-1-private.json",
+        "receipt_sha256": "ae89e3246110d51755c1507cdf693f539ba6c04186f17dd6f4052acd9b045756",
+        "archive": "correction03-complete-pair-binary-atom-wire-size512-probe-20261004-1.zip",
+        "archive_sha256": "df5110cbbeafb903ca5dc9ee6f8989133d1fdbaa48306b2c2663e7c8269f39d0",
+        "actual_bytes": 101379240,
+        "required_max_bytes": 100000000,
+        "over_limit_bytes": 1379240,
+        "standard_zip_crc_passed": true,
+        "final_review_package": false,
+        "all_originals_retained": true,
+        "current_native_dependencies_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_pair_source_pool_longmatch_standard_zip_size": {
+        "receipt": "correction03-complete-pair-longmatch512-size-probe-20261004-1-private.json",
+        "receipt_sha256": "7dd7cf768df960fba813e28dee94efdd94e531514143fb5440500a50c562a25e",
+        "archive": "correction03-complete-pair-longmatch512-size-probe-20261004-1.zip",
+        "archive_sha256": "207e5b15ec375c93317e0d2963b27a366aa21856508b0b6023409ac869383c27",
+        "actual_bytes": 93933662,
+        "required_max_bytes": 100000000,
+        "headroom_before_remaining_materials": 6066338,
+        "source_index": "correction29-correction03-complete-pair-binary-atom-wire-20261004-1-index.json",
+        "source_index_sha256": "ecbaa56bf5dc1d18a74d549663f67c6cc6f00776ad94a11ccea0bc1e3f4c7cc3",
+        "standard_zip_crc_passed": true,
+        "original_source_bytes_changed": false,
+        "nice_len": 273,
+        "dictionary_bytes": 536870912,
+        "encoder_sha256": "eb631765e4b5b0bc0c15cec5e0f98416adc89ed2d02d3ad2f7d0370d5233a6df",
+        "final_review_package": false,
+        "prior_over_limit_trial_retained": true,
+        "complete_native_dependencies_copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_native_read_dependency_pool": {
+        "receipt": "correction03-native-dependency-pool-continuation-20261004-1-private.json",
+        "receipt_sha256": "a38495c4b81cdaa7d7284b2ca05361c5f3dbb0168359cb31b7b94f7322f8f363",
+        "wire_index": "correction29-correction03-native-read-dependencies-binary-atom-wire-20261004-1-index.json",
+        "wire_index_sha256": "045c2e870f26bced2fb0038b6c85d8a1687131cb5c8cd37a216c454d8501f273",
+        "original_files": 72361,
+        "original_bytes": 11908495599,
+        "all_original_sha_and_bytes_match": true,
+        "actual_four_stages_exit_zero": true,
+        "full_materialization_log": "correction03-native-dependency-pool-continuation-20261004-1-complete-materialization.log",
+        "full_materialization_log_sha256": "1a58d2a5c40d700b9685f25c08e4b3573cbb75a3ad0098cfb83f63707444a4de",
+        "actual_native_read_dependencies_manifest": "correction03-complete-native-read-dependencies-20261004-1-private.json",
+        "actual_native_read_dependencies_manifest_sha256": "ef75ce5296488c3c654cb20125e18e69cfedbd2f7b7fcac108a2c9f8b08c49c9",
+        "actual_standard_zip_size_pending": false,
+        "final_review_package": false,
+        "production_actions": 0,
+        "provider_calls": 0,
+        "desktop_actions": 0
+      },
+      "actual_complete_native_source_pool_standard_zip_size": {
+        "receipt": "correction03-full-native-read-dependencies-longmatch512-size-probe-20261004-1-private.json",
+        "receipt_sha256": "1a27f10497ee16354bd29a11b238f85a8633a6403e6ffbe7d8159aa8f91a43d2",
+        "archive": "correction03-full-native-read-dependencies-longmatch512-size-probe-20261004-1.zip",
+        "archive_sha256": "67ba56cb0d83ada939e1982be0557fdcea2745cab1ba04a86624361755999742",
+        "actual_bytes": 101494584,
+        "required_max_bytes": 100000000,
+        "excess_bytes": 1494584,
+        "size_gate_passed": false,
+        "standard_zip_crc_passed": true,
+        "all_original_source_bytes_preserved": true,
+        "final_review_package": false,
+        "lossless_transport_optimization_continues": true,
+        "copy_production_and_final_documents_still_required": true
+      },
+      "actual_complete_native_joined_source_pool_standard_zip_size": {
+        "receipt": "correction03-full-native-joined-complete-source-size-probe-20261004-1-private.json",
+        "receipt_sha256": "743acae81f36697cdee79bc70d3bf1053c6bc4479560be3b622a82ae71c85485",
+        "archive": "correction03-full-native-joined-complete-source-size-probe-20261004-1.zip",
+        "archive_sha256": "ab3ee91fac407e02a5c22d55f15341d58f92d751a492714b4d6d7058a77af8ef",
+        "actual_bytes": 97777071,
+        "required_max_bytes": 100000000,
+        "headroom_before_remaining_results": 2222929,
+        "standard_zip_crc_and_all_decoded_sha_passed": true,
+        "original_files": 72361,
+        "original_bytes": 11908495599,
+        "all_original_source_bytes_preserved": true,
+        "original_native_pool_decoder_changed": false,
+        "custom_zip_decoder": false,
+        "sections_manifest": "correction03-full-native-joined-metadata-size-probe-20261004-1-sections-private.json",
+        "sections_manifest_sha256": "9baf5f611054020de434c03887be8045624a8eff1e3215d3400edae3bb4d3222",
+        "actual_negative_cases": 9,
+        "negative_cases": "correction03-joined-section-guard-probe-20261004-1-private.json",
+        "negative_cases_sha256": "54c6afc26a0aca9a3ba23decd3299b134d192e9eecc9e326ac5b49bfd327f9a5",
+        "final_review_package": false,
+        "remaining_copy_production_and_final_documents_still_required": true,
+        "prior_oversize_trials_retained": true
+      },
+      "actual_full_source_transport_bootstrap_overlap_repair": {
+        "observed_failure": "correction29-correction03-joined-full-source-package-integration-20261004-1-coordinator-private.json",
+        "observed_failure_sha256": "515da1cca3d464b165ff9d19f2c8cfbd122feb90c025ea37ca855be68b713c12",
+        "actual_build_exit": 0,
+        "actual_fresh_extraction_exit": 1,
+        "reason": "Exact duplicate bootstrap originals met the unchanged native decoder exclusive-destination guard.",
+        "failed_archive_and_extraction_retained": true,
+        "repair": "Run the unchanged native decoder in an independent empty owned directory; validate all reconstructed bytes and exact overlaps before exclusive transfer.",
+        "native_decoder_changed": false,
+        "original_source_pool_changed": false,
+        "actual_bounded_end_to_end_cases": 5,
+        "probe": "correction03-package-bootstrap-overlap-probe-20261004-1-private.json",
+        "probe_sha256": "93c97f7c92278ee1a310f481e342ac465535a96aceb58b530e13511c987e05a4",
+        "verifier": "correction03_verify_package_atoms_standalone_20261004_4.py",
+        "verifier_sha256": "627459b34c50b93f02197691279c247e614e517242da702b4cfc12f37e47ebfe",
+        "complete_fresh_retry": "correction29-correction03-joined-full-source-package-integration-20261004-2-coordinator-private.json",
+        "complete_fresh_retry_acceptance_pending": true,
+        "final_product_delivery_claimed": false
+      },
+      "actual_completed_core_projection_pool_extension": {
+        "receipt": "correction03-core-projection-pool-continuation-20261004-1-private.json",
+        "receipt_sha256": "495fef191f42695ec6d300ac5396cee760eb28a283c0732b1d0c3bb6982d0f6b",
+        "wire_index": "correction29-correction03-core-projection-binary-atom-wire-20261004-1-index.json",
+        "wire_index_sha256": "5377a42a5ced120b4b9734ad9f6db42f42f5771114db41f73a87817465060104",
+        "original_files": 72383,
+        "original_bytes": 15632240430,
+        "actual_restored_added_files": 22,
+        "actual_restored_added_bytes": 3723744831,
+        "all_previous_entries_and_data_prefixes_identical": true,
+        "all_added_original_bytes_and_sha_restored": true,
+        "actual_stage_exit_codes": [
+          0,
+          0,
+          0
+        ],
+        "original_native_decoder_changed": false,
+        "full_current_copy_projection_and_complete_support_difference_sources_included": true,
+        "actual_complete_standard_zip_size_measurement_running": true,
+        "fresh_complete_final_archive_and_product_results_pending": true,
+        "final_review_package": false
+      },
+      "actual_complete_source_transport_fresh_integration": {
+        "receipt": "correction29-correction03-joined-full-source-package-integration-20261004-2-coordinator-private.json",
+        "receipt_sha256": "8de6888807b6459292cf00596c5b85faff2b503b0e59f7341b29aa39cd8516ee",
+        "archive_bytes": 97806997,
+        "archive_sha256": "b9a547237c1ac9e07c8cc61c66471d7cc2341d59446dca7dd06fcad80b1c46f2",
+        "original_files": 72361,
+        "all_original_sha_syntax_and_storage_recovery_verified": true,
+        "actual_stage_exit_codes": [
+          0,
+          0
+        ],
+        "source_transport_only": true,
+        "final_current_core_quality_production_and_docs_still_pending": true
+      },
+      "complete_native_block_byte_plane_restoration": {
+        "manifest": "correction03-complete-core-block-planes-20261004-1-manifest.json",
+        "manifest_sha256": "79c9323914095e432ed036b1d8c9fb853404b7ac05990b90afe3b859288cb12e",
+        "actual_exit_code": 0,
+        "actual_log": "correction03-complete-core-block-planes-20261004-1-native-restoration.log",
+        "actual_log_sha256": "5bfe90fa2d43027c84663f83a5d56a796778e646a59ace91087ad7346ab1cf52",
+        "original_blocks": 1276757,
+        "original_integers": 1258604053,
+        "original_bytes": 2989970909,
+        "original_sha256": "f7e49d7a4754445398e122b497a8fab5d5d351eaf38fc0935abdda2a9aeaadc1",
+        "original_native_pool_decoder_changed": false,
+        "all_original_evidence_unchanged": true,
+        "complete_source_zip_actual_size_pending": true,
+        "final_review_bundle_accepted": false
+      },
+      "byte_plane_package_integration_guard_probe": {
+        "receipt": "correction03-plane-package-integration-guard-probe-20261004-1-private.json",
+        "receipt_sha256": "27cd04fab320cd07bf5951dd18583201ec3e60a3c68e08ff10a27c375ebff14c",
+        "actual_exit_code": 0,
+        "actual_verifier_cases": 7,
+        "whole_native_v9_original_bytes_recovered": true,
+        "current_complete_core_package_acceptance_claimed": false
+      },
+      "complete_core_byte_plane_size_failure": {
+        "receipt": "correction03-complete-core-plane-source-size-probe-20261004-1-private.json",
+        "receipt_sha256": "e54b1f98de35d9eebda95931e168a674438f60250010c1b2c9c8412e06f96c73",
+        "archive_bytes": 114973121,
+        "archive_sha256": "22bc9462dcffda2636eb7f1a099d96abf9c2794dd80b1075af88de007231b1e3",
+        "original_files": 72383,
+        "original_bytes": 15632240430,
+        "all_standard_zip_decoded_file_sha_and_crc_passed": true,
+        "actual_complete_native_block_inverse_passed": true,
+        "single_archive_limit_passed": false,
+        "actual_guard_failure": "correction29-correction03-plane-complete-core-package-integration-20261004-1-coordinator-private.json",
+        "actual_guard_failure_sha256": "d44752f134d5a049ced74586530e049da965994f8e39056a39ea34f68efc3237",
+        "failed_attempt_preserved": true,
+        "no_material_removed_to_reduce_size": true,
+        "sorting_probe": "correction03-sorted-block-transport-size-probe-20261004-1-private.json",
+        "sorting_probe_sha256": "d7e59f7f80cd544cc6a1f2dfcf9f3871484616e0bd5f8691e3f3b4aeaa8fccc1",
+        "sorting_probe_not_adopted": true
+      },
+      "classified_native_transport": {
+        "bounded_inverse_guard": "correction03-classified-plane-guard-probe-20261004-1-private.json",
+        "bounded_inverse_guard_sha256": "b880a8b7b6471cfec342cb5f882e33f738a655af482eab2e064c870cd41046da",
+        "bounded_inverse_cases_passed": 9,
+        "bounded_standard_zip_native_integration": "correction03-classified-package-integration-guard-probe-20261004-1-private.json",
+        "bounded_standard_zip_native_integration_sha256": "b34f70f350ff3ebc230611f92223febd0940cc888477f414d41967321942adaf",
+        "bounded_integration_cases_passed": 7,
+        "complete_original_source_size_probe_pending": false,
+        "continuation": "correction03-complete-core-classified-plane-continuation-20261004-1-private.json",
+        "native_pool_decoder_changed": false,
+        "original_evidence_changed": false,
+        "final_package_claimed": false,
+        "complete_original_stream_inverse_passed": true,
+        "actual_native_blocks": 1276757,
+        "actual_native_integers": 1258604053,
+        "actual_native_bytes": 2989970909,
+        "actual_native_sha256": "f7e49d7a4754445398e122b497a8fab5d5d351eaf38fc0935abdda2a9aeaadc1",
+        "actual_original_coordinator": "correction03-complete-core-classified-plane-continuation-20261004-1-private.json",
+        "actual_original_coordinator_sha256": "5ba3038b2473d829567fe0789905d3d143096fabaa7a0c773020bc03ffe28313",
+        "actual_inverse_log": "correction03-complete-core-classified-plane-continuation-20261004-1-whole-original-stream-inverse.log",
+        "actual_inverse_log_sha256": "9c16a34291d8a03dca94f0f5d160c7e37cdb629ed2f920ebfbce8b713cd0f32a",
+        "actual_standard_zip_memory_failure_retained": true,
+        "actual_memory_guard_gib": 8,
+        "actual_zip_only_recovery": "correction03-complete-core-classified-plane-memory-recovery-20261004-1-private.json",
+        "actual_complete_core_source_zip_bytes": 78259309,
+        "actual_complete_core_source_zip_sha256": "b7fab241286dd808cee5557a5e35a9d8e41ef245bdd97987b79fca0fae7c1302",
+        "actual_complete_core_source_zip_receipt": "correction03-complete-core-classified-plane-source-size-probe-20261004-1-private.json",
+        "actual_complete_core_source_zip_receipt_sha256": "bc949b2da5e248b057b731f57959700e58867469e1a9c5cc3281774a603ab4a9",
+        "actual_zip_only_recovery_finished": true,
+        "actual_zip_only_recovery_sha256": "ee5e51e27743e41b024adb5e7a5298b84afd1c68f137a4bb49f6699ca7cb9100",
+        "actual_standard_zip_decoded_member_crc_and_sha_passed": true,
+        "fresh_full_original_materialization_pending": false,
+        "final_current_candidate_product_delivery_claimed": false,
+        "complete_extraction_alias_recovery": {
+          "original_failure": "correction29-correction03-classified-complete-core-package-integration-20261004-1-coordinator-private.json",
+          "original_failure_sha256": "dfce4f44278850fab8e863390ebc29f15eee61d6a87385c214f888161767a8d8",
+          "original_actual_stage_exit_codes": [
+            0,
+            1
+          ],
+          "bounded_guard": "correction03-classified-package-integration-guard-probe-20261004-2-private.json",
+          "bounded_guard_sha256": "11acc074d73c11f552fac07fb7e34dd9caa785d6b872e5798bac2c068f1e7cdc",
+          "actual_bounded_cases": 11,
+          "fixed_verifier": "correction03_verify_package_atoms_standalone_20261004_7.py",
+          "fixed_verifier_sha256": "a5b280f3046f943e83dba36a2b8814d492ae99603f3f1397280a7c8dd58d11d7",
+          "new_complete_continuation": "correction29-correction03-classified-complete-core-package-integration-20261004-2-coordinator-private.json",
+          "original_native_decoder_changed": false,
+          "all_original_path_byte_SHA_count_and_syntax_guards_preserved": true,
+          "complete_recovery_pending": true,
+          "final_delivery_claimed": false
+        },
+        "actual_fresh_complete_core_restoration_passed": true,
+        "actual_fresh_complete_core_original_files": 72383,
+        "actual_fresh_complete_core_original_bytes": 15632240430,
+        "actual_fresh_complete_core_zip_bytes": 78042659,
+        "actual_fresh_complete_core_zip_sha256": "e2d1e512a6f3ea84de2cafae50998405bbeccdb3e0827ed05a37d9fca70f202d",
+        "actual_fresh_complete_core_receipt": "correction29-correction03-classified-complete-core-package-integration-20261004-2-coordinator-private.json",
+        "actual_fresh_complete_core_receipt_sha256": "db00452a2dc3d95f59e0267b8fa978e30d3449cf0e9a2721cfdd1f72bbd5880a",
+        "original_sha_syntax_storage_and_reference_checks_passed": true
+      }
     },
     "task_owned_cutover_guard_preparation": {
       "status": "prepared_not_executed",
       "files": {
-        "correction03_run_owned_apply_with_recovery_20261004.py": "dc009d1cd280ecf94d305ec5799924699cfffeb3035281adb5e1d941f4cdd627",
+        "correction03_owned_recovery_worker_20261004.py": "76645d91a603757eb05ee5f715201f7bec01d74a62d6f0ef0073ef042d647a05",
+        "correction03_run_owned_apply_with_recovery_20261004.py": "5aca947f024d31c892aaf5fa9af0d4cb8703f51f87e71809ad8cc16d67c04b9e",
+        "correction03_rehearse_owned_recovery_20261004.py": "b855b5914a68a23dbb3748bf85801b455e4922eb361bd3399fa86c730dd1d96e",
         "correction03_original_owned_apply_20261004.py": "01e4be2123e6a4f3e2169d1c3dd14e134b5ecec799d7f7079f1db76d0a7c46e9",
         "correction03_prepare_fixed_release_20261004.py": "3f5ade3b7712f034d3c0d584daeab6688ab958f6a968b262423ffa955e84903c",
-        "correction03_owned_recovery_worker_20261004.py": "3523f7c3e674e3720f3fa75410ba25af8d95de1d1072c1e8671d55489ba82022"
+        "correction03_continue_frozen_copy_20261004.py": "f03bfb4604a08b03f72d9fd15af1ff410ef558d4eeb9a671da045d488e659908"
       },
       "actual_copy_owned_recovery_rehearsal_required": true,
       "prepared_worker_without_database_access_required_before_owned_service_stop": true,
-      "production_action_executed": false
+      "production_action_executed": false,
+      "latest_syntax_parsed": true,
+      "readiness_trigger_and_committed_worker_receipts": "exclusive_atomic_publication_in_native_Windows",
+      "copy_worker_parent_and_python_identity_required": true,
+      "actual_isolated_recovery_rehearsal_pending": true,
+      "production_recovery_execution_claimed": false,
+      "preconnect_probe": "correction03-recovery-preconnect-gate-20261004-1-private.json",
+      "preconnect_probe_sha256": "f98d5062b476f02df92f18af9740ffc727be0cc2640c9f140d1759173b36da77",
+      "physical_database_connection_blocked_before_admission": true
     },
     "current_ledger_review_continuity": {
       "receipt": "correction03-current-ledger-review-continuity-20261004-2-private.json",
@@ -1275,6 +1744,794 @@
       "skipped": 0,
       "failed": 0,
       "historical_full_result_changed": false
+    },
+    "concentrated_integration_recovery": {
+      "failed_log": "correction03-concentrated-source-integration-20261004-1.log",
+      "failed_log_sha256": "2747db2ae39e5b5d84e484a26343aad936cf424468ee24f2ce920cb9183ac815",
+      "failure_kind": "completed_receipt_became_visible_before_its_protected_input",
+      "source_or_production_changed_in_failed_attempt": false,
+      "actual_successful_log": "correction03-concentrated-source-integration-20261004-2.log",
+      "actual_successful_log_sha256": "8a28df9d09b488eefc906f512c073016e60216893bc0745c6b0d5ab3fe247cc7",
+      "original_failure_preserved": true,
+      "business_candidate_frozen": "923bf33361413044c435190c14f68ade10d70c88"
+    },
+    "queued_full_copy": {
+      "coordinator": "correction03-frozen-copy-continuation-20261004-1-private.json",
+      "requires_actual_frozen_native_graph_and_affected_validation": true,
+      "production_apply_in_coordinator": false,
+      "production_acceptance_claimed": false
+    },
+    "formal_progress": {
+      "sequence": "correction29-correction03-b20-affected-20261004-1-sequence-private.json",
+      "actual_stages": {},
+      "status": "pending_current_frozen_candidate"
+    },
+    "independent_prepared_projection_replay": {
+      "receipt": "correction03-prepared-projection-native-stdlib-replay-20261004-1-private.json",
+      "receipt_sha256": "ef4761a762fd1c7a532f24a7fc3eab4458467bb07b001fe8ba03eb61289f4666",
+      "full_native_original_preparation_recomputed": true,
+      "full_native_current_recorded_projection_recomputed": false,
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "complete_owned_projection": {
+        "run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
+        "product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+        "core_business_fingerprint": "92b1ab335a514f9fd732037dc26cb75004048767740409848ee0fd06cb812650",
+        "full_core_fingerprint": "ca9beb3ef316e73c5a97b390fd01f8714f96a81bad050dd1c17e91bcaf7da141",
+        "core_counts": {
+          "resolution_runs": 1,
+          "signals": 100285,
+          "concepts": 17497,
+          "aliases": 21313,
+          "evidence": 65955,
+          "signal_links": 65955,
+          "search_index": 21313
+        },
+        "product_counts": {
+          "clusters": 17497,
+          "candidate_dispositions": 595167,
+          "ambiguity_records": 65978
+        }
+      },
+      "native_source_sha256": "3557e5bc28af2598bcb123c3c45524718959a86754f73deec784f28dc83cbba5",
+      "new_postgresql_browser_or_owner_acceptance_claimed": false,
+      "derivation": "correction03-prepared-projection-stream-extraction-20261004-1-derivation-private.json",
+      "derivation_sha256": "4fdd624270fc19fe29e1181e59eea343255e87d033f9641a07025fb2705ab8d0"
+    },
+    "frozen_native_progress": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "command": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+      "command_status_at_checkpoint": "finished",
+      "complete_frozen_cli_acceptance_claimed": true,
+      "native_role_stage": "correction29-correction03-b19-cache-20261004-1-role-source-replay-private.json",
+      "native_role_stage_sha256": "55c7ba7810a6de1990ccc6142fddeda03746c39f1d7830631caf95c89f92b602",
+      "role_records": 15825,
+      "validated_raw": 1929,
+      "new_provider_calls": 0,
+      "native_original_target_completion": "correction29-correction03-b19-cache-20261004-1-role-completion-admission-private.json",
+      "native_original_target_completion_sha256": "985d8efec7cfdddc9561d8e2f013ad90b25c6c19e71cd2fadc85b71d8c1b78b1",
+      "original_targets": 49227,
+      "unaccounted_targets": 0,
+      "response_completion_asserts_identity": false,
+      "ledger_unchanged": true
+    },
+    "latest_readonly_daily_availability": {
+      "receipt": "correction29-correction03-current-b19-wait-availability-20261004-6-availability-private.json",
+      "receipt_sha256": "279a4c76554d7f997d6b923b679e50c7c0bae8ad58edd9c020195442d7b45ec2",
+      "observed_at": "2026-10-04T04:24:56.995526+00:00",
+      "runtime_state": "running_verified",
+      "runtime_directory": "production-pixiv-a2-stable-562bc18",
+      "worker_pid": 51064,
+      "active_jobs": 0,
+      "new_candidate_deployed": false,
+      "new_candidate_acceptance_claimed": false
+    },
+    "frozen_role_checkpoint_recovery": {
+      "original_failure_log": "correction03-frozen-role-progress-state-checkpoint-20261004-1.log",
+      "original_failure_log_sha256": "a3e3caf25d4ce4b0d26215e1b0d07c3e7bf0ee9b4a016d194d8d37b182f62b62",
+      "failure_kind": "absolute_local_runtime_path_in_public_projection_rejected",
+      "rejected_state": "correction03-frozen-role-checkpoint-rejected-state-20261004-1-private.json",
+      "rejected_state_sha256": "07cf3f5187b75c5308527e7d079d7c8db0ae44c0dc265914af4388ddb815af68",
+      "rejected_summary": "correction03-frozen-role-checkpoint-rejected-summary-20261004-1-private.json",
+      "rejected_summary_sha256": "779c005e75ab742fd08b5a4d296ff0e494ec3237faadfd820254f20b4b64d3ac",
+      "correction": "Public projection retains runtime directory basename; complete observed path remains in private original receipt.",
+      "native_business_source_or_production_mutated": false,
+      "original_failure_preserved": true
+    },
+    "frozen_work_source_replay": {
+      "business_candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "adjudication": "correction29-correction03-b19-cache-20261004-1-work-adjudication-private.json",
+      "adjudication_sha256": "dd883c2df24b6faca0bd40620c0028b1adfa3f4b0d58bf5bbf91578eda5b7089",
+      "source_replay": "correction29-correction03-b19-cache-20261004-1-work-source-replay-private.json",
+      "source_replay_sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+      "selected_pairs": 9070,
+      "valid_judgments": 9070,
+      "verified_sources": 9070,
+      "errors": 0,
+      "missing_answers": 0,
+      "new_provider_calls": 0,
+      "ledger_sha256_unchanged": true,
+      "actual_frozen_cli_exit_observed": false,
+      "full_graph_or_copy_acceptance_claimed": false
+    },
+    "frozen_remaining_admission": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "receipt": "correction29-correction03-b19-cache-20261004-1-remaining-correction-admission-private.json",
+      "receipt_sha256": "7cd48f8abf26cc2ce5923981f9e8d3358e69b933df5c278e00a0439bc5168bf4",
+      "selected_pairs": 22538,
+      "compatible_reuse": 22538,
+      "missing_inputs": 0,
+      "new_call_ceiling": 0,
+      "reserve_ceiling_microusd": 0,
+      "ledger_unchanged": true,
+      "actual_cache_and_original_source_replay_pending": false,
+      "full_cli_graph_copy_or_production_acceptance_claimed": false
+    },
+    "historical_b18_complete_graph_failure": {
+      "command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
+      "status": "failed_at_exact_work_cached_attempt_binding",
+      "failure": {
+        "command": "correction29-correction03-b18-cache-20261004-1-command-private.json",
+        "log": "correction29-correction03-b18-cache-20261004-1.log",
+        "actual_exit_code": 1,
+        "error": "adjudication_cached_response_attempt_not_unique",
+        "ledger_unchanged": true,
+        "new_provider_calls": 0,
+        "database_accessed": false,
+        "role_sources_verified_records": 15825,
+        "original_target_accounting_unaccounted": 0,
+        "original_31608_pair_sources_verified": true
+      },
+      "original_current_replay": "correction03-current-replay-20261004-5-receipt-private.json",
+      "original_current_replay_status": "B18_all_original_sources_and_current_view_passed_one_legal_original_target_pending",
+      "identified_business_fixes_before_concentrated_B19_validation": [
+        "live_ledger_and_raw_revalidation_on_in_memory_cache_hit",
+        "retained_unrelated_malformed_raw_cannot_block_an_independent_legal_target",
+        "separate_original_paid_pair_question_from_current_role_source_authority"
+      ],
+      "initial_original_target_plan": "correction03-remaining-plan-20261004-1-plan-private.json",
+      "preservation_receipt": "correction03-before-current-graph-identity-alignment-20261004-private.json",
+      "preservation_receipt_sha256": "3f123a5e04ab6b93012feee61285bf27644001837024be538cb84838d8e7e943"
+    },
+    "current_complete_graph_acceptance_claimed": false,
+    "current_semantic_source_gate_passed": false,
+    "actual_complete_frozen_pair_source_replay": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "adjudication": "correction29-correction03-b19-cache-20261004-1-adjudication-private.json",
+      "adjudication_sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758",
+      "judgments": "correction29-correction03-b19-cache-20261004-1-judgments-private.json",
+      "judgments_sha256": "7148e4d2afa7aa40882f69a4d21c59421872e70448a29390fcd446f8acc8a4f7",
+      "selected_pair_count": 31608,
+      "judgment_count": 31608,
+      "cache_hits": 31608,
+      "errors": 0,
+      "missing": 0,
+      "new_provider_calls": 0,
+      "cache_writes": 0,
+      "source_proofs": {
+        "work": {
+          "file": "correction29-correction03-b19-cache-20261004-1-work-source-replay-private.json",
+          "sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+          "actual_source_count": 9070
+        },
+        "remaining": {
+          "file": "correction29-correction03-b19-cache-20261004-1-remaining-source-replay-private.json",
+          "sha256": "9eb062c09fefc215e7d21f94bdc44e9b0b581d1dafec7733d819e81c676e47e2",
+          "actual_source_count": 22538
+        }
+      },
+      "ledger_sha256": "93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d",
+      "ledger_unchanged": true,
+      "complete_native_cli_acceptance_claimed": true,
+      "current_product_acceptance_claimed": false
+    },
+    "actual_complete_frozen_native_graph": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "actual_exit_code": 0,
+      "finished_at": "2026-10-04T03:21:22.505885+00:00",
+      "files": {
+        "command-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+          "sha256": "2da3b2182a9b8aff21a3776d47fb0de79ae602ee6ef0d694577470e75637d4cf"
+        },
+        "cluster-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-cluster-private.json",
+          "sha256": "d2d5dc385e95ba02941f5a0651c16feb35da0060e4eb62d354e8f285b4563007"
+        },
+        "semantic-manifest-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-semantic-manifest-private.json",
+          "sha256": "c2d47f34482534b2d466d0c9f8e625020a326ae1c5336e1e4a55f73ff3c94888"
+        },
+        "approved-run-input-private.json": {
+          "file": "correction29-correction03-b19-cache-20261004-1-approved-run-input-private.json",
+          "sha256": "01ad66bf06bfb706ef5c4dc55321eb5d48800a596148936654f81b3c80e42deb"
+        }
+      },
+      "signal_count": 100285,
+      "edge_count": 626775,
+      "concept_count": 17497,
+      "selected_pair_count": 31608,
+      "judgment_count": 31608,
+      "native_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+      "native_business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+      "approved_run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
+      "approved_product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+      "ledger_unchanged": true,
+      "new_provider_calls": 0,
+      "database_activity": 0,
+      "independent_stdlib_replay_pending": false,
+      "copy_product_acceptance_claimed": false
+    },
+    "native_graph_checkpoint_projection_recovery": {
+      "original_failed_log": "correction03-complete-native-graph-state-checkpoint-20261004-1.log",
+      "failure_kind": "handoff_line_count_out_of_range_116",
+      "original_failed_projections": [
+        {
+          "file": "correction03-complete-native-graph-rejected-projection-20261004-1-state.txt",
+          "bytes": 275370,
+          "sha256": "101239724dfaa302b4d5dc583abfff94691ae089f12b8ea21e36c385217de6cf"
+        },
+        {
+          "file": "correction03-complete-native-graph-rejected-projection-20261004-1-summary.txt",
+          "bytes": 91741,
+          "sha256": "fd82911d704c00cb73c72d48475d0a17043ef9f88f6d36cb0ddd9e026dc7eebc"
+        },
+        {
+          "file": "correction03-complete-native-graph-rejected-projection-20261004-1-handoff.txt",
+          "bytes": 37769,
+          "sha256": "4a800b0efbab0c069202ed88bef2550cab38fa76396c81c74eb69e8118954af5"
+        }
+      ],
+      "correction": "Combined two adjacent actual checkpoints without dropping their facts.",
+      "native_business_source_changed": false
+    },
+    "latest_actual_fresh_copy_restore": {
+      "backup": "correction29-correction03-source-copy-20261004-1-private.json",
+      "backup_sha256": "1b9ed327fc8ce69bf0a199893072ce3281ca0cbab3207a84c72e08da347727de",
+      "restore": "correction29-correction03-source-copy-20261004-1-restore-private.json",
+      "restore_sha256": "2e2b6f75c955e48c65e713c6181a06334e65bbccae33a73929068bb92c2ef3b0",
+      "tables_verified": 61,
+      "dump_bytes": 463686633,
+      "dump_sha256": "b4b3e97213353d03cc641966d5f19abfed35908414aa4248578eec3b8c56052d",
+      "production_writes": 0,
+      "complete_copy_lifecycle_claimed": false
+    },
+    "latest_actual_remote_snapshot": {
+      "file": "correction29-correction03-current-copy-remote-20261004-1-remote-private.json",
+      "sha256": "0a58290719ca795b016045b8113a41ac637636269ab14aaa927e748e6e8c80a6",
+      "observed_at": "2026-10-04T03:27:24.963175+00:00",
+      "threads": 116,
+      "new_threads_since_this_task_opening": 0,
+      "all_original_comment_bodies_unchanged": true,
+      "reviewers_triggered": false,
+      "threads_resolved": 0,
+      "origin_main": "2b742ca3e49d4b7d361300e98e0b2d9c1a0eb63d",
+      "origin_branch_head": "dca84bbeb6543f18f5440217d54facdfc7d0f839"
+    },
+    "actual_complete_frozen_native_semantic_stdlib_replay": {
+      "receipt": "correction03-frozen-native-semantic-stdlib-replay-20261004-1-private.json",
+      "receipt_sha256": "80c42626b53f340d3ad5c47c3b0477e255242e1f7151ae8a1e2b2e2912492a0e",
+      "coordinator": "correction03-frozen-offline-source-continuation-20261004-1-private.json",
+      "coordinator_sha256": "c7f946e66ffe0655d38cd683a56898e9dc9765853ff1ca23af6ffb1d5c03e077",
+      "actual_exit_code": 0,
+      "finished_at": "2026-10-04T04:33:31.497512+00:00",
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "signal_count": 100285,
+      "role_records": 15825,
+      "selected_judgment_count": 31608,
+      "native_source_modules": 23,
+      "native_bodies_unchanged": true,
+      "all_native_sources_match_frozen_git_blobs": true,
+      "complete_business_graph_matches": true,
+      "business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+      "resolver_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+      "actual_read_dependencies": 71538,
+      "actual_read_dependency_bytes": 733983592,
+      "new_provider_calls": 0,
+      "network_calls": 0,
+      "database_executed": false,
+      "ledger_unchanged": true,
+      "whole_current_product_copy_or_production_acceptance_claimed": false,
+      "final_package_replay_still_required": true
+    },
+    "actual_current_copy_core_lifecycle": {
+      "lifecycle_receipt": "correction29-copy-923bf33-correction03-1-lifecycle-private.json",
+      "receipt_sha256_at_checkpoint": "03e4a99b383597f1f49b1f5a75b13061418bb2ef383c512a1b50c7f27adf65ae",
+      "receipt_still_running": true,
+      "native_five_operations_verified": true,
+      "approved_full_projection_verified": true,
+      "full_projection": "correction29-copy-923bf33-correction03-1-final-projection-private.json",
+      "full_projection_sha256": "d45e27282d77919897febc301b8bf18dd3dd44420c20a668d48b0c85b7c230ed",
+      "actual_valid_supports": 66391,
+      "daily_B5_valid_supports": 66392,
+      "source_difference": "correction03-live-b5-b19-support-difference-20261004-1-private.json",
+      "source_difference_sha256": "0003af0df394ef76237a00755c7e1faeef4e4470cb3f11eaeb44c59967977689",
+      "source_explanation": "correction03-live-b5-b19-support-source-explanation-20261004-1-private.json",
+      "source_explanation_sha256": "53e228825e5ca8c77acbc0357056162efc955e57c8e914717bd758929c845f54",
+      "removed_source_supports": [
+        {
+          "source_key": [
+            "production_pixiv:pixiv_tag_observation:v2:8f0adb165bd305b05a31e4f0391049b6",
+            "pixiv_tag_observation",
+            11714,
+            13358,
+            1
+          ],
+          "count": 1
+        }
+      ],
+      "retargeted_supports": 3266,
+      "owned_recovery_and_complete_quality_acceptance_pending": true,
+      "production_acceptance_claimed": false
+    },
+    "actual_completed_isolated_owned_recovery": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "receipt": "correction29-copy-923bf33-correction03-owned-recovery-1-private.json",
+      "receipt_sha256": "1b1953a22886a8677099bca729a96ff4517d74c4a7ce3c063a3d0f56dcbea483",
+      "status": "finished",
+      "actual_lifecycle_process_exit_code": 0,
+      "lifecycle": "correction29-copy-923bf33-correction03-1-lifecycle-private.json",
+      "lifecycle_sha256": "188bf24d6b563645fd35f613c0ff2d342e83d6f30eb08c5377129475cee4615a",
+      "owned_previous_baseline": "44db0da",
+      "whole_original_database_restored": false,
+      "current_candidate_restored": true,
+      "all_17_tables_and_independent_support_preserved": true,
+      "historical_projection_recomputed_from_all_owned_rows": true,
+      "final_current_projection_matches_git_protected_expectation": true,
+      "original_production_written": false,
+      "batch_source_quality_browser_and_full_contract_still_pending": true
+    },
+    "actual_completed_full_copy_sequence": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "receipt": "correction29-copy-923bf33-correction03-1-sequence-private.json",
+      "receipt_sha256": "937ef1bb1af88299d32f23e83066bc9acbf614029b9c49e8f53766089258f1d1",
+      "status": "finished",
+      "actual_six_stage_exit_codes": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "recovery": "correction29-copy-923bf33-correction03-1-recovery-private.json",
+      "recovery_sha256": "7e2d981f8892c6e8c27fc9449414ec54ca35375432f5051252ac82be74b0a35e",
+      "batch": "correction29-copy-923bf33-correction03-1-batch-equivalence-private.json",
+      "batch_sha256": "b6ee0f9dc754d2bc8555bc21f8c6f8bf8b277422d4d9255a37204f8c261ba9f2",
+      "aggregate_count": 8565,
+      "judgments_count": 31608,
+      "all_batch_business_checks_passed": true,
+      "source_update_delete_outer_rollback_passed": true,
+      "source": "correction29-copy-923bf33-correction03-1-source-private.json",
+      "source_sha256": "f965682e4107cfb3cc4c42003da2f41edb25bee527499fae6f3b74459b18505e",
+      "original_production_written": false,
+      "actual_current_quality_edge_workload_and_15_preproduction_gates_pending": true
+    },
+    "actual_isolated_quality_startup_recovery": {
+      "observed_failed_attempts": [
+        {
+          "receipt": "correction29-copy-923bf33-correction03-1-surfaces-coordinator-private.json",
+          "receipt_sha256": "445f6c933e4161a65bac8ac02b42f33d9785b6ede421802e3ab3e59e71fde21f",
+          "startup_log": "correction29-copy-923bf33-correction03-1-surfaces-controlled-server.log",
+          "startup_log_sha256": "167fa3c8da317c1bda376aee3dcc56938d5b1073a459029fc82193845871b238"
+        },
+        {
+          "receipt": "correction29-copy-923bf33-correction03-1-surfaces-2-coordinator-private.json",
+          "receipt_sha256": "ec89d93990a21611dc70691f374a7f0c33be1f04c13eeea39e2dfeffd0c29dc7",
+          "startup_log": "correction29-copy-923bf33-correction03-1-surfaces-2-controlled-server.log",
+          "startup_log_sha256": "8260f2d5ef0b302836651c516f4edc6492510deb25d3a5560b4a902d5e7af169"
+        }
+      ],
+      "all_failures_retained": true,
+      "business_candidate_changed": false,
+      "root_causes": [
+        "SessionLocal imported by value before module initialization.",
+        "Native explicit connect options override environmental PGOPTIONS."
+      ],
+      "bounded_same_pattern_audit": "Only the correction03 task copy-server helper matched the init_engine plus imported SessionLocal pattern.",
+      "repair": "Use the initialized module factory and explicitly enforce readonly on every native engine connection.",
+      "repaired_server": "correction03_copy_server_20261004_3.py",
+      "repaired_server_sha256": "e38190c74e758be7c8319e62c8815545f44e414a6858c6cd9f6c6452d542fc99",
+      "actual_real_api_identity_exit_code": 0,
+      "actual_readonly_launch": "correction29-copy-923bf33-correction03-1-surfaces-3-controlled-server-launch-private.json",
+      "actual_readonly_launch_sha256": "d3035a0347db71d50a9d1b19164cc866fa707dc3c70aceca4634242a5fc9d290",
+      "current_quality_surface_label": "correction29-copy-923bf33-correction03-1-surfaces-3",
+      "current_continuation": "correction03-frozen-copy-qa-recovery-20261004-2-private.json",
+      "actual_quality_workload_browser_and_15_gates_pending": true,
+      "production_written": false
+    },
+    "observed_current_quality_gap": {
+      "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "quality_receipt": "correction29-copy-923bf33-correction03-1-surfaces-3-quality-private.json",
+      "quality_receipt_sha256": "85560055eeeb4ec622b36fc6e8b7c50b255582c495bd4ddec87202e97c16b615",
+      "actual_case_count": 69,
+      "failed_cases": 1,
+      "case_names": [
+        "genshinimpact",
+        "原神"
+      ],
+      "identity_pass": true,
+      "missing_recall_media_ids": [
+        [
+          13358
+        ],
+        []
+      ],
+      "native_source_diagnostic": "correction03-recall-original-source-diagnostic-20261004-1-private.json",
+      "native_source_diagnostic_sha256": "59e01bab0824d5369ddf8698ce24ab6deeb9fd6d0059bf0b0a2a7cc42868f1a1",
+      "outside_original_input_answer_remains_rejected": true,
+      "already_answered_target_not_requestioned": true,
+      "production_apply_barred": true,
+      "independent_surface_work_continues": true
+    },
+    "observed_complete_core_transport_size": {
+      "receipt": "correction03-complete-core-joined-source-size-probe-20261004-1-private.json",
+      "receipt_sha256": "d4928acde6c436edd836b29877a4794d108beda1a85819408844a420ffb06ad7",
+      "archive": "correction03-complete-core-joined-source-size-probe-20261004-1.zip",
+      "archive_bytes": 121696347,
+      "archive_sha256": "e274481051397fca50d7a4132e6481fbcf72c30fe066a92ad1ae37d41f76e335",
+      "limit_bytes": 100000000,
+      "original_files": 72383,
+      "original_bytes": 15632240430,
+      "all_original_byte_sha_after_standard_zip_passed": true,
+      "final_review_package": false,
+      "additional_final_results_still_pending": true
+    },
+    "actual_independent_copy_surfaces": {
+      "receipt": "correction29-copy-923bf33-correction03-1-surfaces-3-surfaces-private.json",
+      "receipt_sha256": "92758aa7626e65bc60afd6b3ee87c8f96abb66620b33583840ab6d4323636b0c",
+      "actual_stage_exit_codes": {
+        "quality": 1,
+        "creator-homonym": 0,
+        "suggestion": 0,
+        "holdouts": 1,
+        "workload": 0,
+        "browser": 0
+      },
+      "combined_case_count": 80,
+      "failed_quality_cases": 1,
+      "http_queries": 240,
+      "source_measurements": 720,
+      "http_latency_ms": {
+        "p50_ms": 1136.925,
+        "p95_ms": 1812.563,
+        "max_ms": 3725.764
+      },
+      "source_layer_latency_ms": {
+        "p50_ms": 441.701,
+        "p95_ms": 526.759,
+        "max_ms": 1281.705
+      },
+      "actual_browser_passed": true,
+      "actual_browser_receipt": "correction29-copy-923bf33-correction03-1-surfaces-3-browser-private.json",
+      "actual_browser_receipt_sha256": "1f8f4c6bc059715efff581f601727764e06ab59b18e5106962b2cf7f36d4256a",
+      "holdout_post_identity_parameter_failure_preserved": true,
+      "all_preproduction_gates_passed": false,
+      "production_apply_barred": true,
+      "additional_holdout_recovery": {
+        "receipt": "correction29-copy-923bf33-correction03-holdout-recovery-1-holdouts-private.json",
+        "receipt_sha256": "ac8b7b4e7b76141c0ee849d878b3f70d7759f367e4ace2b12150cac41260e65d",
+        "coordinator": "correction29-copy-923bf33-correction03-holdout-recovery-1-coordinator-private.json",
+        "coordinator_sha256": "e0562e4fc7287af360a300ae22d45265fe09d55d50706bad79d90ec63dda7fb7",
+        "actual_exit_code": 0,
+        "actual_cases": 3,
+        "failed_cases": 0,
+        "owned_test_server_stopped": true,
+        "original_failed_driver_and_log_retained": true,
+        "quality_failure_not_relabelled": true
+      }
+    },
+    "bounded_prefix_keyword_draft": {
+      "receipt": "correction03-context-unknown-full-input-probe-20261004-4-private.json",
+      "receipt_sha256": "ac1ee7af675af97e59de424dce9893eacac68ccd24ca221179dd64e1d942073f",
+      "full_input_signals": 100285,
+      "changed_signals": 1,
+      "original_first_answers_unchanged": true,
+      "typed_identity_roles_unchanged": true,
+      "work_contexts_unchanged": true,
+      "identity_qualification_and_semantic_correction_preconditions_unchanged": true,
+      "new_identity_equivalence_authorized": false,
+      "business_source_changed": false,
+      "formal_candidate_acceptance_claimed": false,
+      "draft_tests_passed": 10,
+      "draft_junit": "correction03-prefix-observation-draft-tests-20261004-2.xml",
+      "draft_junit_sha256": "595f65e87d3b1ccfae90a90f7293a71e8baf11c1ac38253ea26287ad23213371",
+      "overbroad_drafts_retained_and_not_adopted": true
+    },
+    "prefix_keyword_isolated_preparation": {
+      "source_receipt": "correction03-prefix-isolated-source-20261004-1-private.json",
+      "source_receipt_sha256": "c83dcddb580870660dc451bf4be7f59c92a32316553228e44d2c3843e3da3a79",
+      "source_root_bound_in_private_receipt": true,
+      "reference_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "actual_native_development_tests_passed": 10,
+      "junit": "correction03-prefix-isolated-native-tests-20261004-1.xml",
+      "junit_sha256": "f4de356fac234ff49d8fa2ba390bc8e191b0fc6188906853a6d463d31ee16029",
+      "full_graph_command": "correction29-correction03-prefix-preparation-20261004-1-command-private.json",
+      "graph_command_receipt_written": true,
+      "graph_initial_cache_identity_preflight_pending": false,
+      "is_frozen_acceptance": false,
+      "main_frozen_source_unchanged": true,
+      "production_entry_unchanged": true,
+      "fresh_independent_snapshot": {
+        "backup": "correction29-correction03-prefix-oracle-20261004-1-private.json",
+        "backup_sha256": "a114872853c4ebac83c242ae19fe5e2de20ad6c747ddb932c36cc11f6f47feed",
+        "restore": "correction29-correction03-prefix-oracle-20261004-1-restore-private.json",
+        "restore_sha256": "26d3a83387baec8dd835cf5bef4643a7f8550e08fbbd3a4e3ce584a194a0a275",
+        "restore_passed": true,
+        "full_table_count": 61,
+        "snapshot_bytes": 463686633,
+        "production_writes": 0,
+        "formal_candidate_acceptance_claimed": false,
+        "all_table_row_counts_and_sha_matched": true
+      },
+      "conditional_isolated_continuations": {
+        "freeze_and_exact_validation": "correction03-prefix-freeze-validation-continuation-20261004-2-private.json",
+        "freeze_and_exact_validation_driver_sha256": "6d49ee989e1d851a54894699afa024f60501829367229475d03773c7f079b225",
+        "fresh_copy_and_native_gates": "correction03-b20-frozen-copy-continuation-20261004-1-private.json",
+        "fresh_copy_and_native_gates_driver_sha256": "edd70cd952bac6efe7c77bd382314fe2e7ed5cce69ba354e859dec490ae8416a",
+        "production_writes": 0,
+        "desktop_interaction": false,
+        "remote_push": false,
+        "prior_B19_failed_contract_preserved": true,
+        "formal_new_candidate_acceptance_pending": true,
+        "original_waiter_stopped_before_any_dependent_stage": true,
+        "waiting_driver_recovery": "correction03-prefix-waiter-owned-replacement-20261004-1-private.json",
+        "waiting_driver_recovery_sha256": "deb5539493fe9cd42463e7eca8de79f784dd6bcf8a9fc9ecc122ef1cb0f6bccf",
+        "prior_actual_owned_waiter_exit_code": -1,
+        "exact_source_and_stdlib_replay": "correction03-b20-frozen-offline-source-continuation-20261004-1-private.json",
+        "conditional_backup_and_fixed_release_preparation": "correction03-b20-release-preparation-continuation-20261004-1-private.json",
+        "production_stop_or_apply_queued": false,
+        "formal_full_test_manifest_reduced": false
+      },
+      "remaining_current_input_admission": {
+        "receipt": "correction29-correction03-prefix-preparation-20261004-1-remaining-correction-admission-private.json",
+        "receipt_sha256": "7cd48f8abf26cc2ce5923981f9e8d3358e69b933df5c278e00a0439bc5168bf4",
+        "selected_pairs": 22538,
+        "missing_distinct_inputs": 0,
+        "dispatchable_call_ceiling": 0,
+        "new_provider_calls": 0,
+        "original_response_verification_and_final_graph_still_pending": true
+      },
+      "full_graph_preparation_result": {
+        "command": "correction29-correction03-prefix-preparation-20261004-1-command-private.json",
+        "command_sha256": "8da9d573f10c50b93e6d274786471eeb1ce9f4f671aa00f46843068fd1098f0c",
+        "actual_exit_code": 0,
+        "full_input_signals": 100285,
+        "selected_pairs": 31608,
+        "new_provider_calls": 0,
+        "socket_connections": 0,
+        "ledger_unchanged": true,
+        "original_cache_unchanged": true,
+        "independent_projection_pending": true,
+        "is_frozen_acceptance": false
+      }
+    },
+    "completed_current_copy_contract": {
+      "continuation": "correction03-frozen-copy-qa-recovery-20261004-2-private.json",
+      "continuation_sha256": "921bcaed1d01813023d1dcb77546a329c21fbff222b1efe864b5f24ffb1e1536",
+      "contract": "correction29-copy-923bf33-correction03-1-contract-private.json",
+      "contract_sha256": "5470d32e52356f7799e90945fde6142c41c10256a2a544f50d4fc2147f2994fa",
+      "native_gate_count": 18,
+      "native_passed": 14,
+      "native_failed": 4,
+      "preproduction_gate_count": 15,
+      "preproduction_passed": 14,
+      "actual_preproduction_gate_statuses": [
+        {
+          "name": "current_candidate_behavior",
+          "status": "passed"
+        },
+        {
+          "name": "backup_restore",
+          "status": "passed"
+        },
+        {
+          "name": "independent_t0",
+          "status": "passed"
+        },
+        {
+          "name": "fixed_mapping_and_complete_accounting",
+          "status": "passed"
+        },
+        {
+          "name": "metadata_attempts_scope_and_historical_exception",
+          "status": "passed"
+        },
+        {
+          "name": "forward_metadata_spacing",
+          "status": "passed"
+        },
+        {
+          "name": "rederived_original_budget_and_settlement",
+          "status": "passed"
+        },
+        {
+          "name": "selected_judgment_source_receipts",
+          "status": "passed"
+        },
+        {
+          "name": "current_semantic_input_readmission",
+          "status": "passed"
+        },
+        {
+          "name": "full_copy_recovery",
+          "status": "passed"
+        },
+        {
+          "name": "independent_quality",
+          "status": "failed"
+        },
+        {
+          "name": "current_live_identity_and_precision",
+          "status": "passed"
+        },
+        {
+          "name": "current_real_browser",
+          "status": "passed"
+        },
+        {
+          "name": "query_level_performance",
+          "status": "passed"
+        },
+        {
+          "name": "exact_candidate_validation",
+          "status": "passed"
+        }
+      ],
+      "remaining_preproduction_failure": "independent_quality",
+      "original_production_gates_pending": true,
+      "production_mode": false,
+      "failed_release_waiter": "correction03-release-preparation-continuation-20261004-4-private.json",
+      "failed_release_waiter_sha256": "d9ed4b587d9c720ee2e7c0ade462e1506632c32557e1d6899978d0fd4a57a847",
+      "production_writes": 0,
+      "service_stop_or_cutover_queued": false
+    },
+    "prefix_keyword_recall_implementation": {
+      "status": "development_passed_freezing",
+      "previous_business_head": "923bf33361413044c435190c14f68ade10d70c88",
+      "semantic_source_sha256": "39623895907c4bbce535ab544419c3a997b260f13b6fc446dc2a0edc5b716d05",
+      "test_file": "tests/test_production_pixiv_prefix_keyword_recall.py",
+      "scope": "Native deterministic popularity prefix observed in its original aggregate, with the same literal already an active legal work name.",
+      "new_identity_or_work_context_authorized": false,
+      "first_answer_changed": false,
+      "business_name_or_media_id_hardcode_added": false,
+      "new_provider_calls": 0,
+      "prior_copy_contract": "correction29-copy-923bf33-correction03-1-contract-private.json",
+      "prior_failed_quality_preserved": true,
+      "formal_frozen_runtime_acceptance_pending": true,
+      "independent_input_preparation": {
+        "continuation": "correction03-prefix-projection-preparation-continuation-20261004-1-private.json",
+        "continuation_sha256": "5fe0a8ca6621fa90eb4ac61b220426229db3f30b52eb96486e6d17628753d6e5",
+        "approved_run": "correction29-correction03-prefix-preparation-20261004-1-approved-run-input-private.json",
+        "approved_projection": "correction29-correction03-prefix-projection-preparation-20261004-1-approved-projection-input-private.json",
+        "outer_transaction_rolled_back": true,
+        "frozen_acceptance_claimed": false
+      },
+      "registration_development_label": "correction03-prefix-registration-development-20261004-1",
+      "registration_development_passed": 72,
+      "registration_development_failed": 0,
+      "registration_development_skipped": 0
+    },
+    "historical_B19_source_gate_snapshot": {
+      "current_source_gate_passed": true,
+      "current_semantic_source_gate_passed": true,
+      "current_complete_graph_acceptance_claimed": true,
+      "actual_complete_frozen_native_graph": {
+        "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+        "actual_exit_code": 0,
+        "finished_at": "2026-10-04T03:21:22.505885+00:00",
+        "files": {
+          "command-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-command-private.json",
+            "sha256": "2da3b2182a9b8aff21a3776d47fb0de79ae602ee6ef0d694577470e75637d4cf"
+          },
+          "cluster-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-cluster-private.json",
+            "sha256": "d2d5dc385e95ba02941f5a0651c16feb35da0060e4eb62d354e8f285b4563007"
+          },
+          "semantic-manifest-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-semantic-manifest-private.json",
+            "sha256": "c2d47f34482534b2d466d0c9f8e625020a326ae1c5336e1e4a55f73ff3c94888"
+          },
+          "approved-run-input-private.json": {
+            "file": "correction29-correction03-b19-cache-20261004-1-approved-run-input-private.json",
+            "sha256": "01ad66bf06bfb706ef5c4dc55321eb5d48800a596148936654f81b3c80e42deb"
+          }
+        },
+        "signal_count": 100285,
+        "edge_count": 626775,
+        "concept_count": 17497,
+        "selected_pair_count": 31608,
+        "judgment_count": 31608,
+        "native_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+        "native_business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+        "approved_run_key": "scv2-px3:a46a641d4a385f414f969c92111b9888",
+        "approved_product_fingerprint": "a46a641d4a385f414f969c92111b9888914c22ea189c86dbf7d94ab1c0d049b0",
+        "ledger_unchanged": true,
+        "new_provider_calls": 0,
+        "database_activity": 0,
+        "independent_stdlib_replay_pending": false,
+        "copy_product_acceptance_claimed": false
+      },
+      "actual_complete_frozen_pair_source_replay": {
+        "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+        "adjudication": "correction29-correction03-b19-cache-20261004-1-adjudication-private.json",
+        "adjudication_sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758",
+        "judgments": "correction29-correction03-b19-cache-20261004-1-judgments-private.json",
+        "judgments_sha256": "7148e4d2afa7aa40882f69a4d21c59421872e70448a29390fcd446f8acc8a4f7",
+        "selected_pair_count": 31608,
+        "judgment_count": 31608,
+        "cache_hits": 31608,
+        "errors": 0,
+        "missing": 0,
+        "new_provider_calls": 0,
+        "cache_writes": 0,
+        "source_proofs": {
+          "work": {
+            "file": "correction29-correction03-b19-cache-20261004-1-work-source-replay-private.json",
+            "sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+            "actual_source_count": 9070
+          },
+          "remaining": {
+            "file": "correction29-correction03-b19-cache-20261004-1-remaining-source-replay-private.json",
+            "sha256": "9eb062c09fefc215e7d21f94bdc44e9b0b581d1dafec7733d819e81c676e47e2",
+            "actual_source_count": 22538
+          }
+        },
+        "ledger_sha256": "93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d",
+        "ledger_unchanged": true,
+        "complete_native_cli_acceptance_claimed": true,
+        "current_product_acceptance_claimed": false
+      },
+      "actual_complete_frozen_native_semantic_stdlib_replay": {
+        "receipt": "correction03-frozen-native-semantic-stdlib-replay-20261004-1-private.json",
+        "receipt_sha256": "80c42626b53f340d3ad5c47c3b0477e255242e1f7151ae8a1e2b2e2912492a0e",
+        "coordinator": "correction03-frozen-offline-source-continuation-20261004-1-private.json",
+        "coordinator_sha256": "c7f946e66ffe0655d38cd683a56898e9dc9765853ff1ca23af6ffb1d5c03e077",
+        "actual_exit_code": 0,
+        "finished_at": "2026-10-04T04:33:31.497512+00:00",
+        "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+        "signal_count": 100285,
+        "role_records": 15825,
+        "selected_judgment_count": 31608,
+        "native_source_modules": 23,
+        "native_bodies_unchanged": true,
+        "all_native_sources_match_frozen_git_blobs": true,
+        "complete_business_graph_matches": true,
+        "business_fingerprint": "f502d1b6ed40ccc0aa7682b556bcdd6e0ba7ee166352fb82d38c058a945581ea",
+        "resolver_run_id": "production-pixiv:62bf19954571b09ca71771c8ab6ee863",
+        "actual_read_dependencies": 71538,
+        "actual_read_dependency_bytes": 733983592,
+        "new_provider_calls": 0,
+        "network_calls": 0,
+        "database_executed": false,
+        "ledger_unchanged": true,
+        "whole_current_product_copy_or_production_acceptance_claimed": false,
+        "final_package_replay_still_required": true
+      }
+    },
+    "historical_B19_formal_progress": {
+      "sequence": "correction29-correction03-b19-affected-20261004-1-sequence-private.json",
+      "actual_stages": {
+        "focused": {
+          "passed": 1218,
+          "failed": 0,
+          "skipped": 3,
+          "errors": 0
+        },
+        "postgresql": {
+          "passed": 142,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0
+        },
+        "historical": {
+          "passed": 88,
+          "failed": 0,
+          "skipped": 0,
+          "errors": 0
+        }
+      },
+      "status": "finished"
     }
   },
   "active_blocker": {

@@ -85,6 +85,7 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
     adapted=[]
     role_records={}
     completion_outcomes={}
+    contextual_unknown_observations={}
     if (role_facts and role_facts.get('completion_by_aggregate') and any(
         row.get('validated_response') for row in role_facts.get('completion_records',{}).values())):
         # Reconstruct targets from source context; stored target_coverage is
@@ -106,6 +107,10 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
             raise ValueError('production_role_facts_schema_invalid')
         for value in role_facts['records'].values():
             role_records[canonical_source_key(value['raw_value'])]=value
+    observed_tag_values=defaultdict(set)
+    for original_signal in consumer.signals:
+        if original_signal.origin_type=='pixiv_tag_observation':
+            observed_tag_values[original_signal.evidence_payload.get('aggregate_fingerprint')].add(original_signal.raw_value)
     for signal in consumer.signals:
         if signal.role_hint=='artist':
             adapted.append(signal);continue
@@ -198,6 +203,22 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
                     if not context and len(contexts)==1:
                         context=next(iter(contexts));evidence['production_model_proposed_context']=context
                     evidence['production_contextual_role_extraction']=contextual
+                elif (roles=={'unknown'} and role=='unknown' and status=='rejected'
+                    and evidence.get('production_non_identity_reason')=='existing_extractor_non_name_verdict'):
+                    observations=[row for row in matches if (
+                        row.get('candidate_role')=='unknown_name_like'
+                        and row.get('origin_type')=='source_tag_observation'
+                        and row.get('extraction_action')=='popularity_suffix_stripped'
+                        and row.get('evidence_payload',{}).get('deterministic_hint') is True
+                        and row.get('evidence_payload',{}).get('original_tag_role')=='popularity_meta'
+                        and row.get('evidence_payload',{}).get('full_popularity_tag_is_alias') is False
+                        and canonical_source_key(row.get('evidence_payload',{}).get('extracted_prefix'))==canonical_source_key(signal.raw_value)
+                        and row.get('evidence_payload',{}).get('raw_tag') in observed_tag_values[signal.evidence_payload.get('aggregate_fingerprint')])]
+                    if observations:
+                        best=max(observations,key=lambda row:row['confidence'])
+                        observed_trust,observed_status=_trust_for_f7a_candidate(SimpleNamespace(**{**best,'status':'active'}))
+                        if observed_trust=='weak' and observed_status=='needs_review':
+                            contextual_unknown_observations[signal.signal_key]=contextual
             if role=='work':context=None
         adapted.append(replace(signal,role_hint=role,work_context_key=context,trust_tier=trust,status=status,evidence_payload=evidence))
     # A tag's presence proves source provenance, not that it names a work.
@@ -229,6 +250,29 @@ def adapt_production_semantics(consumer, vocabulary=None, role_facts=None):
     if role_facts and 'identity_qualification' in role_facts:
         from .production_pixiv_qualification import apply_identity_qualification
         adapted=validate_contexts(apply_identity_qualification(adapted,consumer.signals,role_facts['identity_qualification']))
+    # Apply the keyword-only observation after the original correction and
+    # qualification checks, so their recorded prior facts remain unchanged.
+    # A corrected decision or suspended identity retains its own disposition.
+    observed=[]
+    current_work_names={canonical_source_key(signal.raw_value) for signal in adapted
+        if signal.role_hint=='work' and signal.status=='active'
+        and signal.trust_tier not in {'weak','rejected'}
+        and not signal.evidence_payload.get('identity_qualification')}
+    for signal in adapted:
+        contextual=contextual_unknown_observations.get(signal.signal_key)
+        evidence=signal.evidence_payload
+        if (contextual and signal.role_hint=='unknown' and signal.status=='rejected'
+            and evidence.get('production_non_identity_reason')=='existing_extractor_non_name_verdict'
+            and canonical_source_key(signal.raw_value) in current_work_names
+            and not evidence.get('production_semantic_correction') and not evidence.get('identity_qualification')):
+            evidence={**evidence,'production_contextual_role_extraction':contextual,
+                'production_contextual_unknown_name_observation':{
+                    'extraction_key':contextual['extraction_key'],
+                    'identity_equivalence_authorized':False,
+                    'fictional_work_context_authorized':False}}
+            signal=replace(signal,trust_tier='weak',status='needs_review',evidence_payload=evidence)
+        observed.append(signal)
+    adapted=observed
     identity=[{'key':s.signal_key,'role':s.role_hint,'context':s.work_context_key,'trust':s.trust_tier,
                'status':s.status,'evidence':s.evidence_payload} for s in adapted]
     if source_history and source_history.get('source_recovery'):

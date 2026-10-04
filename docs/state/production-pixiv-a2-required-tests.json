@@ -33,7 +33,8 @@
     "tests/test_production_pixiv_reviews113_114.py",
     "tests/test_production_pixiv_role_sources.py",
     "tests/test_production_pixiv_role_recovery.py",
-    "tests/test_production_pixiv_runtime_snapshot.py"
+    "tests/test_production_pixiv_runtime_snapshot.py",
+    "tests/test_production_pixiv_prefix_keyword_recall.py"
   ],
   "postgresql": [
     "tests/test_production_pixiv_a2.py",
