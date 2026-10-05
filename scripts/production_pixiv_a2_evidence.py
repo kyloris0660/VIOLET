@@ -802,6 +802,11 @@ def recompute_workload(workload, baseline, frozen_cases, *, launch, system_ident
         request=urlsplit(row['request_url'])
         if origin(row['request_url'])!=expected_origin or request.path!='/api/search' or parse_qs(request.query)!= {'q':[row['query']],'limit':['64']}:
             raise ValueError('a2_workload_request_parameters')
+    # The observed service gate above natively proves a fixed runtime's exact
+    # business checkout, complete application bytes and sealed profile. Source
+    # timings retain that checkout's actual business HEAD and execution root.
+    source_root=Path(launch['fixed_runtime_binding']['business_root']
+        if 'fixed_runtime_binding' in launch else launch['code_root'])
     source=workload['source_layer_measurements'];seen=set()
     from app.services.pixiv_metadata_projection_service import canonical_fingerprint
     import math
@@ -815,7 +820,7 @@ def recompute_workload(workload, baseline, frozen_cases, *, launch, system_ident
         execution=row.get('execution',{})
         if (execution.get('candidate_head')!=workload['candidate_head'] or execution.get('database')!=workload['database']
             or not execution.get('system_identifier') or (system_identifier is not None and execution['system_identifier']!=system_identifier)
-            or not recorded_code_root_matches(execution.get('code_root'),Path(launch['code_root']))
+            or not recorded_code_root_matches(execution.get('code_root'),source_root)
             or not execution.get('python_executable') or type(execution.get('pid')) is not int or execution['pid']<=0):
             raise ValueError('a2_workload_source_execution_identity')
         start=row.get('started_perf_ns');end=row.get('finished_perf_ns');ms=row.get('ms')

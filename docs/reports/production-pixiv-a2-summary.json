@@ -4,7 +4,7 @@
   "safe_to_merge": false,
   "route_approved": false,
   "project_lead_acceptance": "pending",
-  "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+  "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
   "coverage": {
     "media_count": 38114,
     "mapped_media": 9502,
@@ -19,13 +19,17 @@
     }
   },
   "production": {
-    "status": "fixed_historical_b5_available_current_candidate_not_deployed",
-    "startup_business_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
-    "worker_pid": 51064,
-    "observation": "correction29-correction03-preparation-availability-20261004-1-availability-private.json",
+    "status": "owned_old44_fixed_runtime_recovered_after_B20_workload_identity_failure",
+    "startup_business_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
+    "deployed_runtime_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
+    "worker_pid": 65952,
+    "observation": "correction29-correction03-b20-original-20261005-1-guarded-recovered-availability-private.json",
+    "observation_sha256": "26577ac8551e7b66254119383176a0d951dca5eb9707949ac809999c5f15ca7e",
+    "database": "blombooru",
+    "read_enabled": true,
+    "apply_enabled": false,
     "current_production_acceptance": false,
-    "deployed_runtime_head": "8fef7fff4955013598c3d7cef98d6bea7013fccf",
-    "code_root": "C:\\Users\\kyloris\\Documents\\VIOLET-worktrees\\production-pixiv-a2-stable-562bc18"
+    "prior_B20_runtime_record_backup": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-before-documents/docs/reports/production-pixiv-a2-summary.json"
   },
   "budget": {
     "model": "gpt-4.1-mini",
@@ -918,7 +922,7 @@
   "correction03": {
     "authorization_file": "VIOLET-A2-来源恢复与最终收口执行任务-20261003.md",
     "authorization_sha256": "928faaa4bc04a5f7e021023e4c87341c5da5d44c9eafd3194d96bde89af0bf75",
-    "status": "B20_prefix_keyword_frozen_current_native_validation_pending",
+    "status": "B21_workload_fixed_binding_frozen_native_validation_pending",
     "source_record_scope": 9543,
     "shared_unit_source_contract_authorized": true,
     "original_ledger_failure_rewrite_authorized": false,
@@ -932,10 +936,10 @@
     "target_met": false,
     "safe_to_merge": false,
     "route_approved": false,
-    "daily_entry_status": "daily_runtime_restored_fixed_source_no_new_A2_acceptance",
-    "daily_entry_receipt": "correction03-daily-runtime-sealed-20261003-private.json",
-    "deployed_business_source_head": "562bc18b2178883e3a604b2d9e6bc01454d37080",
-    "deployed_runtime_head": "8fef7fff4955013598c3d7cef98d6bea7013fccf",
+    "daily_entry_status": "owned_old44_fixed_runtime_recovered_after_B20_workload_identity_failure",
+    "daily_entry_receipt": "correction29-correction03-b20-original-20261005-1-guarded-recovered-availability-private.json",
+    "deployed_business_source_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
+    "deployed_runtime_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
     "production_preparation_separate": true,
     "protected_tables_unchanged": 17,
     "native_zero_call_inventory": "correction03-native-unit-20261004-7-command-private.json",
@@ -960,7 +964,7 @@
       "previous_idempotence_failure_preserved": "correction03-source-test-20261004-16.log"
     },
     "additional_full_non_e2e_invocations": 0,
-    "business_candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
+    "business_candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
     "owned_test_fixture_preservation": "correction03-owned-runtime-fixture-preservation-20261004-private.json",
     "historical_b16_zero_call_replay": "correction03-current-replay-20261004-3-receipt-private.json",
     "b16_focused": {
@@ -1049,7 +1053,7 @@
     },
     "post_paid_original_preservation": "correction03-post-paid-original-preservation-20261004-private.json",
     "current_complete_graph_command": "correction29-correction03-b19-cache-20261004-1-command-private.json",
-    "current_graph_status": "B20_exact_frozen_native_source_and_graph_pending",
+    "current_graph_status": "B21_exact_frozen_native_source_and_graph_pending",
     "independent_expected_projection_preparation_authorized_in_isolated_copy": true,
     "independent_expected_projection_preparation_claims_product_acceptance": false,
     "fixed_runtime_contract_development": {
@@ -1762,7 +1766,7 @@
       "production_acceptance_claimed": false
     },
     "formal_progress": {
-      "sequence": "correction29-correction03-b20-affected-20261004-1-sequence-private.json",
+      "sequence": "correction29-correction03-b21-affected-20261005-1-sequence-private.json",
       "actual_stages": {},
       "status": "pending_current_frozen_candidate"
     },
@@ -1815,15 +1819,21 @@
       "ledger_unchanged": true
     },
     "latest_readonly_daily_availability": {
-      "receipt": "correction29-correction03-current-b19-wait-availability-20261004-6-availability-private.json",
-      "receipt_sha256": "279a4c76554d7f997d6b923b679e50c7c0bae8ad58edd9c020195442d7b45ec2",
-      "observed_at": "2026-10-04T04:24:56.995526+00:00",
+      "receipt": "correction29-correction03-b20-source-wait-availability-20261005-3-availability-private.json",
+      "sha256": "fe7aa418b359ccf966c71515834ffead42f952d3ce47fd125dbbe87c7efa39c1",
+      "observed_at": "2026-10-04T18:52:25.102670+00:00",
       "runtime_state": "running_verified",
-      "runtime_directory": "production-pixiv-a2-stable-562bc18",
-      "worker_pid": 51064,
-      "active_jobs": 0,
-      "new_candidate_deployed": false,
-      "new_candidate_acceptance_claimed": false
+      "active_work_absent": true,
+      "database_writes": 0,
+      "media_count": 38114,
+      "product_runs": [
+        {
+          "run_key": "scv2-px3:8e0662f9ffd37d5a153e5734545a693b",
+          "bindings": 66392,
+          "bound_media": 8623,
+          "valid_revision_bindings": 66392
+        }
+      ]
     },
     "frozen_role_checkpoint_recovery": {
       "original_failure_log": "correction03-frozen-role-progress-state-checkpoint-20261004-1.log",
@@ -2034,34 +2044,133 @@
       "final_package_replay_still_required": true
     },
     "actual_current_copy_core_lifecycle": {
-      "lifecycle_receipt": "correction29-copy-923bf33-correction03-1-lifecycle-private.json",
-      "receipt_sha256_at_checkpoint": "03e4a99b383597f1f49b1f5a75b13061418bb2ef383c512a1b50c7f27adf65ae",
-      "receipt_still_running": true,
-      "native_five_operations_verified": true,
-      "approved_full_projection_verified": true,
-      "full_projection": "correction29-copy-923bf33-correction03-1-final-projection-private.json",
-      "full_projection_sha256": "d45e27282d77919897febc301b8bf18dd3dd44420c20a668d48b0c85b7c230ed",
-      "actual_valid_supports": 66391,
-      "daily_B5_valid_supports": 66392,
-      "source_difference": "correction03-live-b5-b19-support-difference-20261004-1-private.json",
-      "source_difference_sha256": "0003af0df394ef76237a00755c7e1faeef4e4470cb3f11eaeb44c59967977689",
-      "source_explanation": "correction03-live-b5-b19-support-source-explanation-20261004-1-private.json",
-      "source_explanation_sha256": "53e228825e5ca8c77acbc0357056162efc955e57c8e914717bd758929c845f54",
-      "removed_source_supports": [
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "copy_label": "correction29-copy-6b502dd-correction03-2",
+      "database": "blombooru_a2_test_20261004_6b502dd",
+      "full_source_verification": {
+        "started_at": "2026-10-04T20:37:31.492633+00:00",
+        "finished_at": "2026-10-04T21:40:35.837298+00:00",
+        "semantic_input_identity": {
+          "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+          "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+          "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+          "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+          "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+          "versions": {
+            "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+            "role_schema": "violet.production-pixiv-role-result.v1",
+            "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+            "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+            "extraction_schema": "source_name_candidate_extraction_compact_v2",
+            "completion": "production_pixiv_residual_roles_v1",
+            "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+            "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+            "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+            "cache_policy": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+            "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+            "model": "gpt-4.1-mini",
+            "fallback": false
+          }
+        },
+        "run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e"
+      },
+      "first_apply_finished_at": "2026-10-04T21:57:03.904708+00:00",
+      "first_apply_applied": true,
+      "active_runs": 1,
+      "bindings": 66392,
+      "duplicate_support_count": 0,
+      "source_files": [
         {
-          "source_key": [
-            "production_pixiv:pixiv_tag_observation:v2:8f0adb165bd305b05a31e4f0391049b6",
-            "pixiv_tag_observation",
-            11714,
-            13358,
-            1
-          ],
-          "count": 1
+          "file": "correction29-copy-6b502dd-correction03-2-initial-plan-plan-private.json",
+          "sha256": "b77e3b4723152ec35d20dd92027a1e4188dc939c4d63e193e9bd7fccd2ecdb12"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-apply-apply-private.json",
+          "sha256": "4b5c8f393bbb90ed4c1bb4f3cfae420ba63f86d3c4e86d902c9a987af9de6ae9"
+        },
+        {
+          "file": "correction03-b20-copy-core-lifecycle-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+          "sha256": "d27cb80638e3a810021cb9e5d77522a7cc7e2d14e2bfd68147b13448397e4df8"
+        },
+        {
+          "file": "correction03-b20-copy-activity-observation-20261005-1.log",
+          "sha256": "7c2d392bbd0aaeb338c68e725f6e595fb47d398449d521acdc83aa6e536a9478"
+        },
+        {
+          "file": "correction29-correction03-b20-source-wait-availability-20261005-6-availability-private.json",
+          "sha256": "79755e39f309912d6d2e4483fe87277274b94d076d6168a17aa18a6287d39e7c"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-final-projection-private.json",
+          "sha256": "ce9b9ef13df577494d39ff637fb295a9e74207189f86dce9219b650d05d83dcb"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-before-preservation-private.json",
+          "sha256": "a87a59295a17a916dd5dae0a40eb1ec77680e046bd9a316b38e1e5586c189288"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-after-rollback-preservation-private.json",
+          "sha256": "b47fc201cb50d04d62edb72777683cd07b7820310bc168802b5f06104ac0d5bf"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-after-reapply-preservation-private.json",
+          "sha256": "0f24d2767c713cb9e63890d7e710504c49fdb6e4281ab9a830f3b0428d5fb16f"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-replay-plan-plan-private.json",
+          "sha256": "57aac4d89a45147338c23e9f256d6b9503377ea8d841c83b3812427a8b17e1ca"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-replay-apply-private.json",
+          "sha256": "e34735414febf431afe7ebca0c415b484ed3f9f9fe0999152ff385520d64f071"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-rollback-rollback-private.json",
+          "sha256": "f081e1f5701a05848da8cd27f3f82e3bc99ed57fd5f55cabbebb84e079842af6"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-repeated-rollback-rollback-private.json",
+          "sha256": "2e9f7e87eb9f5f60edfe6ea08a030f24c4fe198b0cccd068cd1896afa7a3e0f3"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-reapply-plan-plan-private.json",
+          "sha256": "58db9b3b163476bdf1547436863b72681314d057ec4546ce9f6df062e425b60c"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-reapply-apply-private.json",
+          "sha256": "5f60ec1560b5bf96260fd3ad935bf175c3a0c237d3adad40086a2c089f08313c"
         }
       ],
-      "retargeted_supports": 3266,
-      "owned_recovery_and_complete_quality_acceptance_pending": true,
-      "production_acceptance_claimed": false
+      "lifecycle_observation": "correction03-b20-copy-core-lifecycle-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+      "lifecycle_observation_sha256": "d27cb80638e3a810021cb9e5d77522a7cc7e2d14e2bfd68147b13448397e4df8",
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-5-private.json",
+      "production_actions": 0,
+      "provider_calls": 0,
+      "remaining_copy_lifecycle_and_quality_acceptance_required": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false,
+      "driver_sha256": "ec1d09848f4a49fb0c3d3304d343014ec25fc104782c5e3209778c2bb13c13ea",
+      "core_lifecycle_passed": true,
+      "real_core_operations": 5,
+      "full_logical_support_set_preserved_after_reapply": true,
+      "approved_run_and_final_projection_verified": true,
+      "independent_support_preserved": true,
+      "lifecycle_verification": {
+        "operation_count": 5,
+        "run_key": "scv2-px3:61bf88218dee4f1236e155ee9ea10862",
+        "receipt_sha256": [
+          "4b5c8f393bbb90ed4c1bb4f3cfae420ba63f86d3c4e86d902c9a987af9de6ae9",
+          "e34735414febf431afe7ebca0c415b484ed3f9f9fe0999152ff385520d64f071",
+          "f081e1f5701a05848da8cd27f3f82e3bc99ed57fd5f55cabbebb84e079842af6",
+          "2e9f7e87eb9f5f60edfe6ea08a030f24c4fe198b0cccd068cd1896afa7a3e0f3",
+          "5f60ec1560b5bf96260fd3ad935bf175c3a0c237d3adad40086a2c089f08313c"
+        ]
+      },
+      "owned_recovery_and_quality_acceptance_still_required": true
     },
     "actual_completed_isolated_owned_recovery": {
       "candidate_head": "923bf33361413044c435190c14f68ade10d70c88",
@@ -2386,7 +2495,7 @@
       "service_stop_or_cutover_queued": false
     },
     "prefix_keyword_recall_implementation": {
-      "status": "development_passed_freezing",
+      "status": "frozen_native_acceptance_pending",
       "previous_business_head": "923bf33361413044c435190c14f68ade10d70c88",
       "semantic_source_sha256": "39623895907c4bbce535ab544419c3a997b260f13b6fc446dc2a0edc5b716d05",
       "test_file": "tests/test_production_pixiv_prefix_keyword_recall.py",
@@ -2532,6 +2641,1859 @@
         }
       },
       "status": "finished"
+    },
+    "actual_current_frozen_source_git_proof": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "proof": "correction03-b20-source-20261004-proof-private.json",
+      "proof_sha256": "fc3777b89c4775ad63229c4f1d3fbcce8571fb85b180674b5669b51942345dee",
+      "actual_checker_log": "correction03-b20-source-independent-replay-20261004-1.log",
+      "actual_checker_log_sha256": "21f50de689161f0ec0813035073be9dd060a704d2d0d2914bca70f21c01a24b0",
+      "application_paths": 578,
+      "registered_paths": 48,
+      "original_git_objects_verified": 98,
+      "current_complete_native_source_graph_and_product_acceptance_claimed": false
+    },
+    "actual_frozen_validation_and_prepared_owned_replay": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "validation_sequence": "correction29-correction03-b20-affected-20261004-1-sequence-private.json",
+      "validation_sequence_sha256": "68f1b6510b99f4d716a72cf154b50a597a4ecfca6ffcf45f5baaa2a2753b3086",
+      "validation": "correction29-correction03-b20-affected-20261004-1-validation-private.json",
+      "validation_sha256": "974ae1c4848687f91e6ebc96f12a8dcf153cd76c836c2999158641b7894a477f",
+      "actual_passed": {
+        "focused": 1228,
+        "postgresql": 142,
+        "historical": 88
+      },
+      "focused_skipped": 3,
+      "additional_full_invocations": 0,
+      "prepared_owned_replay": "correction03-b20-prepared-owned-stdlib-replay-20261004-1-private.json",
+      "prepared_owned_replay_sha256": "5e688c13f7926052f1c40b05b5d481fcc5fcc45377a3e09625b85c1083c1b4a0",
+      "complete_prepared_owned_projection": {
+        "run_key": "scv2-px3:61bf88218dee4f1236e155ee9ea10862",
+        "product_fingerprint": "61bf88218dee4f1236e155ee9ea1086265c031a9051c2ab5ba128c5f9d8b99d6",
+        "core_business_fingerprint": "630cc91e57daa8c541cf82d4e3836e1953e65c3a9659e5a7c54f2c23b05a8df6",
+        "full_core_fingerprint": "8572765075ea6c836f076b59315de24e5f9feae05b2fc2d43152441eb0e368d8",
+        "core_counts": {
+          "resolution_runs": 1,
+          "signals": 100285,
+          "concepts": 17498,
+          "aliases": 21314,
+          "evidence": 65956,
+          "signal_links": 65956,
+          "search_index": 21314
+        },
+        "product_counts": {
+          "clusters": 17498,
+          "candidate_dispositions": 595168,
+          "ambiguity_records": 65980
+        }
+      },
+      "current_full_native_graph_copy_and_production_acceptance_claimed": false
+    },
+    "actual_current_work_only_source_progress": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "adjudication": "correction29-correction03-b20-cache-20261004-1-work-adjudication-private.json",
+      "adjudication_sha256": "dd883c2df24b6faca0bd40620c0028b1adfa3f4b0d58bf5bbf91578eda5b7089",
+      "source_replay": "correction29-correction03-b20-cache-20261004-1-work-source-replay-private.json",
+      "source_replay_sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+      "selected_pairs": 9070,
+      "actual_cache_hits": 9070,
+      "actual_verified_sources": 9070,
+      "errors": 0,
+      "missing": 0,
+      "new_provider_calls": 0,
+      "remaining_relation_graph_copy_production_and_owner_acceptance_claimed": false
+    },
+    "actual_current_pair_source_progress": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "adjudication": "correction29-correction03-b20-cache-20261004-1-adjudication-private.json",
+      "adjudication_sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758",
+      "source_replays": [
+        {
+          "file": "correction29-correction03-b20-cache-20261004-1-work-source-replay-private.json",
+          "sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b"
+        },
+        {
+          "file": "correction29-correction03-b20-cache-20261004-1-remaining-source-replay-private.json",
+          "sha256": "9eb062c09fefc215e7d21f94bdc44e9b0b581d1dafec7733d819e81c676e47e2"
+        }
+      ],
+      "selected_pairs": 31608,
+      "judgments": 31608,
+      "cache_hits": 31608,
+      "errors": 0,
+      "new_provider_calls": 0,
+      "complete_business_graph_acceptance_claimed": false,
+      "copy_acceptance_claimed": false,
+      "production_acceptance_claimed": false
+    },
+    "actual_waiter_timeout_recovery": {
+      "historical_failures": [
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261004-1-private.json",
+          "sha256": "d8236c3faece8794b13adbee111021594d9621d3a58d1c4f561d635d35b72770",
+          "status": "failed_before_any_stage"
+        },
+        {
+          "file": "correction03-b20-release-preparation-continuation-20261004-1-private.json",
+          "sha256": "c4ab2ec492f0f7a2d5822a201dd05850925e11daff2f03faada5ac8e6e260fa6",
+          "status": "failed_before_any_stage"
+        }
+      ],
+      "current_copy_continuation": "correction03-b20-frozen-copy-continuation-20261004-2-private.json",
+      "current_release_preparation_continuation": "correction03-b20-release-preparation-continuation-20261004-2-private.json",
+      "reason": "Queued six-hour native prerequisite wait expired before any copy stage; restart only the waiters with new receipts.",
+      "business_head_unchanged": true,
+      "production_actions": 0,
+      "provider_calls": 0,
+      "current_waiter_status": "both_retry_waiters_failed_before_any_stage_on_original_native_post_guard_rejection"
+    },
+    "actual_native_guard_retry": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "original_native_command": "correction29-correction03-b20-cache-20261004-1-command-private.json",
+      "original_native_command_sha256": "796fd1045f0b2225e067fbfe42e26282fbfa2a74ba34d1bf47be57fa5dc2489e",
+      "native_body_exit_code": 0,
+      "original_post_behavior_guard_passed": false,
+      "original_wrapper_status": "failed",
+      "diagnostic": "correction03-b20-carry-guard-diagnostic-20261004-1-private.json",
+      "diagnostic_sha256": "ec720426e86f813c599b052783206c01ff73f369c21f07704457cd63ca939450",
+      "diagnostic_current_native_carry_forward": true,
+      "initial_guard_rejection_cause": "not_observed",
+      "dependent_failures": [
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261004-2-private.json",
+          "sha256": "c88259d318006e9be72e42d12a0344ea346257942fd1e7e5434a4729de40e133",
+          "status": "failed",
+          "reason": ""
+        },
+        {
+          "file": "correction03-b20-release-preparation-continuation-20261004-2-private.json",
+          "sha256": "69cf73ebd7ec10734a1974ca35caa46fe102d28ba5ed25b9f9464c2a7eb62331",
+          "status": "failed",
+          "reason": "actual_copy_failed"
+        }
+      ],
+      "new_authoritative_native_command": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+      "retry_method": "Unchanged native adjudicate command and original correction prior, cache-only, separate label and receipt",
+      "original_failed_receipts_unchanged": true,
+      "business_source_or_guard_changed": false,
+      "production_writes": 0,
+      "provider_calls": 0,
+      "complete_business_graph_acceptance_claimed": false,
+      "copy_or_production_acceptance_claimed": false
+    },
+    "actual_space_and_bounded_transport_preparation": {
+      "workspace_space_receipt": "correction03-workspace-disk-occupancy-20261004-3-private.json",
+      "workspace_space_receipt_sha256": "2b1efa9f25cf7104644a608b0adabbfdae30fea04e6badd16cde5908f8781e3d",
+      "workspace_space_report": "correction03-workspace-space-report-20261004.md",
+      "workspace_space_report_sha256": "d76f1fd7e624345ed78907489e3ab2aa542695ae238f3b2d1e9fe8a1cb23b199",
+      "space_observed_at": "2026-10-04T14:23:51.105113+00:00",
+      "project_logical_bytes": 745865245803,
+      "project_unique_allocated_bytes": 700124079200,
+      "project_allocation_percent_of_C_used": 22.49,
+      "C_free_bytes": 983145476096,
+      "A2_evidence_unique_allocated_bytes": 530021525824,
+      "bounded_metadata_proof": "correction03-prefix-complete-bounded-memory-metadata-20261004-2-private.json",
+      "bounded_metadata_proof_sha256": "4abea9ce757c90f0f6337ec691bb96353ba215f8dd08b5b9b992fec1cd88c554",
+      "metadata_archive_bytes": 40227736,
+      "dictionary_bytes": 67108864,
+      "all_metadata_original_sections_exact": true,
+      "whole_transport_and_fresh_package_pending": true,
+      "current_copy_waiter": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+      "current_release_preparation_waiter": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+      "production_actions": 0,
+      "provider_calls": 0,
+      "cleanup_operations": 0,
+      "final_delivery_claimed": false
+    },
+    "actual_hash_chain_transport_preparation": {
+      "failed_64MiB_trial": "correction03-prefix-bounded-oversize-stop-20261004-2-private.json",
+      "failed_trial_sha256": "1be2c7d0e7bf6611a17709854df2b17ad6205f0052303471ec7d06851c647ed3",
+      "measured_minimum_trial_payload_bytes": 123197001,
+      "actual_failed_test_worker_exit_code": 4294967295,
+      "new_configuration_probe": "correction03-prefix-hash-chain-memory-probe-20261004-3-private.json",
+      "new_configuration_probe_sha256": "b17e85d8f455e33247cb697f721f05147ffbc8b083381937871233995e220351",
+      "dictionary_bytes": 536870912,
+      "match_finder": "MF_HC4",
+      "mode": "MODE_NORMAL",
+      "minimum_available_physical_bytes": 5368709120,
+      "measured_plane_compressed_payload_bytes": 17305742,
+      "measured_peak_working_set_bytes": 3021172736,
+      "metadata_proof": "correction03-prefix-complete-hash-chain-metadata-20261004-3-private.json",
+      "metadata_proof_sha256": "862168123db81a3258f1b775e804220bb5b3e0979c01c507b16eee83ea93d96c",
+      "metadata_archive_bytes": 39561181,
+      "all_metadata_original_sections_exact": true,
+      "current_full_transport": "correction03-prefix-complete-hash-chain-transport-20261004-3-private.json",
+      "current_fresh_package": "correction29-correction03-prefix-source-fresh-package-20261004-3-coordinator-private.json",
+      "whole_source_transport_or_fresh_package_passed_claimed": false,
+      "final_delivery_claimed": false,
+      "old_failed_receipts_preserved": true,
+      "original_source_bytes_changed": false,
+      "production_actions": 0,
+      "provider_calls": 0
+    },
+    "actual_exact_transport_member_probes": {
+      "complete_transport": "correction03-prefix-complete-hash-chain-size-probe-20261004-3-private.json",
+      "complete_transport_sha256": "808b5da8209358f03e221f3bca8d4e228cda3a0fc3f8fa365ea89407a3b8eb13",
+      "actual_complete_archive_bytes": 112834256,
+      "complete_archive_within_delivery_cap": false,
+      "all_raw_bytes_sha_crc_passed": true,
+      "old_oversized_archive_preserved": true,
+      "metadata_probe": "correction03-prefix-complete-metadata256-20261004-4-private.json",
+      "metadata_probe_sha256": "dc878c33f6771452666dab59a74c073b949942bd72c085bb95ecbc1871d67758",
+      "metadata_probe_archive_bytes": 37741614,
+      "labels_probe": "correction03-prefix-labels64-complete-probe-20261004-4-private.json",
+      "labels_probe_sha256": "9a2f707b0790716a6bf55258e587384ad35d0fad6d9a49beab83c5c299347fb0",
+      "labels_compressed_payload_bytes": 8863062,
+      "labels_peak_working_set_bytes": 728342528,
+      "current_adaptive_complete_archive_passed_claimed": false,
+      "final_delivery_claimed": false,
+      "native_business_or_decoder_changed": false,
+      "source_deleted": 0,
+      "production_actions": 0,
+      "provider_calls": 0
+    },
+    "actual_continuations_20261005": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "actual_source_and_transport_continuations": [
+        {
+          "file": "correction03-b20-complete-source-closure-continuation-20261005-2-private.json",
+          "sha256": "cc1f60429d1c1c4560407f19d027ce0121ccebe80b2823829aad7ee2e4c8641f",
+          "status_observed": "waiting_for_actual_independent_full_native_replay"
+        },
+        {
+          "file": "correction03-b20-complete-native-source-append-20261005-2-private.json",
+          "sha256": "0d54242515b2217cd0d3d0f5a3317126d3f3a5e1058af3051770f17aa887b6d2",
+          "status_observed": "waiting_for_actual_complete_native_source_closure"
+        },
+        {
+          "file": "correction03-prefix-complete-adaptive-transport-20261005-4-private.json",
+          "sha256": "480492b06fbd7e0b2b95156eb8067fe7ba35e4525287ffcdaccb50c588ad9b58",
+          "status_observed": "waiting_for_complete_byte_exact_member_probes"
+        },
+        {
+          "file": "correction29-correction03-prefix-source-fresh-package-20261005-4-coordinator-private.json",
+          "sha256": "36815756219b4ff7345956693b8d33fa44198699a4abe0d1a8e4cc2eb561291c",
+          "status_observed": "waiting_for_actual_extended_source_transport"
+        }
+      ],
+      "actual_complete_member_probes": [
+        {
+          "file": "correction03-prefix-class0-plane0-256-probe-20261005-1-private.json",
+          "sha256": "e37889165a4e1b7dd4c17407fe789919fbcdc08a341d0eb8dbdc5241708af02f",
+          "compressed_payload_bytes": 15608641,
+          "actual_peak_working_set_bytes": 2842451968
+        },
+        {
+          "file": "correction03-prefix-class0-plane1-256-probe-20261005-1-private.json",
+          "sha256": "5d4d3892cc629dfb706247bb8e13692c11615857ac6d4b87266c31053683f8c2",
+          "compressed_payload_bytes": 11729243,
+          "actual_peak_working_set_bytes": 2836021248
+        }
+      ],
+      "remote_snapshot": "correction29-correction03-b20-source-wait-remote-20261005-1-remote-private.json",
+      "remote_snapshot_sha256": "823046ecf63946803d81f623285342bbec19c3e1f3d6b9afacf4f06df0154a8d",
+      "review_thread_count": 116,
+      "new_since_task": 0,
+      "current_native_retry": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+      "current_complete_source_replay": "correction03-b20-full-native-stdlib-replay-20261004-2-private.json",
+      "current_native_acceptance_passed_claimed": false,
+      "current_complete_archive_or_fresh_restoration_passed_claimed": false,
+      "old_failed_source_and_oversized_archive_receipts_preserved": true,
+      "production_actions": 0,
+      "provider_calls": 0
+    },
+    "actual_complete_adaptive_source_transport": {
+      "complete_transport_driver": "correction03-prefix-complete-adaptive-transport-20261005-4-private.json",
+      "complete_transport_driver_sha256": "710eba643734dfe24ddc86453feffe785d3d044e8b33a4b15a316d339bd8cade",
+      "actual_size_proof": "correction03-prefix-complete-adaptive-size-probe-20261005-4-private.json",
+      "actual_size_proof_sha256": "5c65b13429ba3bf7257018d29805d4804056f834bff2f59f4a7194cc487d8b06",
+      "actual_source_archive": "correction03-prefix-complete-adaptive-size-probe-20261005-4.zip",
+      "actual_source_archive_bytes": 94069694,
+      "actual_source_archive_sha256": "8c6c2f5c1fee675ced1161bc93a1ad5b8c97d6121f5daaf965cd2327b5672204",
+      "source_archive_under_100000000": true,
+      "all_standard_zip_original_sha_crc_passed": true,
+      "full_native_blocks_inverse_passed": true,
+      "original_files": 72421,
+      "original_bytes": 23120611525,
+      "full_fresh_original_restoration": "correction29-correction03-prefix-source-fresh-package-20261005-4-coordinator-private.json",
+      "fresh_restoration_status_observed": "finished",
+      "fresh_restoration_passed_claimed": true,
+      "current_B20_native_product_acceptance_or_final_delivery_claimed": false,
+      "old_failed_and_oversized_archives_preserved": true,
+      "decoder_or_native_source_changed": false,
+      "provider_calls": 0,
+      "production_actions": 0,
+      "full_fresh_original_restoration_sha256": "97ea1a6b0e6c45b8c7f129d96b22fe1c810c018bcff17244c6359a6398fb14ab",
+      "actual_fresh_archive": "correction29-correction03-prefix-source-fresh-package-20261005-4.zip",
+      "actual_fresh_archive_bytes": 93726603,
+      "actual_fresh_archive_sha256": "3fcfa58ddd7abec5fe410f58abd2c99d05c4088e539e6a0ae21bbe3aea29e259",
+      "all_fresh_original_sha_syntax_storage_and_reference_checks_passed": true,
+      "all_actual_fresh_stages_exit_zero": true,
+      "superseded_original_idle_waiters_stopped": true,
+      "exact_owned_waiter_stop_receipt": "correction03-obsolete-prefix-waiter-stop-20261005-1-private.json",
+      "exact_owned_waiter_stop_receipt_sha256": "61b6dac96a019ec556ddaa994c0580aeb4ecc193fb9dd75772675d57ab5712f0",
+      "all_historical_waiter_receipts_unchanged": true,
+      "source_files_deleted": 0
+    },
+    "actual_complete_frozen_native_stdlib_replay": {
+      "source_replay": "correction03-b20-full-native-stdlib-replay-20261004-2-private.json",
+      "source_replay_sha256": "e8b2cfbddec0e870be8850c650c1eaebb1e3e19e5e28d3cca57ee08e931ab71b",
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "actual_process_exit_code": 0,
+      "actual_exit_observed_by_exec": true,
+      "complete_native_role_pair_graph_passed": true,
+      "signal_count": 100285,
+      "role_record_count": 15825,
+      "selected_judgment_count": 31608,
+      "native_source_modules": 23,
+      "actual_native_read_dependencies": 71538,
+      "frozen_source_proof": "correction03-b20-source-20261004-proof-private.json",
+      "frozen_source_proof_sha256": "fc3777b89c4775ad63229c4f1d3fbcce8571fb85b180674b5669b51942345dee",
+      "protected_resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+      "protected_business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+      "ledger_unchanged": true,
+      "network_calls": 0,
+      "provider_calls": 0,
+      "database_executed": false,
+      "current_product_acceptance_claimed": false,
+      "current_strict_command_retry": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+      "current_source_closure": "correction03-b20-complete-source-closure-continuation-20261005-2-private.json",
+      "current_original_production_or_final_delivery_passed_claimed": false
+    },
+    "actual_raw_inventory_collection_correction": {
+      "actual_failed_closure": "correction03-b20-complete-source-closure-continuation-20261005-2-private.json",
+      "actual_failed_closure_sha256": "5b75528fc131746ba546c3050cb39ffe46b54950da8b75776c3ac533dd34de67",
+      "original_failure_preserved": true,
+      "failure_cause": "archive_raw_file_inventory_was_confused_with_native_admission_count",
+      "actual_raw_count": 1931,
+      "actual_native_raw_reads": 1931,
+      "raw_not_opened_by_current_native_replay": 0,
+      "prior_raw_count": 1931,
+      "native_validated_raw_count": 1929,
+      "new_raw_paths_since_prior_pool": [],
+      "all_prior_raw_match_frozen_read_bytes_and_sha": true,
+      "diagnostic": "correction03-native-source-read-closure-diagnostic-20261005-2-private.json",
+      "diagnostic_sha256": "b3e72da1777a37aae2c820d2ef42b42d4e575503972a972e9711b680876e9255",
+      "corrected_collector": "correction03_collect_b20_complete_source_additions_20261005_2.py",
+      "corrected_collector_sha256": "58b2a33eb43470a1607298e7a7afc18057ad8a9ad6eeb28b44708aac407aca92",
+      "new_inventory_guard": "Exact equality with frozen complete native read list and every prior raw bytes/SHA unchanged",
+      "current_closure": "correction03-b20-complete-source-closure-continuation-20261005-3-private.json",
+      "current_status_observed": "actual_current_native_read_closure_running",
+      "current_append": "correction03-b20-complete-native-source-append-20261005-3-private.json",
+      "current_source_closure_completed_claimed": false,
+      "native_source_qualification_changed": false,
+      "ledger_or_original_response_changed": false,
+      "provider_calls": 0,
+      "production_actions": 0
+    },
+    "actual_completed_current_native_source_closure": {
+      "closure": "correction03-b20-complete-source-closure-continuation-20261005-3-private.json",
+      "closure_sha256": "50218761a579914ec0f5f483070d668b2ebd99b91c7adb6db277634a8ae9c692",
+      "status": "finished",
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "all_actual_stages_exit_zero": true,
+      "additions": "correction03-b20-complete-native-source-20261005-3-additions-private.json",
+      "additions_sha256": "398e2b53dfd32f48c55c063ef079169470daf12f810e0a8cd69fcbe0bc600b49",
+      "actual_read_dependencies": 71538,
+      "retained_original_role_raw_files": 1931,
+      "native_validated_raw_count": 1929,
+      "all_prior_original_raw_bytes_and_sha_unchanged": true,
+      "new_raw_paths": [],
+      "new_original_files": 664,
+      "new_original_bytes": 2620592091,
+      "native_append": "correction03-b20-complete-native-source-append-20261005-3-private.json",
+      "native_append_and_full_final_materialization_still_required": false,
+      "strict_cli_and_current_copy_acceptance_still_required": true,
+      "provider_calls": 0,
+      "production_actions": 0,
+      "native_append_status": "finished",
+      "native_append_sha256": "605799acab940e1bd64e36334c8e791b45640872d203e02baeec7cf9e28c17e8",
+      "native_pool_index": "correction29-correction03-b20-native-derived-shared-atoms-20261005-3-index.json",
+      "native_pool_index_sha256": "828bfd294ceabea43484bfa2821002342d5f4bf3d876cfcbe030fca00149d6de",
+      "exact_original_files": 73085,
+      "exact_original_bytes": 25741203616,
+      "all_prior_declarations_unchanged": true,
+      "existing_native_decoder_unchanged": true,
+      "full_final_materialization_still_required": true
+    },
+    "actual_current_pair_retry_progress": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "actual_command_status_observed": "running",
+      "cache_label": "correction29-correction03-b20-cache-20261004-2",
+      "completed_work_selected_pairs": 9070,
+      "completed_work_judgments": 9070,
+      "completed_work_source_rows": 9070,
+      "completed_work_errors": 0,
+      "completed_work_new_provider_calls": 0,
+      "remaining_selected_pairs_admitted": 22538,
+      "remaining_compatible_inputs": 22538,
+      "remaining_missing_distinct_inputs": 0,
+      "remaining_dispatchable_call_ceiling": 0,
+      "exact_evidence_sha256": {
+        "correction03-current-pair-retry-progress-checkpoint-20261005-2-running-cli-snapshot-private.json": "24c7833ce73204ffed673c2697de2e566d18be8fe649fcb996c17ada98aa446c",
+        "correction29-correction03-b20-cache-20261004-2-work-adjudication-private.json": "dd883c2df24b6faca0bd40620c0028b1adfa3f4b0d58bf5bbf91578eda5b7089",
+        "correction29-correction03-b20-cache-20261004-2-work-source-replay-private.json": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+        "correction29-correction03-b20-cache-20261004-2-remaining-correction-admission-private.json": "7cd48f8abf26cc2ce5923981f9e8d3358e69b933df5c278e00a0439bc5168bf4"
+      },
+      "recorded_at": "2026-10-04T18:41:46.356090+00:00",
+      "complete_cli_exit_and_post_guard_still_required": true,
+      "current_complete_graph_acceptance_claimed": false,
+      "production_actions": 0,
+      "ledger_original_bytes_unchanged": true,
+      "running_cli_observation_snapshot": "correction03-current-pair-retry-progress-checkpoint-20261005-2-running-cli-snapshot-private.json",
+      "running_cli_observation_snapshot_sha256": "24c7833ce73204ffed673c2697de2e566d18be8fe649fcb996c17ada98aa446c",
+      "live_cli_command": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+      "mutable_cli_reference_superseded_by_exact_observation_snapshot": true,
+      "prior_observation": "correction03-current-pair-retry-progress-checkpoint-20261005-1-private.json",
+      "prior_observation_sha256": "9b7fda8c1725cb8d4f619072c55a50b4900efcae264bce2b3a863786d07dc45f"
+    },
+    "actual_workspace_space_observation": {
+      "workspace_space_receipt": "correction03-workspace-disk-occupancy-20261005-4-private.json",
+      "workspace_space_receipt_sha256": "e57d8e5b97e9e0f71e10ae1107f69f0e5e13c1255b034b3dd4085a1961f5bdd1",
+      "workspace_space_report": "correction03-workspace-space-report-20261005.md",
+      "workspace_space_report_sha256": "bfae23f2fd609807a1681095bc4d7502122906576f66b07cb086f9427645911f",
+      "workspace_space_log": "correction03-workspace-disk-occupancy-20261005-4.log",
+      "workspace_space_log_sha256": "3bfb9abf3741f6203195abd1b938a1a44adbb3895741496e3cc08686b6a859cb",
+      "space_observed_at": "2026-10-04T20:02:41.419796+00:00",
+      "project_logical_bytes": 818761296742,
+      "project_unique_allocated_bytes": 773209384888,
+      "C_free_bytes": 930950144000,
+      "A2_evidence_unique_allocated_bytes": 603106782360,
+      "measurement": "GetFileInformationByHandleEx FileStandardInfo.AllocationSize, de-duplicated by NTFS volume/file identity; reparse points excluded; filesystem metadata overhead not included",
+      "non_atomic_live_observation": true,
+      "metadata_scan_observed_exit_code": 0,
+      "production_actions": 0,
+      "provider_calls": 0,
+      "cleanup_operations": 0,
+      "A2_acceptance_claimed": false
+    },
+    "actual_passed_strict_current_cli": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "cache_label": "correction29-correction03-b20-cache-20261004-2",
+      "actual_process_exit_code": 0,
+      "actual_exit_observed_by_exec": true,
+      "finished_at": "2026-10-04T20:08:52.293538+00:00",
+      "behavior_guard_after": true,
+      "inputs_unchanged": true,
+      "ledger_unchanged": true,
+      "source_files": [
+        {
+          "file": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+          "sha256": "0aedf0dad3d564d59bb928b12f8820925dc4463abf899fe3e09390a15ac7f87d"
+        },
+        {
+          "file": "correction29-correction03-b20-cache-20261004-2-adjudication-private.json",
+          "sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758"
+        },
+        {
+          "file": "correction29-correction03-b20-cache-20261004-2-cluster-private.json",
+          "sha256": "f1b81cb37a4c14d664c47baf69409489f4d78c731a3cfa853727788b443f53fc"
+        },
+        {
+          "file": "correction29-correction03-b20-cache-20261004-2-semantic-manifest-private.json",
+          "sha256": "33090305ee3aa3a3a4064a35970e3949fc20618017868b814199c452d4d12778"
+        },
+        {
+          "file": "correction29-correction03-b20-cache-20261004-2-approved-run-input-private.json",
+          "sha256": "29a5acbc9fb81a54495183ab64a2295eceb88bc4bdaefae7b50a7cef28f5b8bc"
+        },
+        {
+          "file": "correction29-correction03-b20-cache-20261004-2.log",
+          "sha256": "38406e5ce11e802a60de8cc8df14c71983cd94ad9adc0feed7746a5c0d77f4ed"
+        }
+      ],
+      "signal_count": 100285,
+      "selected_pair_count": 31608,
+      "work_pair_count": 9070,
+      "remaining_pair_count": 22538,
+      "judgment_count": 31608,
+      "cache_hits": 31608,
+      "new_provider_calls": 0,
+      "missing_pair_count": 0,
+      "concept_count": 17498,
+      "resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+      "business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+      "copy_and_actual_production_acceptance_still_required": true,
+      "production_actions": 0,
+      "final_delivery_claimed": false
+    },
+    "actual_current_copy_recovery_continuation": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "original_failed_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+      "original_failed_release_preparation": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+      "original_failed_backup_receipt": "correction29-correction03-b20-oracle-backup-20261004-1-private.json",
+      "original_failed_backup_receipt_sha256": "1f00b5d1d1b5b576948087a6e7aeed3ef071a8414169493a16750b234afa259a",
+      "guard_failure_root_cause_proven": false,
+      "native_guard_changes": 0,
+      "actual_read_only_oracle_continuation": "correction29-correction03-b20-oracle-backup-20261005-2-private.json",
+      "actual_read_only_oracle_continuation_sha256": "5c3b5d93d958af861bd4b604508cb88af5f143c25ccd8376e62f3013efec8756",
+      "actual_read_only_oracle_restore_proof": "correction29-correction03-b20-oracle-backup-20261005-2-restore-private.json",
+      "actual_read_only_oracle_restore_proof_sha256": "2c8861dfb2a62a3b76131a46ec06bb8e97dadb68576c6ca198b3272f6e95fb74",
+      "all_61_tables_reverified": true,
+      "actual_observed_oracle_continuation_exit_code": 0,
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-4-private.json",
+      "current_copy_observation": "correction03-b20-resumed-copy-checkpoint-20261005-4-copy-snapshot-private.json",
+      "current_copy_observation_sha256": "2539c6991dded4bdbe0bbca5e5d863a3fa2fd738dd99f30e2c998b6a66fb5a74",
+      "current_copy_observed_status": "full-copy-sequence_running",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-4-private.json",
+      "current_production_command_preparer": "correction03_prepare_b20_production_command_20261005_5.py",
+      "production_actions": 0,
+      "provider_calls": 0,
+      "current_copy_and_production_acceptance_still_required": true
+    },
+    "actual_current_copy_scope_continuation": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "original_failed_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+      "original_failed_release_preparation": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+      "original_failed_backup_receipt": "correction29-correction03-b20-oracle-backup-20261004-1-private.json",
+      "original_failed_backup_receipt_sha256": "1f00b5d1d1b5b576948087a6e7aeed3ef071a8414169493a16750b234afa259a",
+      "guard_failure_root_cause_proven": false,
+      "native_guard_changes": 0,
+      "actual_read_only_oracle_continuation": "correction29-correction03-b20-oracle-backup-20261005-2-private.json",
+      "actual_read_only_oracle_continuation_sha256": "5c3b5d93d958af861bd4b604508cb88af5f143c25ccd8376e62f3013efec8756",
+      "actual_read_only_oracle_restore_proof": "correction29-correction03-b20-oracle-backup-20261005-2-restore-private.json",
+      "actual_read_only_oracle_restore_proof_sha256": "2c8861dfb2a62a3b76131a46ec06bb8e97dadb68576c6ca198b3272f6e95fb74",
+      "all_61_tables_reverified": true,
+      "actual_observed_oracle_continuation_exit_code": 0,
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+      "current_copy_observation": "correction03-b20-current-copy-scope-checkpoint-20261005-5-copy-snapshot-private.json",
+      "current_copy_observation_sha256": "ae12750bee066ce7eb881ce5e4132dc0df7efeb77b6f1482c158183a73ab17df",
+      "current_copy_observed_status": "full-copy-sequence_running",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-5-private.json",
+      "current_production_command_preparer": "correction03_prepare_b20_production_command_20261005_6.py",
+      "production_actions": 0,
+      "provider_calls": 0,
+      "current_copy_and_production_acceptance_still_required": true,
+      "current_copy_label": "correction29-copy-6b502dd-correction03-2",
+      "prior_failed_copy_label": "correction29-copy-6b502dd-correction03-1",
+      "prior_failed_copy_sequence": "correction29-copy-6b502dd-correction03-1-sequence-private.json",
+      "prior_incomplete_lifecycle": "correction29-copy-6b502dd-correction03-1-lifecycle-private.json",
+      "actual_counterexample_log": "correction29-copy-6b502dd-correction03-1-before.log",
+      "bounded_scope_driver_correction": "correction03-b20-current-copy-scope-driver-correction-20261005-2-private.json",
+      "bounded_scope_driver_correction_sha256": "2835b3ec495504642d33917eee51c72fa09f013d0003805fab3d7bdddea3b195",
+      "real_scope_regression": "correction03-b20-current-copy-scope-regression-20261005-2-private.json",
+      "real_scope_regression_sha256": "3ae9b66699ddda64f7dcedef1d808b97852e5a7ccbf1fdaac61d0acbf8e7010a",
+      "real_cli_regressions_passed": 3,
+      "prior_lifecycle_parent_observed_exit_code": 1,
+      "prior_failure_occurred_before_database_import": true,
+      "business_source_changes": 0,
+      "quality_expectation_changes": 0,
+      "final_package_spec_driver": "correction03_assemble_final_b20_package_spec_20261005_4.py",
+      "current_support_comparison_driver": "correction03_compare_b20_support_sources_20261005_2.py"
+    },
+    "actual_current_copy_first_apply": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "copy_label": "correction29-copy-6b502dd-correction03-2",
+      "database": "blombooru_a2_test_20261004_6b502dd",
+      "full_source_verification": {
+        "started_at": "2026-10-04T20:37:31.492633+00:00",
+        "finished_at": "2026-10-04T21:40:35.837298+00:00",
+        "semantic_input_identity": {
+          "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+          "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+          "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+          "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+          "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+          "versions": {
+            "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+            "role_schema": "violet.production-pixiv-role-result.v1",
+            "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+            "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+            "extraction_schema": "source_name_candidate_extraction_compact_v2",
+            "completion": "production_pixiv_residual_roles_v1",
+            "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+            "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+            "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+            "cache_policy": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+            "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+            "model": "gpt-4.1-mini",
+            "fallback": false
+          }
+        },
+        "run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e"
+      },
+      "first_apply_finished_at": "2026-10-04T21:57:03.904708+00:00",
+      "first_apply_applied": true,
+      "active_runs": 1,
+      "bindings": 66392,
+      "duplicate_support_count": 0,
+      "source_files": [
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-initial-plan-plan-private.json",
+          "sha256": "b77e3b4723152ec35d20dd92027a1e4188dc939c4d63e193e9bd7fccd2ecdb12"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-apply-apply-private.json",
+          "sha256": "4b5c8f393bbb90ed4c1bb4f3cfae420ba63f86d3c4e86d902c9a987af9de6ae9"
+        },
+        {
+          "file": "correction03-b20-copy-first-apply-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+          "sha256": "31778425279c4ad879ef87181fc3e9c2d51459c02c6503309eecf01785712b59"
+        },
+        {
+          "file": "correction03-b20-copy-activity-observation-20261005-1.log",
+          "sha256": "7c2d392bbd0aaeb338c68e725f6e595fb47d398449d521acdc83aa6e536a9478"
+        },
+        {
+          "file": "correction29-correction03-b20-source-wait-availability-20261005-6-availability-private.json",
+          "sha256": "79755e39f309912d6d2e4483fe87277274b94d076d6168a17aa18a6287d39e7c"
+        }
+      ],
+      "lifecycle_observation": "correction03-b20-copy-first-apply-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+      "lifecycle_observation_sha256": "31778425279c4ad879ef87181fc3e9c2d51459c02c6503309eecf01785712b59",
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-5-private.json",
+      "production_actions": 0,
+      "provider_calls": 0,
+      "remaining_copy_lifecycle_and_quality_acceptance_required": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false,
+      "driver_sha256": "465b718197f5a09b10fb0cb081243824940da0e1302087a44c05815c27e3600c"
+    },
+    "actual_owned_worker_failure_continuation": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "failure_root_cause": "historical_owned_worker_copy_target_pinned_to_6125b86",
+      "failure_reproduced_by_real_original_cli": true,
+      "actual_failed_copy_parent_exit_code": 1,
+      "rejected_before_sqlalchemy_import": true,
+      "core_five_operations_remain_valid": true,
+      "real_scope_cli_regressions_passed": 3,
+      "native_installed_engine_preconnect_gate_passed": true,
+      "database_connections_created_by_regressions": 0,
+      "source_files": [
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+          "sha256": "fa5540f58c273c9ef8ceb07d96f2c37db10df41b45e2ce87f02374c75cb14cb3"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-private.json",
+          "sha256": "beba9de4f1d6d6d6852fc77638716ab5c5ccb6f64e6d88130af4c7e63280e0a0"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-old44-worker.log",
+          "sha256": "66b51c9b57d46eb71b2579f414e2cc819284459b1eeeebaa87db73a17b439a10"
+        },
+        {
+          "file": "correction03-b20-owned-worker-scope-cli-regression-20261005-2-private.json",
+          "sha256": "9daa59575a76533c2626273b9aa4f7e49a39be6e0f7b16a98e0e25a325cb1afb"
+        },
+        {
+          "file": "correction03-recovery-preconnect-gate-20261005-2-private.json",
+          "sha256": "c3c4591f6917a378ffd2908d26cc04e6825cea026eed89a398d7b34eddb6365c"
+        },
+        {
+          "file": "correction03-b20-owned-worker-scope-resume-drivers-20261005-2-private.json",
+          "sha256": "a109e6df5b8fec49fdeaa2dd1afbb100875abead5835a14b1b3d8faa5ffe64d2"
+        },
+        {
+          "file": "correction03-b20-owned-recovery-resume-continuation-drivers-20261005-2-private.json",
+          "sha256": "f6c559ea63c9085effcf3d7050fb627bdd4ab2b6ece946c3094c46b9860cd0fa"
+        },
+        {
+          "file": "correction03-b20-copy-core-lifecycle-checkpoint-20261005-1-private.json",
+          "sha256": "27d25dd72679b72e70c0e8e1156e0df6a820f33a73090090b798e4006ec740ea"
+        },
+        {
+          "file": "correction03_resume_b20_owned_recovery_20261005.py",
+          "sha256": "46b6a40f638226adab67eecbf44dc36f426dde987a5d42b604a4edac095d1e69"
+        },
+        {
+          "file": "correction03_owned_recovery_worker_20261005_2.py",
+          "sha256": "8070cbc912eef61fc7561bd8e5436bda74a7ff05af58d91ca91f8d932f0f3742"
+        },
+        {
+          "file": "correction29-correction03-b20-source-wait-availability-20261005-7-availability-private.json",
+          "sha256": "5e1b7cd3f078f9f2b58e84c6f6a88aa1d72152957ecfcf0480aaaaa2c7663a65"
+        }
+      ],
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+      "current_copy_observation": "correction03-b20-owned-worker-failure-resume-checkpoint-20261005-2-copy-snapshot-private.json",
+      "current_copy_observation_sha256": "14cfd989529a35ef380b77cb248003d500b83a12e6a44b01fb3af59dbfe3e21a",
+      "current_copy_observed_status": "full-copy-sequence_running",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+      "current_resumed_sequence": "correction29-copy-6b502dd-correction03-2-resumed-sequence-private.json",
+      "current_production_command_preparer": "correction03_prepare_b20_production_command_20261005_7.py",
+      "current_owned_apply_driver": "correction03_original_owned_apply_20261005_3.py",
+      "current_owned_apply_guard": "correction03_run_owned_apply_with_recovery_20261005_3.py",
+      "current_fixed_release_preparer": "correction03_prepare_fixed_release_20261005_2.py",
+      "business_source_changes": 0,
+      "quality_expectation_changes": 0,
+      "native_candidate_guard_changes": 0,
+      "old_failed_files_rewritten": false,
+      "full_source_reverification_and_owned_recovery_pending": true,
+      "production_actions": 0,
+      "provider_calls": 0,
+      "final_delivery_claimed": false
+    },
+    "actual_owned_resume_source_verified": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "full_source_reverification": {
+        "started_at": "2026-10-04T22:55:46.906813+00:00",
+        "finished_at": "2026-10-04T23:47:44.266932+00:00",
+        "semantic_input_identity": {
+          "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+          "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+          "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+          "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+          "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+          "versions": {
+            "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+            "role_schema": "violet.production-pixiv-role-result.v1",
+            "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+            "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+            "extraction_schema": "source_name_candidate_extraction_compact_v2",
+            "completion": "production_pixiv_residual_roles_v1",
+            "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+            "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+            "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+            "cache_policy": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+            "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+            "model": "gpt-4.1-mini",
+            "fallback": false
+          }
+        },
+        "resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+        "business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+        "all_original_input_sha256_unchanged": true,
+        "native_code_guard_passed": true
+      },
+      "signal_count": 100285,
+      "original_inputs_unchanged": true,
+      "live_resumed_current_projection_verified": true,
+      "all_17_protected_tables_match_before_resume": true,
+      "original_restore_all_61_tables_verified_before_initial_candidate_apply": true,
+      "core_initial_apply_or_restore_reexecuted": false,
+      "owned_recovery_still_pending": true,
+      "source_files": [
+        {
+          "file": "correction03-b20-owned-resume-source-checkpoint-20261005-2-observation-0-private.json",
+          "sha256": "41386f715feea786292a06f21830edc07b1466ece4ab5ffcb9557290ea56e130"
+        },
+        {
+          "file": "correction03-b20-owned-resume-source-checkpoint-20261005-2-observation-1-private.json",
+          "sha256": "0c8acd672c9071a4e8a02b2bd3f96c92b6f85a779c81a138d66b7b4e31cef8d4"
+        },
+        {
+          "file": "correction29-correction03-b20-cache-20261004-2-cluster-private.json",
+          "sha256": "f1b81cb37a4c14d664c47baf69409489f4d78c731a3cfa853727788b443f53fc"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-current-initial-apply-private.json",
+          "sha256": "378d4ad2213fb4d7b7d56d5205026c01e6d76b4e74b985cbcbb275e00a86f08c"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-private.json",
+          "sha256": "beba9de4f1d6d6d6852fc77638716ab5c5ccb6f64e6d88130af4c7e63280e0a0"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-old44-worker.log",
+          "sha256": "66b51c9b57d46eb71b2579f414e2cc819284459b1eeeebaa87db73a17b439a10"
+        },
+        {
+          "file": "correction03_owned_recovery_worker_20261005_2.py",
+          "sha256": "8070cbc912eef61fc7561bd8e5436bda74a7ff05af58d91ca91f8d932f0f3742"
+        },
+        {
+          "file": "correction03-recovery-preconnect-gate-20261005-2-private.json",
+          "sha256": "c3c4591f6917a378ffd2908d26cc04e6825cea026eed89a398d7b34eddb6365c"
+        },
+        {
+          "file": "correction29-correction03-b20-source-wait-availability-20261005-8-availability-private.json",
+          "sha256": "edc4e7dd0d607a0f467b5258786bd4ede41d31e00b4cf4ab3f23f6db70fa13e7"
+        }
+      ],
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+      "current_owned_recovery": "correction29-copy-6b502dd-correction03-owned-recovery-2-private.json",
+      "production_actions": 0,
+      "provider_calls": 0,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_owned_recovery_passed": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "actual_recovery_worker_exit_code": 0,
+      "historical_recovery_finished_at": "2026-10-05T00:11:03.488465+00:00",
+      "finished_at": "2026-10-05T00:31:02.906755+00:00",
+      "current_candidate_restored": true,
+      "all_17_tables_and_independent_support_preserved": true,
+      "full_historical_owned_projection_verified": true,
+      "full_current_projection_matches_git": true,
+      "full_source_reverification": {
+        "started_at": "2026-10-04T22:55:46.906813+00:00",
+        "finished_at": "2026-10-04T23:47:44.266932+00:00",
+        "semantic_input_identity": {
+          "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+          "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+          "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+          "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+          "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+          "versions": {
+            "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+            "role_schema": "violet.production-pixiv-role-result.v1",
+            "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+            "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+            "extraction_schema": "source_name_candidate_extraction_compact_v2",
+            "completion": "production_pixiv_residual_roles_v1",
+            "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+            "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+            "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+            "cache_policy": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+            "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+            "model": "gpt-4.1-mini",
+            "fallback": false
+          }
+        },
+        "resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+        "business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+        "all_original_input_sha256_unchanged": true,
+        "native_code_guard_passed": true
+      },
+      "core_five_operations_reexecuted": false,
+      "failed_records_rewritten": false,
+      "source_files": [
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-private.json",
+          "sha256": "c9152e4319a380313c051e5aa2cc9dfc3773f166f72d643d5384fbd1c2084ce6"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-resumed-lifecycle-private.json",
+          "sha256": "4374b9592c37c05e4195fe566572d6f34d3d4f0e0b141ef6b9cc28be66bcad63"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-private.json",
+          "sha256": "beba9de4f1d6d6d6852fc77638716ab5c5ccb6f64e6d88130af4c7e63280e0a0"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-old44-worker.log",
+          "sha256": "66b51c9b57d46eb71b2579f414e2cc819284459b1eeeebaa87db73a17b439a10"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker-ready-private.json",
+          "sha256": "18ec8648864bd0fbe44a4f812f99707a249f6d74ed1f635141a8a1ef85432383"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker-plan-private.json",
+          "sha256": "0a985db85b3b74e69d43762d7ee6d65044bf747b16cb231bc632f48774594591"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker-apply-private.json",
+          "sha256": "dbabaec7be9c35a921044e1248cce7820c4bb60fa4acbe23686665c77003bd5d"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker.log",
+          "sha256": "1c047a2c2e1c5813979a676f81f7d15b448cbdf3e47f40403ca0785d83429dc2"
+        },
+        {
+          "file": "correction03_owned_recovery_worker_20261005_2.py",
+          "sha256": "8070cbc912eef61fc7561bd8e5436bda74a7ff05af58d91ca91f8d932f0f3742"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-resume-before-preservation-private.json",
+          "sha256": "f7d22a9eb9091e343a674f2188e77ad1c099f22e110c2c7010c17262b5b628a1"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-after-old44-preservation-private.json",
+          "sha256": "7c647f61f82cdfc3c8d64aa63a0b4d5292935d7af9c6ce599c04491cfdbda0d2"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-current-reapply-plan-plan-private.json",
+          "sha256": "6c86611d4d5de43ef397c052b5268e13c428afb96c09358c73798fa688ec2dbd"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-current-reapply-apply-private.json",
+          "sha256": "20a55dd2dcf8568bfa3b79d1143bb0bdd4ffa18c386681683bec8e9ec831086b"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-after-current-reapply-preservation-private.json",
+          "sha256": "127e0c97898513cb397a7285dd8240940fff0880ddf8f591540cff8ffa285b89"
+        }
+      ],
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+      "production_actions": 0,
+      "provider_calls": 0,
+      "copy_product_and_production_acceptance_still_required": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_b5_b20_support_comparison": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "comparison": "correction03-live-b5-b20-support-difference-20261004-1-private.json",
+      "observed_at": "2026-10-05T00:40:43.958660+00:00",
+      "production_supports": 66392,
+      "copy_supports": 66392,
+      "source_support_removed": 0,
+      "source_support_added": 0,
+      "source_support_retargeted": 3267,
+      "independent_stdlib_replay_passed": true,
+      "source_files": [
+        {
+          "file": "correction03-live-b5-b20-support-difference-20261004-1-private.json",
+          "sha256": "9bdd6a88b3d83076c789fc03cfe35ebbf4e4f4c29672a4450a34bdfa67efc130"
+        },
+        {
+          "file": "correction03-b20-support-comparison-stdlib-20261005-1.log",
+          "sha256": "f32ac2ea76023728c249c9b7dd325cdbebe0b1b6aecc2cb3501e528d0e37f9f1"
+        },
+        {
+          "file": "correction03-live-b5-b20-support-difference-20261004-1.log",
+          "sha256": "8b4a33bce525c038633ef34088cadfb2904dc13521565ff5cf44c2c47f82e278"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-reapply-apply-private.json",
+          "sha256": "5f60ec1560b5bf96260fd3ad935bf175c3a0c237d3adad40086a2c089f08313c"
+        },
+        {
+          "file": "correction03-live-b5-b20-support-difference-20261004-1-production-supports-private.json",
+          "sha256": "86b92b2dcc62d548736b8a57b3225994423afe28f8fe2d7e9fe0989cb4982d9e"
+        },
+        {
+          "file": "correction03-live-b5-b20-support-difference-20261004-1-copy-supports-private.json",
+          "sha256": "61a44b81e359a4bf377df0332ab14b695328a49b217c8c5e9eb5f21ad871c7cf"
+        }
+      ],
+      "production_actions": 0,
+      "database_writes": 0,
+      "quality_acceptance_claimed": false,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_full_copy_lifecycle_passed": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "finished_at": "2026-10-05T00:48:48.905075+00:00",
+      "database": "blombooru_a2_test_20261004_6b502dd",
+      "actual_stage_exit_codes": {
+        "resumed-final-graph-offline": 0,
+        "resumed-owned-recovery": 0,
+        "batch": 0,
+        "source": 0,
+        "after-source": 0,
+        "bounded-class-screen": 0
+      },
+      "native_five_core_operations_passed": true,
+      "owned_recovery_and_reapply_passed": true,
+      "three_batches_and_interrupted_resume_business_equivalent": true,
+      "source_update_delete_rollback_verified": true,
+      "all_17_protected_tables_and_independent_support_preserved": true,
+      "failed_parent_preserved": "correction29-copy-6b502dd-correction03-2-sequence-private.json",
+      "core_operations_reexecuted": false,
+      "source_files": [
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-resumed-sequence-private.json",
+          "sha256": "207d6139c52cdf421fc6a088665e8527b8142c54f979de267c49f2c1766de788"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-recovery-private.json",
+          "sha256": "49f88c02dcdb1a8941652f86e28e2fe0842f85b4e36f669f3d8ea1bd8003e213"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-batch-equivalence-private.json",
+          "sha256": "4fca055259cd3b81f22b2cb28f609d00b9785920fd61d1a9cba669ad72d10785"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-source-private.json",
+          "sha256": "74b66271ce5809a53b05600e4397b70eb84dd8f70b8ecf584acb2cb1ac3c9075"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-private.json",
+          "sha256": "c9152e4319a380313c051e5aa2cc9dfc3773f166f72d643d5384fbd1c2084ce6"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-bounded-class-member-private.json",
+          "sha256": "c4a2d597711cc1bd224b47ca824d41284af796eaffe2faf6a15d6e703903ad59"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-before-preservation-private.json",
+          "sha256": "a87a59295a17a916dd5dae0a40eb1ec77680e046bd9a316b38e1e5586c189288"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-after-rollback-preservation-private.json",
+          "sha256": "b47fc201cb50d04d62edb72777683cd07b7820310bc168802b5f06104ac0d5bf"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-after-reapply-preservation-private.json",
+          "sha256": "0f24d2767c713cb9e63890d7e710504c49fdb6e4281ab9a830f3b0428d5fb16f"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-after-source-preservation-private.json",
+          "sha256": "e7caab321225fc00bc78e07208c14751da5aacce4137e17f859e55169b7d09e3"
+        }
+      ],
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+      "product_and_production_acceptance_still_required": true,
+      "production_actions": 0,
+      "provider_calls": 0,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_copy_product_passed": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "database": "blombooru_a2_test_20261004_6b502dd",
+      "finished_at": "2026-10-05T01:10:29.201867+00:00",
+      "actual_stage_exit_codes": {
+        "quality": 0,
+        "creator-homonym": 0,
+        "suggestion": 0,
+        "holdouts": 0,
+        "workload": 0,
+        "browser": 0
+      },
+      "quality_cases_passed": 80,
+      "additional_holdout_cases_passed": 3,
+      "quality_failures": 0,
+      "http_workload_count": 240,
+      "source_layer_measurement_count": 720,
+      "http_latency_ms": {
+        "p50_ms": 821.071,
+        "p95_ms": 1323.262,
+        "max_ms": 2318.694
+      },
+      "accepted_source_layer_latency_ms": {
+        "p50_ms": 312.263,
+        "p95_ms": 380.802,
+        "max_ms": 887.093
+      },
+      "actual_system_edge_exit_code": 0,
+      "browser_method": "CDP with agent-owned system Edge on loopback, Playwright call layer, headless fresh context; no user desktop input",
+      "source_files": [
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-surfaces-private.json",
+          "sha256": "5dc89727d695614bef44e4f52d0eb358b5dc6f9a5f63f2b50027d9965476c1cc"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-coordinator-private.json",
+          "sha256": "fc5fd8dfd09b73bdbeecccf1a84101f9a95cab803b3828c926b35c75362cb57c"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-quality-private.json",
+          "sha256": "6d0c1fcc2df7ea88268829bc4adf48e1991f596239de49d34320702e6d7cea39"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-creator-homonym-private.json",
+          "sha256": "58519bc2b358855c1a32c6500d7744fa1aa3bf6c2549a6a634a567607022b488"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-suggestion-private.json",
+          "sha256": "206bac01462d231d2692e278b9ad193a6f74ae6c40157255c913c1bfae68312c"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-combined-quality-private.json",
+          "sha256": "67a18b8c4210bea0bb36b0cf4ae8df5ed055fdce6bd59d5c060df458a18a5c20"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-holdouts-private.json",
+          "sha256": "61abb029a00b009746a5e79d248c3004fa631d0e3a92300d1cfbe0f75188b941"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-workload-private.json",
+          "sha256": "d453fbecd25764da651d2b752154325c9a17d7c01f46d050dab5476c5e6e7bd0"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-surfaces-browser-private.json",
+          "sha256": "0fb7b335dd6b8f8f99223c8de50bbfbcfffd2ce7b6aa1e969054d5d957079337"
+        }
+      ],
+      "owned_test_server_stopped": true,
+      "original_production_changed": false,
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+      "copy_registered_contract_and_actual_production_still_required": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_copy_contract_failure_continuation": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "actual_prior_contract_command_exit_code": 0,
+      "actual_prior_preproduction_passed": 14,
+      "actual_prior_preproduction_failed": 1,
+      "actual_failed_gate": {
+        "name": "current_semantic_input_readmission",
+        "status": "failed",
+        "reason": "",
+        "exception_type": "AssertionError"
+      },
+      "actual_release_preparation_exit_code": 1,
+      "no_release_mutation_before_rejection": true,
+      "old_incomplete_lifecycle_assertion_reproduced": true,
+      "scoped_binding_regression_cases_passed": 7,
+      "scoped_regression_not_full_contract": true,
+      "failed_v2_draft_retained": true,
+      "current_contract_driver": "correction03_contract_20261005_3.py",
+      "current_full_native_contract_rerun_pending": true,
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-7-private.json",
+      "current_production_preparer": "correction03_prepare_b20_production_command_20261005_8.py",
+      "current_production_finish": "correction03_finish_b20_actual_production_20261005_5.py",
+      "source_files": [
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+          "sha256": "e74e05d15665ca8efbee0674c2cb0d3cbabe2409d6ca1af497ecac494e3bda49"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-contract-private.json",
+          "sha256": "295f3a35dde4303cc21706c19941ebaf79cd6b1e04d7f075ebf8e172a18296ef"
+        },
+        {
+          "file": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+          "sha256": "8ad1d61ac4c7b1b65d48da94c9e56794003790fd13ca9912d5f3b537ba6fbbbb"
+        },
+        {
+          "file": "correction03-b20-resumed-contract-binding-regression-20261005-3-private.json",
+          "sha256": "f80fa6787c0e9e0cc813585abe32cb3462442b2db369e5e644ecde0d3be143de"
+        },
+        {
+          "file": "correction03-b20-copy-contract-failure-resume-checkpoint-20261005-3-running-observation-private.json",
+          "sha256": "a50bd26a16c53f11200b6420fea655ff66d0dc9a0459ba6891d2a6dec151a6a4"
+        },
+        {
+          "file": "correction03-b20-resumed-contract-driver-20261005-2-private.json",
+          "sha256": "3070c0eff4c1eb527338fc7e990ab3c91a693004dab6b6f66286901774525747"
+        },
+        {
+          "file": "correction03-b20-resumed-contract-driver-20261005-3-private.json",
+          "sha256": "cb9e4340d8ee6e6d6bcd2e5d635389e3ce293863c7f830cdef44fdeae2e62f3a"
+        },
+        {
+          "file": "correction03-b20-resumed-contract-continuations-20261005-3-private.json",
+          "sha256": "7f3ed9090499364bf63cd402edc09907c525c0fe60b9833f3fa3bac6f65eec82"
+        },
+        {
+          "file": "correction03-b20-resumed-contract-binding-regression-20261005-2.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "correction03-b20-resumed-contract-binding-regression-20261005-3.log",
+          "sha256": "0f737b2dfc555f8d899fc078930dee7251a1ed2af9d0b2a12187ca181f7545a4"
+        },
+        {
+          "file": "correction03_contract_20261004.py",
+          "sha256": "3fc2092fd0fd18604979f3081fdf6cd398be3e6184ee2be5eec6d0242205a2f8"
+        },
+        {
+          "file": "correction03_contract_20261005_2.py",
+          "sha256": "3ed320cd1314f682ef741820d21034313d598e792ee8b48bf9f010e8dc4b36cf"
+        },
+        {
+          "file": "correction03_contract_20261005_3.py",
+          "sha256": "c3bcb62baa264586d57d65c738d89a17d70207271e5b62346be7a56f9618c5bc"
+        },
+        {
+          "file": "correction03_finish_b20_actual_production_20261005_5.py",
+          "sha256": "2a9ab0a94aa028e5e8d486fe546f553b81934f23b80a359e8f9dee1ec5eddf31"
+        },
+        {
+          "file": "correction03_prepare_b20_production_command_20261005_8.py",
+          "sha256": "5eb7ad00ebc13e4a70daba0b25b05cc066c8e9c83e78ce0ffcbb294a0a051c3a"
+        },
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261005-6-full-copy-sequence.log",
+          "sha256": "03b1566480f6c8e7498f35604e819ba7b4ca55295b5de4656158c449424e81eb"
+        },
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261005-6-copy-quality-and-edge.log",
+          "sha256": "d5345637ea71179cd683934a1877a3a8f2a3e34f3b6f88a2d7905a796dd56848"
+        },
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261005-6-copy-contract.log",
+          "sha256": "f56fa636a75e4ad7d541ecf28283ab02dc86006be5ae271b071ababa088408a5"
+        }
+      ],
+      "business_source_changed": false,
+      "quality_expectations_changed": false,
+      "production_actions": 0,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_all_copy_preconditions_passed": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "actual_copy_coordinator_exit_code": 0,
+      "finished_at": "2026-10-05T02:49:57.859698+00:00",
+      "passed_preproduction_gates": 15,
+      "gate_statuses": [
+        {
+          "name": "current_candidate_behavior",
+          "status": "passed"
+        },
+        {
+          "name": "backup_restore",
+          "status": "passed"
+        },
+        {
+          "name": "independent_t0",
+          "status": "passed"
+        },
+        {
+          "name": "fixed_mapping_and_complete_accounting",
+          "status": "passed"
+        },
+        {
+          "name": "metadata_attempts_scope_and_historical_exception",
+          "status": "passed"
+        },
+        {
+          "name": "forward_metadata_spacing",
+          "status": "passed"
+        },
+        {
+          "name": "rederived_original_budget_and_settlement",
+          "status": "passed"
+        },
+        {
+          "name": "selected_judgment_source_receipts",
+          "status": "passed"
+        },
+        {
+          "name": "current_semantic_input_readmission",
+          "status": "passed"
+        },
+        {
+          "name": "full_copy_recovery",
+          "status": "passed"
+        },
+        {
+          "name": "independent_quality",
+          "status": "passed"
+        },
+        {
+          "name": "current_live_identity_and_precision",
+          "status": "passed"
+        },
+        {
+          "name": "current_real_browser",
+          "status": "passed"
+        },
+        {
+          "name": "query_level_performance",
+          "status": "passed"
+        },
+        {
+          "name": "exact_candidate_validation",
+          "status": "passed"
+        }
+      ],
+      "current_native_semantic_input_verification": {
+        "actual_current_native_invocation": true,
+        "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+        "processing": {
+          "selected_pair_count": 31608,
+          "judgment_count": 31608,
+          "error_count": 0,
+          "remaining_missing_pair_count": 0
+        },
+        "input_identity": {
+          "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+          "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+          "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+          "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+          "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+          "versions": {
+            "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+            "role_schema": "violet.production-pixiv-role-result.v1",
+            "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+            "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+            "extraction_schema": "source_name_candidate_extraction_compact_v2",
+            "completion": "production_pixiv_residual_roles_v1",
+            "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+            "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+            "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+            "cache_policy": "source_concept_llm_adjudication_cache_v1",
+            "decision_schema": "source_concept_pair_decision_schema_v1",
+            "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+            "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+            "model": "gpt-4.1-mini",
+            "fallback": false
+          }
+        },
+        "role_completion": {
+          "counts": {
+            "candidate": 26352,
+            "unaccounted": 0,
+            "non_name": 22642,
+            "attempt_limit_reached": 26,
+            "unknown": 207
+          },
+          "requested_tag_occurrences": 49227,
+          "original_response_aggregate_count": 8288,
+          "currently_grounded_aggregates_without_new_question": 0,
+          "historical_targets_not_rederived_for_grounded_aggregates": true,
+          "fully_accounted_aggregates": 8288,
+          "unaccounted_aggregate_count": 0,
+          "unaccounted_targets": [],
+          "response_completion_does_not_assert_identity": true
+        },
+        "new_provider_calls": 0,
+        "all_six_actual_product_operations_verified": true,
+        "original_cache_source_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+        "historical_source_replay_not_relabelled": true,
+        "frozen_current_native_invocation_verified": true
+      },
+      "source_files": [
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+          "sha256": "1f094adc05dbd1238995dcc4253e1de8623c01ee50797e89442827121f817f3a"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-contract-resume-contract-private.json",
+          "sha256": "97ad4e89236afa79add2edd9f6ed494f6630d5c33a22c08c6fab1fb218afe450"
+        },
+        {
+          "file": "correction03-b20-frozen-copy-continuation-20261005-7-copy-contract.log",
+          "sha256": "aeb490dfeda14d264d159c87a68b02120263f406a5ef8ba9cf19efcc05d80a52"
+        },
+        {
+          "file": "correction03-b20-copy-contract-failure-resume-checkpoint-20261005-3-private.json",
+          "sha256": "98dac219d7ae516182e797f13e431b69427b678539f4a8177896b8c05b513beb"
+        },
+        {
+          "file": "correction03-b20-copy-product-passed-checkpoint-20261005-2-private.json",
+          "sha256": "915039380e461aa943587b7ce7c5313dca626097a531cf72ac226779a759d099"
+        },
+        {
+          "file": "correction03-b20-full-copy-lifecycle-checkpoint-20261005-2-private.json",
+          "sha256": "b4a76af41575a3984ec75aed3a10e00ce937d0c766078c03fbea01277b1e75d5"
+        },
+        {
+          "file": "correction29-copy-6b502dd-correction03-2-contract-resume-live-owned-business-verification-private.json",
+          "sha256": "9a09fd80df5d183ed6bee4e43678dfe4625936bed746266cecb26be872ae4307"
+        },
+        {
+          "file": "correction03_contract_20261005_3.py",
+          "sha256": "c3bcb62baa264586d57d65c738d89a17d70207271e5b62346be7a56f9618c5bc"
+        }
+      ],
+      "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+      "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-7-private.json",
+      "current_production_preparer": "correction03_prepare_b20_production_command_20261005_8.py",
+      "current_production_finish": "correction03_finish_b20_actual_production_20261005_5.py",
+      "original_production_acceptance_still_required": true,
+      "normal_exe_acceptance_still_required": true,
+      "production_apply_actions": 0,
+      "business_source_changed_since_freeze": false,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_fixed_release_ready": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "fresh_restore_tables_verified": 61,
+      "fresh_backup_bytes": 463686633,
+      "fresh_backup_sha256": "a6fdc0ab5e91e1f1e3c1c5d5af457c09ead374cf69f97487e34cf9d168ff9f21",
+      "deployment_head": "9d42587087e8306c6912c7c4d9291d5d3197d453",
+      "fixed_runtime_binding": "correction29-correction03-b20-fixed-release-20261004-1-fixed-runtime-binding-private.json",
+      "actual_release_preparation_exit_code": 0,
+      "current_task_remote_threads_unchanged": 116,
+      "bare_apply_authorized": false,
+      "production_apply_started_at_checkpoint": false,
+      "active_anchor_changed_at_checkpoint": false,
+      "normal_exe_acceptance_pending": true,
+      "original_production_acceptance_pending": true,
+      "source_files": [
+        {
+          "file": "correction03-b20-release-preparation-continuation-20261005-7-private.json",
+          "sha256": "4661f9b5aa31fe8a71f54e913c320b799ef0f4b3306720b33fbb106ca063babb"
+        },
+        {
+          "file": "correction29-correction03-b20-fresh-release-backup-20261004-1-private.json",
+          "sha256": "2489ad86aa94f9b445b0cdfface4bed923ca8dca64bfa5ab4719a9a2aad72559"
+        },
+        {
+          "file": "correction29-correction03-b20-fixed-release-20261004-1-runtime-preparation-private.json",
+          "sha256": "492e0c54b9937ab3c6f59898abb85496341fb709000d330e995de0ae714f0dc3"
+        },
+        {
+          "file": "correction29-correction03-b20-fixed-release-20261004-1-fixed-runtime-binding-private.json",
+          "sha256": "8ba7624dbbc6944bf35da97f9d9875996615e25996eb96fc5bca6e550b77d806"
+        },
+        {
+          "file": "correction29-correction03-b20-original-20261005-1-command-private.json",
+          "sha256": "6fe1c78560ae3d9524f65ef0683b97b425d62b914a7836361b18354d125aa626"
+        },
+        {
+          "file": "correction29-correction03-b20-original-20261005-1-cutover-admission-private.json",
+          "sha256": "2ed25ccc28d20f960b3ca02d4c0058cb48f4442c0c800f40d19d50e29f9f7475"
+        },
+        {
+          "file": "correction03-b20-preproduction-remote-current-task-comparison-20261005-1-private.json",
+          "sha256": "741cea55dc04d5f70288629b89e07e9c7ada1e8a6c1df93966c7f88b9701b25a"
+        },
+        {
+          "file": "correction03-b20-precutover-computer-use-discovery-20261005-1-private.json",
+          "sha256": "6c7c90071fa1ac654a4255dafea7510c9d5a9a2ca15775203de37a8d461a14fe"
+        }
+      ],
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false,
+      "fixed_runtime_directory": "production-pixiv-a2-stable-6b502dd",
+      "retained_old_runtime_directory": "production-pixiv-a2-stable-562bc18",
+      "required_guard_command_evidence": "correction29-correction03-b20-original-20261005-1-command-private.json",
+      "local_command_preserved": "correction03-b20-fixed-release-public-projection-repair-20261005-1-original-checkpoint-private.json",
+      "local_command_preserved_sha256": "dde977e35c2781c154b51cb07bc31692b0fdcfce331f6a6b74b40c883ba73b25",
+      "public_redaction_repair": {
+        "absolute_paths_and_command_arguments_retained_locally": true,
+        "native_execution_guards_changed": false,
+        "failure_retained": true,
+        "completed_after_interrupted_first_repair": true,
+        "prior_failed_log": "correction03-b20-fixed-release-public-projection-repair-20261005-1.log"
+      }
+    },
+    "actual_production_flow_started": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "started_at": "2026-10-05T03:03:40.035965+00:00",
+      "guard_receipt": "correction29-correction03-b20-original-20261005-1-guarded-guard-private.json",
+      "observed_guard_snapshot": "correction03-b20-production-flow-started-checkpoint-20261005-1-observed-guard-private.json",
+      "observed_guard_sha256": "ec6a84ee7ae5faa3b2356b7179f99f4565f386556c4db6cbc9180dcb5dc26d05",
+      "status_at_checkpoint": "preparing_recovery_graph",
+      "original_apply_finished": false,
+      "normal_entry_and_all_18_gates_pending": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_original_apply_passed": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "observed_at": "2026-10-05T04:34:24.250622+00:00",
+      "original_sequence": "correction29-correction03-b20-original-20261005-1-sequence-private.json",
+      "original_sequence_sha256": "e0febc95fe9eafc9bc6bc3e29de26c62d06b50775d27a933cb1aa5d0d617a0e7",
+      "guarded_command_log": "correction29-correction03-b20-original-20261005-1-guarded-original-command.log",
+      "guarded_command_log_sha256": "d4112f457a8cec0654a5b546df95565f1d5951e8dcc3c98bb76b074587c6f316",
+      "actual_original_apply_exit_code": 0,
+      "approved_live_projection_verified": true,
+      "protected_17_tables_preserved": true,
+      "normal_entry_and_all_18_gates_pending": true,
+      "task_recovery_worker_still_ready": true,
+      "guard_status_retained": "guard_failed",
+      "guard_caught_successful_system_exit": true,
+      "actual_parent_exit_observed": 0,
+      "prior_checkpoint_rejection_preserved": "correction03-b20-original-apply-passed-checkpoint-20261005-1.log",
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_fixed_entry_promoted": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "deployment_head": "9d42587087e8306c6912c7c4d9291d5d3197d453",
+      "anchor_receipt": "correction29-correction03-b20-fixed-entry-20261005-1-anchor-private.json",
+      "anchor_receipt_sha256": "481721a630970b5414a8969c66edd5958298f13d265c43e7edd71f77c620bb13",
+      "fixed_anchor_promoted": true,
+      "normal_exe_and_production_acceptance_pending": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_normal_entry_verified": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "normal_entry_receipt": "correction29-correction03-b20-normal-entry-20261005-1-launcher-private.json",
+      "normal_entry_receipt_sha256": "92576135bc3ecbacd2a2008536cdf0b3bf421edd0728a3ae7961983c323db370",
+      "actual_normal_no_argument_exe_verified": true,
+      "actual_worker_pid": 63960,
+      "real_production_Edge_quality_workloads_and_contract_pending": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false
+    },
+    "actual_B20_production_failure_and_owned_recovery": {
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "status": "failed_B20_workload_identity_owned_old44_recovery_verified",
+      "recovered_business_head": "44db0da0c1df2fe38434cacc57308f2c0e33ec0f",
+      "recovered_runtime_root": "production-pixiv-a2-stable-44db0da",
+      "worker_pid": 65952,
+      "observed_at": "2026-10-05T05:32:16.598719+00:00",
+      "failure": "a2_workload_source_execution_identity",
+      "http_query_count": 240,
+      "source_measurement_count": 720,
+      "source_latency_ms": {
+        "p50_ms": 421.384,
+        "p95_ms": 545.158,
+        "max_ms": 1190.415
+      },
+      "performance_numbers_passed": true,
+      "complete_production_acceptance_passed": false,
+      "all_17_protected_tables_preserved": true,
+      "original_database_backup_restored": false,
+      "recovered_availability": "correction29-correction03-b20-original-20261005-1-guarded-recovered-availability-private.json",
+      "source_files": [
+        {
+          "file": "correction29-correction03-b20-original-20261005-1-guarded-guard-private.json",
+          "sha256": "8be57b0de53823777812ec72f463e500f6e33c890def84ac47f08ee1a537d761",
+          "observed_copy": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-observed-0-private.json"
+        },
+        {
+          "file": "correction29-correction03-b20-original-20261005-1-guarded-recovered-availability-private.json",
+          "sha256": "26577ac8551e7b66254119383176a0d951dca5eb9707949ac809999c5f15ca7e",
+          "observed_copy": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-observed-1-private.json"
+        },
+        {
+          "file": "correction29-correction03-b20-original-20261005-1-guarded-recovered-preservation-private.json",
+          "sha256": "d89e2f52ba7570dd394608b1e2001fa52400b9bb54da3c7d2403f02c5d729c49",
+          "observed_copy": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-observed-2-private.json"
+        },
+        {
+          "file": "correction29-correction03-b20-original-20261005-1-guarded-old44-worker-apply-private.json",
+          "sha256": "1fff4115c7fbbeb76c0be0a0373b255b3c8165adab2ca57635e756211b90c402",
+          "observed_copy": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-observed-3-private.json"
+        },
+        {
+          "file": "correction29-correction03-b20-production-surfaces-20261005-1-surfaces-private.json",
+          "sha256": "3ff248896fdb3896148f80bb131e5b68083902d1377757ac7f0a774946fba6ec",
+          "observed_copy": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-observed-4-private.json"
+        },
+        {
+          "file": "correction29-correction03-b20-production-surfaces-20261005-1-workload-private.json",
+          "sha256": "bdde89e1e3ea40b03aa42fc0eae7df351b30f3427c7c0adecd8192e893e2cbc9",
+          "observed_copy": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-observed-5-private.json"
+        },
+        {
+          "file": "correction29-correction03-b20-production-workload-failed-command-20261005-1-private.json",
+          "sha256": "ce7a27f3e823eccad9c7a5dac3d5c58b6de6f1951fb803708a20c82fc0db91a2",
+          "observed_copy": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1-observed-6-private.json"
+        }
+      ],
+      "failed_source_samples_rewritten": false,
+      "old_recovery_not_claimed_as_new_candidate_success": true,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false,
+      "public_projection_repair": {
+        "absolute_paths_retained_locally": true,
+        "native_guards_unchanged": true,
+        "first_checkpoint_failed_log": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-1.log",
+        "handoff_checkpoint_consolidated_without_content_loss": true,
+        "second_checkpoint_failed_log": "correction03-b20-workload-failure-owned-recovery-checkpoint-20261005-2.log"
+      }
+    },
+    "historical_B20_source_and_validation_checkpoint": {
+      "current_source_gate_passed": false,
+      "current_semantic_source_gate_passed": false,
+      "current_complete_graph_acceptance_claimed": false,
+      "formal_progress": {
+        "sequence": "correction29-correction03-b20-affected-20261004-1-sequence-private.json",
+        "actual_stages": {
+          "focused": {
+            "passed": 1228,
+            "failed": 0,
+            "skipped": 3,
+            "errors": 0
+          },
+          "postgresql": {
+            "passed": 142,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0
+          },
+          "historical": {
+            "passed": 88,
+            "failed": 0,
+            "skipped": 0,
+            "errors": 0
+          }
+        },
+        "status": "finished"
+      },
+      "actual_current_frozen_source_git_proof": {
+        "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+        "proof": "correction03-b20-source-20261004-proof-private.json",
+        "proof_sha256": "fc3777b89c4775ad63229c4f1d3fbcce8571fb85b180674b5669b51942345dee",
+        "actual_checker_log": "correction03-b20-source-independent-replay-20261004-1.log",
+        "actual_checker_log_sha256": "21f50de689161f0ec0813035073be9dd060a704d2d0d2914bca70f21c01a24b0",
+        "application_paths": 578,
+        "registered_paths": 48,
+        "original_git_objects_verified": 98,
+        "current_complete_native_source_graph_and_product_acceptance_claimed": false
+      },
+      "actual_passed_strict_current_cli": {
+        "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+        "cache_label": "correction29-correction03-b20-cache-20261004-2",
+        "actual_process_exit_code": 0,
+        "actual_exit_observed_by_exec": true,
+        "finished_at": "2026-10-04T20:08:52.293538+00:00",
+        "behavior_guard_after": true,
+        "inputs_unchanged": true,
+        "ledger_unchanged": true,
+        "source_files": [
+          {
+            "file": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+            "sha256": "0aedf0dad3d564d59bb928b12f8820925dc4463abf899fe3e09390a15ac7f87d"
+          },
+          {
+            "file": "correction29-correction03-b20-cache-20261004-2-adjudication-private.json",
+            "sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758"
+          },
+          {
+            "file": "correction29-correction03-b20-cache-20261004-2-cluster-private.json",
+            "sha256": "f1b81cb37a4c14d664c47baf69409489f4d78c731a3cfa853727788b443f53fc"
+          },
+          {
+            "file": "correction29-correction03-b20-cache-20261004-2-semantic-manifest-private.json",
+            "sha256": "33090305ee3aa3a3a4064a35970e3949fc20618017868b814199c452d4d12778"
+          },
+          {
+            "file": "correction29-correction03-b20-cache-20261004-2-approved-run-input-private.json",
+            "sha256": "29a5acbc9fb81a54495183ab64a2295eceb88bc4bdaefae7b50a7cef28f5b8bc"
+          },
+          {
+            "file": "correction29-correction03-b20-cache-20261004-2.log",
+            "sha256": "38406e5ce11e802a60de8cc8df14c71983cd94ad9adc0feed7746a5c0d77f4ed"
+          }
+        ],
+        "signal_count": 100285,
+        "selected_pair_count": 31608,
+        "work_pair_count": 9070,
+        "remaining_pair_count": 22538,
+        "judgment_count": 31608,
+        "cache_hits": 31608,
+        "new_provider_calls": 0,
+        "missing_pair_count": 0,
+        "concept_count": 17498,
+        "resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+        "business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+        "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+        "current_release_preparation": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+        "copy_and_actual_production_acceptance_still_required": true,
+        "production_actions": 0,
+        "final_delivery_claimed": false
+      },
+      "actual_all_copy_preconditions_passed": {
+        "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+        "actual_copy_coordinator_exit_code": 0,
+        "finished_at": "2026-10-05T02:49:57.859698+00:00",
+        "passed_preproduction_gates": 15,
+        "gate_statuses": [
+          {
+            "name": "current_candidate_behavior",
+            "status": "passed"
+          },
+          {
+            "name": "backup_restore",
+            "status": "passed"
+          },
+          {
+            "name": "independent_t0",
+            "status": "passed"
+          },
+          {
+            "name": "fixed_mapping_and_complete_accounting",
+            "status": "passed"
+          },
+          {
+            "name": "metadata_attempts_scope_and_historical_exception",
+            "status": "passed"
+          },
+          {
+            "name": "forward_metadata_spacing",
+            "status": "passed"
+          },
+          {
+            "name": "rederived_original_budget_and_settlement",
+            "status": "passed"
+          },
+          {
+            "name": "selected_judgment_source_receipts",
+            "status": "passed"
+          },
+          {
+            "name": "current_semantic_input_readmission",
+            "status": "passed"
+          },
+          {
+            "name": "full_copy_recovery",
+            "status": "passed"
+          },
+          {
+            "name": "independent_quality",
+            "status": "passed"
+          },
+          {
+            "name": "current_live_identity_and_precision",
+            "status": "passed"
+          },
+          {
+            "name": "current_real_browser",
+            "status": "passed"
+          },
+          {
+            "name": "query_level_performance",
+            "status": "passed"
+          },
+          {
+            "name": "exact_candidate_validation",
+            "status": "passed"
+          }
+        ],
+        "current_native_semantic_input_verification": {
+          "actual_current_native_invocation": true,
+          "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+          "processing": {
+            "selected_pair_count": 31608,
+            "judgment_count": 31608,
+            "error_count": 0,
+            "remaining_missing_pair_count": 0
+          },
+          "input_identity": {
+            "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+            "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+            "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+            "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+            "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+            "versions": {
+              "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+              "role_schema": "violet.production-pixiv-role-result.v1",
+              "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+              "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+              "extraction_schema": "source_name_candidate_extraction_compact_v2",
+              "completion": "production_pixiv_residual_roles_v1",
+              "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+              "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+              "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+              "cache_policy": "source_concept_llm_adjudication_cache_v1",
+              "decision_schema": "source_concept_pair_decision_schema_v1",
+              "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+              "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+              "model": "gpt-4.1-mini",
+              "fallback": false
+            }
+          },
+          "role_completion": {
+            "counts": {
+              "candidate": 26352,
+              "unaccounted": 0,
+              "non_name": 22642,
+              "attempt_limit_reached": 26,
+              "unknown": 207
+            },
+            "requested_tag_occurrences": 49227,
+            "original_response_aggregate_count": 8288,
+            "currently_grounded_aggregates_without_new_question": 0,
+            "historical_targets_not_rederived_for_grounded_aggregates": true,
+            "fully_accounted_aggregates": 8288,
+            "unaccounted_aggregate_count": 0,
+            "unaccounted_targets": [],
+            "response_completion_does_not_assert_identity": true
+          },
+          "new_provider_calls": 0,
+          "all_six_actual_product_operations_verified": true,
+          "original_cache_source_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+          "historical_source_replay_not_relabelled": true,
+          "frozen_current_native_invocation_verified": true
+        },
+        "source_files": [
+          {
+            "file": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+            "sha256": "1f094adc05dbd1238995dcc4253e1de8623c01ee50797e89442827121f817f3a"
+          },
+          {
+            "file": "correction29-copy-6b502dd-correction03-2-contract-resume-contract-private.json",
+            "sha256": "97ad4e89236afa79add2edd9f6ed494f6630d5c33a22c08c6fab1fb218afe450"
+          },
+          {
+            "file": "correction03-b20-frozen-copy-continuation-20261005-7-copy-contract.log",
+            "sha256": "aeb490dfeda14d264d159c87a68b02120263f406a5ef8ba9cf19efcc05d80a52"
+          },
+          {
+            "file": "correction03-b20-copy-contract-failure-resume-checkpoint-20261005-3-private.json",
+            "sha256": "98dac219d7ae516182e797f13e431b69427b678539f4a8177896b8c05b513beb"
+          },
+          {
+            "file": "correction03-b20-copy-product-passed-checkpoint-20261005-2-private.json",
+            "sha256": "915039380e461aa943587b7ce7c5313dca626097a531cf72ac226779a759d099"
+          },
+          {
+            "file": "correction03-b20-full-copy-lifecycle-checkpoint-20261005-2-private.json",
+            "sha256": "b4a76af41575a3984ec75aed3a10e00ce937d0c766078c03fbea01277b1e75d5"
+          },
+          {
+            "file": "correction29-copy-6b502dd-correction03-2-contract-resume-live-owned-business-verification-private.json",
+            "sha256": "9a09fd80df5d183ed6bee4e43678dfe4625936bed746266cecb26be872ae4307"
+          },
+          {
+            "file": "correction03_contract_20261005_3.py",
+            "sha256": "c3bcb62baa264586d57d65c738d89a17d70207271e5b62346be7a56f9618c5bc"
+          }
+        ],
+        "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+        "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-7-private.json",
+        "current_production_preparer": "correction03_prepare_b20_production_command_20261005_8.py",
+        "current_production_finish": "correction03_finish_b20_actual_production_20261005_5.py",
+        "original_production_acceptance_still_required": true,
+        "normal_exe_acceptance_still_required": true,
+        "production_apply_actions": 0,
+        "business_source_changed_since_freeze": false,
+        "target_met": false,
+        "safe_to_merge": false,
+        "route_approved": false
+      }
+    },
+    "workload_fixed_binding_implementation": {
+      "reference_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "status": "development_passed_freezing",
+      "registered_files": 48,
+      "reproduced_before": {
+        "passed": 18,
+        "failed": 1,
+        "failure": "a2_workload_source_execution_identity",
+        "label": "correction03-b21-workload-binding-before-20261005-2"
+      },
+      "changed_source_files": [
+        "scripts/production_pixiv_a2_evidence.py",
+        "tests/test_production_pixiv_a2_evidence.py",
+        "scripts/production_pixiv_a2_post_full_fix.py",
+        "docs/state/production-pixiv-a2-post-full-fix.json"
+      ],
+      "before_sha256": {
+        "scripts/production_pixiv_a2_evidence.py": "844e0d526ced0a2c11711604e754bf2fcd01f7859dedd7ddbf5ff6b5a027ff31",
+        "tests/test_production_pixiv_a2_evidence.py": "71ba978f56080ec85d88600131c1b9aaaef3e3ca462f3ffe5b4da1da4c0a6a6f",
+        "scripts/production_pixiv_a2_post_full_fix.py": "2580755cdbd82b123a2e722908fa5323fbf6f4ea8b755ab32b40264ad68671fd",
+        "docs/state/production-pixiv-a2-post-full-fix.json": "2b59ca84674039b721f9c7a3c7831770fe9202eee7b53b86e5b46078ad20e0b6",
+        "docs/state/current-phase.json": "184efe202e1e1728401ca659734ef2de65ff56e5daa3c8a437061d276cc0ac62",
+        "docs/reports/production-pixiv-a2-summary.json": "a7b4cebe98f25ee7f21ba6cd48b2194ca2c4183d21462d1fb32322003fe62985",
+        "docs/current-handoff.md": "5caca1885a79883920dd6631b1fdd1171d60eb5cc0468ef0fe43cbda84b643eb"
+      },
+      "after_sha256": {
+        "scripts/production_pixiv_a2_evidence.py": "f4a845853129abf1862f27904b188c55a2a3244bf36a4585844680be0dcd1ddf",
+        "tests/test_production_pixiv_a2_evidence.py": "e282fde0bf3beb70e4906b2b484d34f0b781172fb41bf1172fd9f5155816bf33",
+        "scripts/production_pixiv_a2_post_full_fix.py": "9ee8f7bec38df11f0982ca404df9bb8ba84828a3ddbe49bfc7df13805b35b400",
+        "docs/state/production-pixiv-a2-post-full-fix.json": "db7b5d4ef157b6f1d011382d2d79227d152592a4f4e9e57d78a3402dae6cdff3"
+      },
+      "draft": "correction03_workload_fixed_binding_source_draft_20261005.py",
+      "draft_sha256": "f4a845853129abf1862f27904b188c55a2a3244bf36a4585844680be0dcd1ddf",
+      "protected_sha256": {
+        "production_profile": "afa44131b5be9cc0c6a51fa53ff9a045e1d69ef1ccb1f2429eb3cda757dc9ea8",
+        "active_anchor": "ed7df206e8f1812d7722397a2c7d8ff344a3e0eec282c020d091b003cbbc5de1",
+        "ledger": "93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d",
+        "unrelated_debug": "2f612a540fb44f845ad68b92462872ff67d413d1cc1d2b353593ab33ae2cbab6"
+      },
+      "source_sampler_actual_root_retained": true,
+      "full_native_runtime_binding_required": true,
+      "failed_production_samples_rewritten": false,
+      "production_changed": false,
+      "paid_calls": 0,
+      "new_full_non_e2e_required": false,
+      "shared_source_computation_changed": false,
+      "target_met": false,
+      "safe_to_merge": false,
+      "route_approved": false,
+      "development_label": "correction03-b21-workload-binding-development-20261005-1",
+      "development_passed": 232,
+      "development_failed": 0,
+      "development_skipped": 0
     }
   },
   "active_blocker": {
@@ -2540,5 +4502,1539 @@
     "layer": "current_complete_candidate_and_product_acceptance",
     "resolution": "All fixed original targets have an accounted disposition; original role rows and ledger prefix are unchanged. Current complete graph, focused/PG/historical, full copy and conditional original production acceptance continue.",
     "scope": "latest A2 full candidate and actual product validation"
+  },
+  "current_pair_source_progress": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "adjudication": "correction29-correction03-b20-cache-20261004-1-adjudication-private.json",
+    "adjudication_sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758",
+    "source_replays": [
+      {
+        "file": "correction29-correction03-b20-cache-20261004-1-work-source-replay-private.json",
+        "sha256": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b"
+      },
+      {
+        "file": "correction29-correction03-b20-cache-20261004-1-remaining-source-replay-private.json",
+        "sha256": "9eb062c09fefc215e7d21f94bdc44e9b0b581d1dafec7733d819e81c676e47e2"
+      }
+    ],
+    "selected_pairs": 31608,
+    "judgments": 31608,
+    "cache_hits": 31608,
+    "errors": 0,
+    "new_provider_calls": 0,
+    "complete_business_graph_acceptance_claimed": false,
+    "copy_acceptance_claimed": false,
+    "production_acceptance_claimed": false
+  },
+  "waiter_timeout_recovery": {
+    "historical_failures": [
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261004-1-private.json",
+        "sha256": "d8236c3faece8794b13adbee111021594d9621d3a58d1c4f561d635d35b72770",
+        "status": "failed_before_any_stage"
+      },
+      {
+        "file": "correction03-b20-release-preparation-continuation-20261004-1-private.json",
+        "sha256": "c4ab2ec492f0f7a2d5822a201dd05850925e11daff2f03faada5ac8e6e260fa6",
+        "status": "failed_before_any_stage"
+      }
+    ],
+    "current_copy_continuation": "correction03-b20-frozen-copy-continuation-20261004-2-private.json",
+    "current_release_preparation_continuation": "correction03-b20-release-preparation-continuation-20261004-2-private.json",
+    "reason": "Queued six-hour native prerequisite wait expired before any copy stage; restart only the waiters with new receipts.",
+    "business_head_unchanged": true,
+    "production_actions": 0,
+    "provider_calls": 0
+  },
+  "current_native_guard_retry": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "original_native_command": "correction29-correction03-b20-cache-20261004-1-command-private.json",
+    "original_native_command_sha256": "796fd1045f0b2225e067fbfe42e26282fbfa2a74ba34d1bf47be57fa5dc2489e",
+    "native_body_exit_code": 0,
+    "original_post_behavior_guard_passed": false,
+    "original_wrapper_status": "failed",
+    "diagnostic": "correction03-b20-carry-guard-diagnostic-20261004-1-private.json",
+    "diagnostic_sha256": "ec720426e86f813c599b052783206c01ff73f369c21f07704457cd63ca939450",
+    "diagnostic_current_native_carry_forward": true,
+    "initial_guard_rejection_cause": "not_observed",
+    "dependent_failures": [
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261004-2-private.json",
+        "sha256": "c88259d318006e9be72e42d12a0344ea346257942fd1e7e5434a4729de40e133",
+        "status": "failed",
+        "reason": ""
+      },
+      {
+        "file": "correction03-b20-release-preparation-continuation-20261004-2-private.json",
+        "sha256": "69cf73ebd7ec10734a1974ca35caa46fe102d28ba5ed25b9f9464c2a7eb62331",
+        "status": "failed",
+        "reason": "actual_copy_failed"
+      }
+    ],
+    "new_authoritative_native_command": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+    "retry_method": "Unchanged native adjudicate command and original correction prior, cache-only, separate label and receipt",
+    "original_failed_receipts_unchanged": true,
+    "business_source_or_guard_changed": false,
+    "production_writes": 0,
+    "provider_calls": 0,
+    "complete_business_graph_acceptance_claimed": false,
+    "copy_or_production_acceptance_claimed": false
+  },
+  "workspace_space_and_transport_preparation": {
+    "workspace_space_receipt": "correction03-workspace-disk-occupancy-20261004-3-private.json",
+    "workspace_space_receipt_sha256": "2b1efa9f25cf7104644a608b0adabbfdae30fea04e6badd16cde5908f8781e3d",
+    "workspace_space_report": "correction03-workspace-space-report-20261004.md",
+    "workspace_space_report_sha256": "d76f1fd7e624345ed78907489e3ab2aa542695ae238f3b2d1e9fe8a1cb23b199",
+    "space_observed_at": "2026-10-04T14:23:51.105113+00:00",
+    "project_logical_bytes": 745865245803,
+    "project_unique_allocated_bytes": 700124079200,
+    "project_allocation_percent_of_C_used": 22.49,
+    "C_free_bytes": 983145476096,
+    "A2_evidence_unique_allocated_bytes": 530021525824,
+    "bounded_metadata_proof": "correction03-prefix-complete-bounded-memory-metadata-20261004-2-private.json",
+    "bounded_metadata_proof_sha256": "4abea9ce757c90f0f6337ec691bb96353ba215f8dd08b5b9b992fec1cd88c554",
+    "metadata_archive_bytes": 40227736,
+    "dictionary_bytes": 67108864,
+    "all_metadata_original_sections_exact": true,
+    "whole_transport_and_fresh_package_pending": true,
+    "current_copy_waiter": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+    "current_release_preparation_waiter": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+    "production_actions": 0,
+    "provider_calls": 0,
+    "cleanup_operations": 0,
+    "final_delivery_claimed": false
+  },
+  "hash_chain_transport_preparation": {
+    "failed_64MiB_trial": "correction03-prefix-bounded-oversize-stop-20261004-2-private.json",
+    "failed_trial_sha256": "1be2c7d0e7bf6611a17709854df2b17ad6205f0052303471ec7d06851c647ed3",
+    "measured_minimum_trial_payload_bytes": 123197001,
+    "actual_failed_test_worker_exit_code": 4294967295,
+    "new_configuration_probe": "correction03-prefix-hash-chain-memory-probe-20261004-3-private.json",
+    "new_configuration_probe_sha256": "b17e85d8f455e33247cb697f721f05147ffbc8b083381937871233995e220351",
+    "dictionary_bytes": 536870912,
+    "match_finder": "MF_HC4",
+    "mode": "MODE_NORMAL",
+    "minimum_available_physical_bytes": 5368709120,
+    "measured_plane_compressed_payload_bytes": 17305742,
+    "measured_peak_working_set_bytes": 3021172736,
+    "metadata_proof": "correction03-prefix-complete-hash-chain-metadata-20261004-3-private.json",
+    "metadata_proof_sha256": "862168123db81a3258f1b775e804220bb5b3e0979c01c507b16eee83ea93d96c",
+    "metadata_archive_bytes": 39561181,
+    "all_metadata_original_sections_exact": true,
+    "current_full_transport": "correction03-prefix-complete-hash-chain-transport-20261004-3-private.json",
+    "current_fresh_package": "correction29-correction03-prefix-source-fresh-package-20261004-3-coordinator-private.json",
+    "whole_source_transport_or_fresh_package_passed_claimed": false,
+    "final_delivery_claimed": false,
+    "old_failed_receipts_preserved": true,
+    "original_source_bytes_changed": false,
+    "production_actions": 0,
+    "provider_calls": 0
+  },
+  "exact_transport_member_probes": {
+    "complete_transport": "correction03-prefix-complete-hash-chain-size-probe-20261004-3-private.json",
+    "complete_transport_sha256": "808b5da8209358f03e221f3bca8d4e228cda3a0fc3f8fa365ea89407a3b8eb13",
+    "actual_complete_archive_bytes": 112834256,
+    "complete_archive_within_delivery_cap": false,
+    "all_raw_bytes_sha_crc_passed": true,
+    "old_oversized_archive_preserved": true,
+    "metadata_probe": "correction03-prefix-complete-metadata256-20261004-4-private.json",
+    "metadata_probe_sha256": "dc878c33f6771452666dab59a74c073b949942bd72c085bb95ecbc1871d67758",
+    "metadata_probe_archive_bytes": 37741614,
+    "labels_probe": "correction03-prefix-labels64-complete-probe-20261004-4-private.json",
+    "labels_probe_sha256": "9a2f707b0790716a6bf55258e587384ad35d0fad6d9a49beab83c5c299347fb0",
+    "labels_compressed_payload_bytes": 8863062,
+    "labels_peak_working_set_bytes": 728342528,
+    "current_adaptive_complete_archive_passed_claimed": false,
+    "final_delivery_claimed": false,
+    "native_business_or_decoder_changed": false,
+    "source_deleted": 0,
+    "production_actions": 0,
+    "provider_calls": 0
+  },
+  "actual_continuations_20261005": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "actual_source_and_transport_continuations": [
+      {
+        "file": "correction03-b20-complete-source-closure-continuation-20261005-2-private.json",
+        "sha256": "cc1f60429d1c1c4560407f19d027ce0121ccebe80b2823829aad7ee2e4c8641f",
+        "status_observed": "waiting_for_actual_independent_full_native_replay"
+      },
+      {
+        "file": "correction03-b20-complete-native-source-append-20261005-2-private.json",
+        "sha256": "0d54242515b2217cd0d3d0f5a3317126d3f3a5e1058af3051770f17aa887b6d2",
+        "status_observed": "waiting_for_actual_complete_native_source_closure"
+      },
+      {
+        "file": "correction03-prefix-complete-adaptive-transport-20261005-4-private.json",
+        "sha256": "480492b06fbd7e0b2b95156eb8067fe7ba35e4525287ffcdaccb50c588ad9b58",
+        "status_observed": "waiting_for_complete_byte_exact_member_probes"
+      },
+      {
+        "file": "correction29-correction03-prefix-source-fresh-package-20261005-4-coordinator-private.json",
+        "sha256": "36815756219b4ff7345956693b8d33fa44198699a4abe0d1a8e4cc2eb561291c",
+        "status_observed": "waiting_for_actual_extended_source_transport"
+      }
+    ],
+    "actual_complete_member_probes": [
+      {
+        "file": "correction03-prefix-class0-plane0-256-probe-20261005-1-private.json",
+        "sha256": "e37889165a4e1b7dd4c17407fe789919fbcdc08a341d0eb8dbdc5241708af02f",
+        "compressed_payload_bytes": 15608641,
+        "actual_peak_working_set_bytes": 2842451968
+      },
+      {
+        "file": "correction03-prefix-class0-plane1-256-probe-20261005-1-private.json",
+        "sha256": "5d4d3892cc629dfb706247bb8e13692c11615857ac6d4b87266c31053683f8c2",
+        "compressed_payload_bytes": 11729243,
+        "actual_peak_working_set_bytes": 2836021248
+      }
+    ],
+    "remote_snapshot": "correction29-correction03-b20-source-wait-remote-20261005-1-remote-private.json",
+    "remote_snapshot_sha256": "823046ecf63946803d81f623285342bbec19c3e1f3d6b9afacf4f06df0154a8d",
+    "review_thread_count": 116,
+    "new_since_task": 0,
+    "current_native_retry": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+    "current_complete_source_replay": "correction03-b20-full-native-stdlib-replay-20261004-2-private.json",
+    "current_native_acceptance_passed_claimed": false,
+    "current_complete_archive_or_fresh_restoration_passed_claimed": false,
+    "old_failed_source_and_oversized_archive_receipts_preserved": true,
+    "production_actions": 0,
+    "provider_calls": 0
+  },
+  "complete_adaptive_source_transport": {
+    "complete_transport_driver": "correction03-prefix-complete-adaptive-transport-20261005-4-private.json",
+    "complete_transport_driver_sha256": "710eba643734dfe24ddc86453feffe785d3d044e8b33a4b15a316d339bd8cade",
+    "actual_size_proof": "correction03-prefix-complete-adaptive-size-probe-20261005-4-private.json",
+    "actual_size_proof_sha256": "5c65b13429ba3bf7257018d29805d4804056f834bff2f59f4a7194cc487d8b06",
+    "actual_source_archive": "correction03-prefix-complete-adaptive-size-probe-20261005-4.zip",
+    "actual_source_archive_bytes": 94069694,
+    "actual_source_archive_sha256": "8c6c2f5c1fee675ced1161bc93a1ad5b8c97d6121f5daaf965cd2327b5672204",
+    "source_archive_under_100000000": true,
+    "all_standard_zip_original_sha_crc_passed": true,
+    "full_native_blocks_inverse_passed": true,
+    "original_files": 72421,
+    "original_bytes": 23120611525,
+    "full_fresh_original_restoration": "correction29-correction03-prefix-source-fresh-package-20261005-4-coordinator-private.json",
+    "fresh_restoration_status_observed": "finished",
+    "fresh_restoration_passed_claimed": true,
+    "current_B20_native_product_acceptance_or_final_delivery_claimed": false,
+    "old_failed_and_oversized_archives_preserved": true,
+    "decoder_or_native_source_changed": false,
+    "provider_calls": 0,
+    "production_actions": 0,
+    "full_fresh_original_restoration_sha256": "97ea1a6b0e6c45b8c7f129d96b22fe1c810c018bcff17244c6359a6398fb14ab",
+    "actual_fresh_archive": "correction29-correction03-prefix-source-fresh-package-20261005-4.zip",
+    "actual_fresh_archive_bytes": 93726603,
+    "actual_fresh_archive_sha256": "3fcfa58ddd7abec5fe410f58abd2c99d05c4088e539e6a0ae21bbe3aea29e259",
+    "all_fresh_original_sha_syntax_storage_and_reference_checks_passed": true,
+    "all_actual_fresh_stages_exit_zero": true,
+    "superseded_original_idle_waiters_stopped": true,
+    "exact_owned_waiter_stop_receipt": "correction03-obsolete-prefix-waiter-stop-20261005-1-private.json",
+    "exact_owned_waiter_stop_receipt_sha256": "61b6dac96a019ec556ddaa994c0580aeb4ecc193fb9dd75772675d57ab5712f0",
+    "all_historical_waiter_receipts_unchanged": true,
+    "source_files_deleted": 0
+  },
+  "complete_frozen_native_stdlib_replay": {
+    "source_replay": "correction03-b20-full-native-stdlib-replay-20261004-2-private.json",
+    "source_replay_sha256": "e8b2cfbddec0e870be8850c650c1eaebb1e3e19e5e28d3cca57ee08e931ab71b",
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "actual_process_exit_code": 0,
+    "actual_exit_observed_by_exec": true,
+    "complete_native_role_pair_graph_passed": true,
+    "signal_count": 100285,
+    "role_record_count": 15825,
+    "selected_judgment_count": 31608,
+    "native_source_modules": 23,
+    "actual_native_read_dependencies": 71538,
+    "frozen_source_proof": "correction03-b20-source-20261004-proof-private.json",
+    "frozen_source_proof_sha256": "fc3777b89c4775ad63229c4f1d3fbcce8571fb85b180674b5669b51942345dee",
+    "protected_resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+    "protected_business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+    "ledger_unchanged": true,
+    "network_calls": 0,
+    "provider_calls": 0,
+    "database_executed": false,
+    "current_product_acceptance_claimed": false,
+    "current_strict_command_retry": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+    "current_source_closure": "correction03-b20-complete-source-closure-continuation-20261005-2-private.json",
+    "current_original_production_or_final_delivery_passed_claimed": false
+  },
+  "raw_inventory_collection_correction": {
+    "actual_failed_closure": "correction03-b20-complete-source-closure-continuation-20261005-2-private.json",
+    "actual_failed_closure_sha256": "5b75528fc131746ba546c3050cb39ffe46b54950da8b75776c3ac533dd34de67",
+    "original_failure_preserved": true,
+    "failure_cause": "archive_raw_file_inventory_was_confused_with_native_admission_count",
+    "actual_raw_count": 1931,
+    "actual_native_raw_reads": 1931,
+    "raw_not_opened_by_current_native_replay": 0,
+    "prior_raw_count": 1931,
+    "native_validated_raw_count": 1929,
+    "new_raw_paths_since_prior_pool": [],
+    "all_prior_raw_match_frozen_read_bytes_and_sha": true,
+    "diagnostic": "correction03-native-source-read-closure-diagnostic-20261005-2-private.json",
+    "diagnostic_sha256": "b3e72da1777a37aae2c820d2ef42b42d4e575503972a972e9711b680876e9255",
+    "corrected_collector": "correction03_collect_b20_complete_source_additions_20261005_2.py",
+    "corrected_collector_sha256": "58b2a33eb43470a1607298e7a7afc18057ad8a9ad6eeb28b44708aac407aca92",
+    "new_inventory_guard": "Exact equality with frozen complete native read list and every prior raw bytes/SHA unchanged",
+    "current_closure": "correction03-b20-complete-source-closure-continuation-20261005-3-private.json",
+    "current_status_observed": "actual_current_native_read_closure_running",
+    "current_append": "correction03-b20-complete-native-source-append-20261005-3-private.json",
+    "current_source_closure_completed_claimed": false,
+    "native_source_qualification_changed": false,
+    "ledger_or_original_response_changed": false,
+    "provider_calls": 0,
+    "production_actions": 0
+  },
+  "actual_completed_current_native_source_closure": {
+    "closure": "correction03-b20-complete-source-closure-continuation-20261005-3-private.json",
+    "closure_sha256": "50218761a579914ec0f5f483070d668b2ebd99b91c7adb6db277634a8ae9c692",
+    "status": "finished",
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "all_actual_stages_exit_zero": true,
+    "additions": "correction03-b20-complete-native-source-20261005-3-additions-private.json",
+    "additions_sha256": "398e2b53dfd32f48c55c063ef079169470daf12f810e0a8cd69fcbe0bc600b49",
+    "actual_read_dependencies": 71538,
+    "retained_original_role_raw_files": 1931,
+    "native_validated_raw_count": 1929,
+    "all_prior_original_raw_bytes_and_sha_unchanged": true,
+    "new_raw_paths": [],
+    "new_original_files": 664,
+    "new_original_bytes": 2620592091,
+    "native_append": "correction03-b20-complete-native-source-append-20261005-3-private.json",
+    "native_append_and_full_final_materialization_still_required": false,
+    "strict_cli_and_current_copy_acceptance_still_required": true,
+    "provider_calls": 0,
+    "production_actions": 0,
+    "native_append_status": "finished",
+    "native_append_sha256": "605799acab940e1bd64e36334c8e791b45640872d203e02baeec7cf9e28c17e8",
+    "native_pool_index": "correction29-correction03-b20-native-derived-shared-atoms-20261005-3-index.json",
+    "native_pool_index_sha256": "828bfd294ceabea43484bfa2821002342d5f4bf3d876cfcbe030fca00149d6de",
+    "exact_original_files": 73085,
+    "exact_original_bytes": 25741203616,
+    "all_prior_declarations_unchanged": true,
+    "existing_native_decoder_unchanged": true,
+    "full_final_materialization_still_required": true
+  },
+  "actual_current_pair_retry_progress": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "actual_command_status_observed": "running",
+    "cache_label": "correction29-correction03-b20-cache-20261004-2",
+    "completed_work_selected_pairs": 9070,
+    "completed_work_judgments": 9070,
+    "completed_work_source_rows": 9070,
+    "completed_work_errors": 0,
+    "completed_work_new_provider_calls": 0,
+    "remaining_selected_pairs_admitted": 22538,
+    "remaining_compatible_inputs": 22538,
+    "remaining_missing_distinct_inputs": 0,
+    "remaining_dispatchable_call_ceiling": 0,
+    "exact_evidence_sha256": {
+      "correction03-current-pair-retry-progress-checkpoint-20261005-2-running-cli-snapshot-private.json": "24c7833ce73204ffed673c2697de2e566d18be8fe649fcb996c17ada98aa446c",
+      "correction29-correction03-b20-cache-20261004-2-work-adjudication-private.json": "dd883c2df24b6faca0bd40620c0028b1adfa3f4b0d58bf5bbf91578eda5b7089",
+      "correction29-correction03-b20-cache-20261004-2-work-source-replay-private.json": "a70437a4ac6d4d9e7f5457d4f4f67e4a7d8d1ef630b1e34d5f64211855a8321b",
+      "correction29-correction03-b20-cache-20261004-2-remaining-correction-admission-private.json": "7cd48f8abf26cc2ce5923981f9e8d3358e69b933df5c278e00a0439bc5168bf4"
+    },
+    "recorded_at": "2026-10-04T18:41:46.356090+00:00",
+    "complete_cli_exit_and_post_guard_still_required": true,
+    "current_complete_graph_acceptance_claimed": false,
+    "production_actions": 0,
+    "ledger_original_bytes_unchanged": true,
+    "running_cli_observation_snapshot": "correction03-current-pair-retry-progress-checkpoint-20261005-2-running-cli-snapshot-private.json",
+    "running_cli_observation_snapshot_sha256": "24c7833ce73204ffed673c2697de2e566d18be8fe649fcb996c17ada98aa446c",
+    "live_cli_command": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+    "mutable_cli_reference_superseded_by_exact_observation_snapshot": true,
+    "prior_observation": "correction03-current-pair-retry-progress-checkpoint-20261005-1-private.json",
+    "prior_observation_sha256": "9b7fda8c1725cb8d4f619072c55a50b4900efcae264bce2b3a863786d07dc45f"
+  },
+  "workspace_space_observation": {
+    "workspace_space_receipt": "correction03-workspace-disk-occupancy-20261005-4-private.json",
+    "workspace_space_receipt_sha256": "e57d8e5b97e9e0f71e10ae1107f69f0e5e13c1255b034b3dd4085a1961f5bdd1",
+    "workspace_space_report": "correction03-workspace-space-report-20261005.md",
+    "workspace_space_report_sha256": "bfae23f2fd609807a1681095bc4d7502122906576f66b07cb086f9427645911f",
+    "workspace_space_log": "correction03-workspace-disk-occupancy-20261005-4.log",
+    "workspace_space_log_sha256": "3bfb9abf3741f6203195abd1b938a1a44adbb3895741496e3cc08686b6a859cb",
+    "space_observed_at": "2026-10-04T20:02:41.419796+00:00",
+    "project_logical_bytes": 818761296742,
+    "project_unique_allocated_bytes": 773209384888,
+    "C_free_bytes": 930950144000,
+    "A2_evidence_unique_allocated_bytes": 603106782360,
+    "measurement": "GetFileInformationByHandleEx FileStandardInfo.AllocationSize, de-duplicated by NTFS volume/file identity; reparse points excluded; filesystem metadata overhead not included",
+    "non_atomic_live_observation": true,
+    "metadata_scan_observed_exit_code": 0,
+    "production_actions": 0,
+    "provider_calls": 0,
+    "cleanup_operations": 0,
+    "A2_acceptance_claimed": false
+  },
+  "passed_strict_current_cli": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "cache_label": "correction29-correction03-b20-cache-20261004-2",
+    "actual_process_exit_code": 0,
+    "actual_exit_observed_by_exec": true,
+    "finished_at": "2026-10-04T20:08:52.293538+00:00",
+    "behavior_guard_after": true,
+    "inputs_unchanged": true,
+    "ledger_unchanged": true,
+    "source_files": [
+      {
+        "file": "correction29-correction03-b20-cache-20261004-2-command-private.json",
+        "sha256": "0aedf0dad3d564d59bb928b12f8820925dc4463abf899fe3e09390a15ac7f87d"
+      },
+      {
+        "file": "correction29-correction03-b20-cache-20261004-2-adjudication-private.json",
+        "sha256": "0d3daa84d6b800cf4b98a0969948501acfcca0c95287fca23271364b56344758"
+      },
+      {
+        "file": "correction29-correction03-b20-cache-20261004-2-cluster-private.json",
+        "sha256": "f1b81cb37a4c14d664c47baf69409489f4d78c731a3cfa853727788b443f53fc"
+      },
+      {
+        "file": "correction29-correction03-b20-cache-20261004-2-semantic-manifest-private.json",
+        "sha256": "33090305ee3aa3a3a4064a35970e3949fc20618017868b814199c452d4d12778"
+      },
+      {
+        "file": "correction29-correction03-b20-cache-20261004-2-approved-run-input-private.json",
+        "sha256": "29a5acbc9fb81a54495183ab64a2295eceb88bc4bdaefae7b50a7cef28f5b8bc"
+      },
+      {
+        "file": "correction29-correction03-b20-cache-20261004-2.log",
+        "sha256": "38406e5ce11e802a60de8cc8df14c71983cd94ad9adc0feed7746a5c0d77f4ed"
+      }
+    ],
+    "signal_count": 100285,
+    "selected_pair_count": 31608,
+    "work_pair_count": 9070,
+    "remaining_pair_count": 22538,
+    "judgment_count": 31608,
+    "cache_hits": 31608,
+    "new_provider_calls": 0,
+    "missing_pair_count": 0,
+    "concept_count": 17498,
+    "resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+    "business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+    "copy_and_actual_production_acceptance_still_required": true,
+    "production_actions": 0,
+    "final_delivery_claimed": false
+  },
+  "current_copy_recovery_continuation": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "original_failed_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+    "original_failed_release_preparation": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+    "original_failed_backup_receipt": "correction29-correction03-b20-oracle-backup-20261004-1-private.json",
+    "original_failed_backup_receipt_sha256": "1f00b5d1d1b5b576948087a6e7aeed3ef071a8414169493a16750b234afa259a",
+    "guard_failure_root_cause_proven": false,
+    "native_guard_changes": 0,
+    "actual_read_only_oracle_continuation": "correction29-correction03-b20-oracle-backup-20261005-2-private.json",
+    "actual_read_only_oracle_continuation_sha256": "5c3b5d93d958af861bd4b604508cb88af5f143c25ccd8376e62f3013efec8756",
+    "actual_read_only_oracle_restore_proof": "correction29-correction03-b20-oracle-backup-20261005-2-restore-private.json",
+    "actual_read_only_oracle_restore_proof_sha256": "2c8861dfb2a62a3b76131a46ec06bb8e97dadb68576c6ca198b3272f6e95fb74",
+    "all_61_tables_reverified": true,
+    "actual_observed_oracle_continuation_exit_code": 0,
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-4-private.json",
+    "current_copy_observation": "correction03-b20-resumed-copy-checkpoint-20261005-4-copy-snapshot-private.json",
+    "current_copy_observation_sha256": "2539c6991dded4bdbe0bbca5e5d863a3fa2fd738dd99f30e2c998b6a66fb5a74",
+    "current_copy_observed_status": "full-copy-sequence_running",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-4-private.json",
+    "current_production_command_preparer": "correction03_prepare_b20_production_command_20261005_5.py",
+    "production_actions": 0,
+    "provider_calls": 0,
+    "current_copy_and_production_acceptance_still_required": true
+  },
+  "current_copy_scope_continuation": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "original_failed_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261004-3-private.json",
+    "original_failed_release_preparation": "correction03-b20-release-preparation-continuation-20261004-3-private.json",
+    "original_failed_backup_receipt": "correction29-correction03-b20-oracle-backup-20261004-1-private.json",
+    "original_failed_backup_receipt_sha256": "1f00b5d1d1b5b576948087a6e7aeed3ef071a8414169493a16750b234afa259a",
+    "guard_failure_root_cause_proven": false,
+    "native_guard_changes": 0,
+    "actual_read_only_oracle_continuation": "correction29-correction03-b20-oracle-backup-20261005-2-private.json",
+    "actual_read_only_oracle_continuation_sha256": "5c3b5d93d958af861bd4b604508cb88af5f143c25ccd8376e62f3013efec8756",
+    "actual_read_only_oracle_restore_proof": "correction29-correction03-b20-oracle-backup-20261005-2-restore-private.json",
+    "actual_read_only_oracle_restore_proof_sha256": "2c8861dfb2a62a3b76131a46ec06bb8e97dadb68576c6ca198b3272f6e95fb74",
+    "all_61_tables_reverified": true,
+    "actual_observed_oracle_continuation_exit_code": 0,
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+    "current_copy_observation": "correction03-b20-current-copy-scope-checkpoint-20261005-5-copy-snapshot-private.json",
+    "current_copy_observation_sha256": "ae12750bee066ce7eb881ce5e4132dc0df7efeb77b6f1482c158183a73ab17df",
+    "current_copy_observed_status": "full-copy-sequence_running",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-5-private.json",
+    "current_production_command_preparer": "correction03_prepare_b20_production_command_20261005_6.py",
+    "production_actions": 0,
+    "provider_calls": 0,
+    "current_copy_and_production_acceptance_still_required": true,
+    "current_copy_label": "correction29-copy-6b502dd-correction03-2",
+    "prior_failed_copy_label": "correction29-copy-6b502dd-correction03-1",
+    "prior_failed_copy_sequence": "correction29-copy-6b502dd-correction03-1-sequence-private.json",
+    "prior_incomplete_lifecycle": "correction29-copy-6b502dd-correction03-1-lifecycle-private.json",
+    "actual_counterexample_log": "correction29-copy-6b502dd-correction03-1-before.log",
+    "bounded_scope_driver_correction": "correction03-b20-current-copy-scope-driver-correction-20261005-2-private.json",
+    "bounded_scope_driver_correction_sha256": "2835b3ec495504642d33917eee51c72fa09f013d0003805fab3d7bdddea3b195",
+    "real_scope_regression": "correction03-b20-current-copy-scope-regression-20261005-2-private.json",
+    "real_scope_regression_sha256": "3ae9b66699ddda64f7dcedef1d808b97852e5a7ccbf1fdaac61d0acbf8e7010a",
+    "real_cli_regressions_passed": 3,
+    "prior_lifecycle_parent_observed_exit_code": 1,
+    "prior_failure_occurred_before_database_import": true,
+    "business_source_changes": 0,
+    "quality_expectation_changes": 0,
+    "final_package_spec_driver": "correction03_assemble_final_b20_package_spec_20261005_4.py",
+    "current_support_comparison_driver": "correction03_compare_b20_support_sources_20261005_2.py"
+  },
+  "current_copy_first_apply": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "copy_label": "correction29-copy-6b502dd-correction03-2",
+    "database": "blombooru_a2_test_20261004_6b502dd",
+    "full_source_verification": {
+      "started_at": "2026-10-04T20:37:31.492633+00:00",
+      "finished_at": "2026-10-04T21:40:35.837298+00:00",
+      "semantic_input_identity": {
+        "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+        "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+        "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+        "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+        "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+        "versions": {
+          "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+          "role_schema": "violet.production-pixiv-role-result.v1",
+          "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+          "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+          "extraction_schema": "source_name_candidate_extraction_compact_v2",
+          "completion": "production_pixiv_residual_roles_v1",
+          "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+          "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+          "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+          "cache_policy": "source_concept_llm_adjudication_cache_v1",
+          "decision_schema": "source_concept_pair_decision_schema_v1",
+          "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+          "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+          "model": "gpt-4.1-mini",
+          "fallback": false
+        }
+      },
+      "run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e"
+    },
+    "first_apply_finished_at": "2026-10-04T21:57:03.904708+00:00",
+    "first_apply_applied": true,
+    "active_runs": 1,
+    "bindings": 66392,
+    "duplicate_support_count": 0,
+    "source_files": [
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-initial-plan-plan-private.json",
+        "sha256": "b77e3b4723152ec35d20dd92027a1e4188dc939c4d63e193e9bd7fccd2ecdb12"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-apply-apply-private.json",
+        "sha256": "4b5c8f393bbb90ed4c1bb4f3cfae420ba63f86d3c4e86d902c9a987af9de6ae9"
+      },
+      {
+        "file": "correction03-b20-copy-first-apply-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+        "sha256": "31778425279c4ad879ef87181fc3e9c2d51459c02c6503309eecf01785712b59"
+      },
+      {
+        "file": "correction03-b20-copy-activity-observation-20261005-1.log",
+        "sha256": "7c2d392bbd0aaeb338c68e725f6e595fb47d398449d521acdc83aa6e536a9478"
+      },
+      {
+        "file": "correction29-correction03-b20-source-wait-availability-20261005-6-availability-private.json",
+        "sha256": "79755e39f309912d6d2e4483fe87277274b94d076d6168a17aa18a6287d39e7c"
+      }
+    ],
+    "lifecycle_observation": "correction03-b20-copy-first-apply-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+    "lifecycle_observation_sha256": "31778425279c4ad879ef87181fc3e9c2d51459c02c6503309eecf01785712b59",
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-5-private.json",
+    "production_actions": 0,
+    "provider_calls": 0,
+    "remaining_copy_lifecycle_and_quality_acceptance_required": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false,
+    "driver_sha256": "465b718197f5a09b10fb0cb081243824940da0e1302087a44c05815c27e3600c"
+  },
+  "current_copy_core_lifecycle": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "copy_label": "correction29-copy-6b502dd-correction03-2",
+    "database": "blombooru_a2_test_20261004_6b502dd",
+    "full_source_verification": {
+      "started_at": "2026-10-04T20:37:31.492633+00:00",
+      "finished_at": "2026-10-04T21:40:35.837298+00:00",
+      "semantic_input_identity": {
+        "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+        "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+        "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+        "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+        "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+        "versions": {
+          "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+          "role_schema": "violet.production-pixiv-role-result.v1",
+          "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+          "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+          "extraction_schema": "source_name_candidate_extraction_compact_v2",
+          "completion": "production_pixiv_residual_roles_v1",
+          "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+          "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+          "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+          "cache_policy": "source_concept_llm_adjudication_cache_v1",
+          "decision_schema": "source_concept_pair_decision_schema_v1",
+          "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+          "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+          "model": "gpt-4.1-mini",
+          "fallback": false
+        }
+      },
+      "run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e"
+    },
+    "first_apply_finished_at": "2026-10-04T21:57:03.904708+00:00",
+    "first_apply_applied": true,
+    "active_runs": 1,
+    "bindings": 66392,
+    "duplicate_support_count": 0,
+    "source_files": [
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-initial-plan-plan-private.json",
+        "sha256": "b77e3b4723152ec35d20dd92027a1e4188dc939c4d63e193e9bd7fccd2ecdb12"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-apply-apply-private.json",
+        "sha256": "4b5c8f393bbb90ed4c1bb4f3cfae420ba63f86d3c4e86d902c9a987af9de6ae9"
+      },
+      {
+        "file": "correction03-b20-copy-core-lifecycle-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+        "sha256": "d27cb80638e3a810021cb9e5d77522a7cc7e2d14e2bfd68147b13448397e4df8"
+      },
+      {
+        "file": "correction03-b20-copy-activity-observation-20261005-1.log",
+        "sha256": "7c2d392bbd0aaeb338c68e725f6e595fb47d398449d521acdc83aa6e536a9478"
+      },
+      {
+        "file": "correction29-correction03-b20-source-wait-availability-20261005-6-availability-private.json",
+        "sha256": "79755e39f309912d6d2e4483fe87277274b94d076d6168a17aa18a6287d39e7c"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-final-projection-private.json",
+        "sha256": "ce9b9ef13df577494d39ff637fb295a9e74207189f86dce9219b650d05d83dcb"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-before-preservation-private.json",
+        "sha256": "a87a59295a17a916dd5dae0a40eb1ec77680e046bd9a316b38e1e5586c189288"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-after-rollback-preservation-private.json",
+        "sha256": "b47fc201cb50d04d62edb72777683cd07b7820310bc168802b5f06104ac0d5bf"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-after-reapply-preservation-private.json",
+        "sha256": "0f24d2767c713cb9e63890d7e710504c49fdb6e4281ab9a830f3b0428d5fb16f"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-replay-plan-plan-private.json",
+        "sha256": "57aac4d89a45147338c23e9f256d6b9503377ea8d841c83b3812427a8b17e1ca"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-replay-apply-private.json",
+        "sha256": "e34735414febf431afe7ebca0c415b484ed3f9f9fe0999152ff385520d64f071"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-rollback-rollback-private.json",
+        "sha256": "f081e1f5701a05848da8cd27f3f82e3bc99ed57fd5f55cabbebb84e079842af6"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-repeated-rollback-rollback-private.json",
+        "sha256": "2e9f7e87eb9f5f60edfe6ea08a030f24c4fe198b0cccd068cd1896afa7a3e0f3"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-reapply-plan-plan-private.json",
+        "sha256": "58db9b3b163476bdf1547436863b72681314d057ec4546ce9f6df062e425b60c"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-reapply-apply-private.json",
+        "sha256": "5f60ec1560b5bf96260fd3ad935bf175c3a0c237d3adad40086a2c089f08313c"
+      }
+    ],
+    "lifecycle_observation": "correction03-b20-copy-core-lifecycle-checkpoint-20261005-1-lifecycle-snapshot-private.json",
+    "lifecycle_observation_sha256": "d27cb80638e3a810021cb9e5d77522a7cc7e2d14e2bfd68147b13448397e4df8",
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-5-private.json",
+    "production_actions": 0,
+    "provider_calls": 0,
+    "remaining_copy_lifecycle_and_quality_acceptance_required": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false,
+    "driver_sha256": "ec1d09848f4a49fb0c3d3304d343014ec25fc104782c5e3209778c2bb13c13ea",
+    "core_lifecycle_passed": true,
+    "real_core_operations": 5,
+    "full_logical_support_set_preserved_after_reapply": true,
+    "approved_run_and_final_projection_verified": true,
+    "independent_support_preserved": true,
+    "lifecycle_verification": {
+      "operation_count": 5,
+      "run_key": "scv2-px3:61bf88218dee4f1236e155ee9ea10862",
+      "receipt_sha256": [
+        "4b5c8f393bbb90ed4c1bb4f3cfae420ba63f86d3c4e86d902c9a987af9de6ae9",
+        "e34735414febf431afe7ebca0c415b484ed3f9f9fe0999152ff385520d64f071",
+        "f081e1f5701a05848da8cd27f3f82e3bc99ed57fd5f55cabbebb84e079842af6",
+        "2e9f7e87eb9f5f60edfe6ea08a030f24c4fe198b0cccd068cd1896afa7a3e0f3",
+        "5f60ec1560b5bf96260fd3ad935bf175c3a0c237d3adad40086a2c089f08313c"
+      ]
+    },
+    "owned_recovery_and_quality_acceptance_still_required": true
+  },
+  "owned_worker_failure_continuation": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "failure_root_cause": "historical_owned_worker_copy_target_pinned_to_6125b86",
+    "failure_reproduced_by_real_original_cli": true,
+    "actual_failed_copy_parent_exit_code": 1,
+    "rejected_before_sqlalchemy_import": true,
+    "core_five_operations_remain_valid": true,
+    "real_scope_cli_regressions_passed": 3,
+    "native_installed_engine_preconnect_gate_passed": true,
+    "database_connections_created_by_regressions": 0,
+    "source_files": [
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261005-5-private.json",
+        "sha256": "fa5540f58c273c9ef8ceb07d96f2c37db10df41b45e2ce87f02374c75cb14cb3"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-private.json",
+        "sha256": "beba9de4f1d6d6d6852fc77638716ab5c5ccb6f64e6d88130af4c7e63280e0a0"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-old44-worker.log",
+        "sha256": "66b51c9b57d46eb71b2579f414e2cc819284459b1eeeebaa87db73a17b439a10"
+      },
+      {
+        "file": "correction03-b20-owned-worker-scope-cli-regression-20261005-2-private.json",
+        "sha256": "9daa59575a76533c2626273b9aa4f7e49a39be6e0f7b16a98e0e25a325cb1afb"
+      },
+      {
+        "file": "correction03-recovery-preconnect-gate-20261005-2-private.json",
+        "sha256": "c3c4591f6917a378ffd2908d26cc04e6825cea026eed89a398d7b34eddb6365c"
+      },
+      {
+        "file": "correction03-b20-owned-worker-scope-resume-drivers-20261005-2-private.json",
+        "sha256": "a109e6df5b8fec49fdeaa2dd1afbb100875abead5835a14b1b3d8faa5ffe64d2"
+      },
+      {
+        "file": "correction03-b20-owned-recovery-resume-continuation-drivers-20261005-2-private.json",
+        "sha256": "f6c559ea63c9085effcf3d7050fb627bdd4ab2b6ece946c3094c46b9860cd0fa"
+      },
+      {
+        "file": "correction03-b20-copy-core-lifecycle-checkpoint-20261005-1-private.json",
+        "sha256": "27d25dd72679b72e70c0e8e1156e0df6a820f33a73090090b798e4006ec740ea"
+      },
+      {
+        "file": "correction03_resume_b20_owned_recovery_20261005.py",
+        "sha256": "46b6a40f638226adab67eecbf44dc36f426dde987a5d42b604a4edac095d1e69"
+      },
+      {
+        "file": "correction03_owned_recovery_worker_20261005_2.py",
+        "sha256": "8070cbc912eef61fc7561bd8e5436bda74a7ff05af58d91ca91f8d932f0f3742"
+      },
+      {
+        "file": "correction29-correction03-b20-source-wait-availability-20261005-7-availability-private.json",
+        "sha256": "5e1b7cd3f078f9f2b58e84c6f6a88aa1d72152957ecfcf0480aaaaa2c7663a65"
+      }
+    ],
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+    "current_copy_observation": "correction03-b20-owned-worker-failure-resume-checkpoint-20261005-2-copy-snapshot-private.json",
+    "current_copy_observation_sha256": "14cfd989529a35ef380b77cb248003d500b83a12e6a44b01fb3af59dbfe3e21a",
+    "current_copy_observed_status": "full-copy-sequence_running",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+    "current_resumed_sequence": "correction29-copy-6b502dd-correction03-2-resumed-sequence-private.json",
+    "current_production_command_preparer": "correction03_prepare_b20_production_command_20261005_7.py",
+    "current_owned_apply_driver": "correction03_original_owned_apply_20261005_3.py",
+    "current_owned_apply_guard": "correction03_run_owned_apply_with_recovery_20261005_3.py",
+    "current_fixed_release_preparer": "correction03_prepare_fixed_release_20261005_2.py",
+    "business_source_changes": 0,
+    "quality_expectation_changes": 0,
+    "native_candidate_guard_changes": 0,
+    "old_failed_files_rewritten": false,
+    "full_source_reverification_and_owned_recovery_pending": true,
+    "production_actions": 0,
+    "provider_calls": 0,
+    "final_delivery_claimed": false
+  },
+  "owned_resume_source_verified": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "full_source_reverification": {
+      "started_at": "2026-10-04T22:55:46.906813+00:00",
+      "finished_at": "2026-10-04T23:47:44.266932+00:00",
+      "semantic_input_identity": {
+        "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+        "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+        "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+        "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+        "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+        "versions": {
+          "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+          "role_schema": "violet.production-pixiv-role-result.v1",
+          "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+          "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+          "extraction_schema": "source_name_candidate_extraction_compact_v2",
+          "completion": "production_pixiv_residual_roles_v1",
+          "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+          "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+          "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+          "cache_policy": "source_concept_llm_adjudication_cache_v1",
+          "decision_schema": "source_concept_pair_decision_schema_v1",
+          "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+          "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+          "model": "gpt-4.1-mini",
+          "fallback": false
+        }
+      },
+      "resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+      "business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+      "all_original_input_sha256_unchanged": true,
+      "native_code_guard_passed": true
+    },
+    "signal_count": 100285,
+    "original_inputs_unchanged": true,
+    "live_resumed_current_projection_verified": true,
+    "all_17_protected_tables_match_before_resume": true,
+    "original_restore_all_61_tables_verified_before_initial_candidate_apply": true,
+    "core_initial_apply_or_restore_reexecuted": false,
+    "owned_recovery_still_pending": true,
+    "source_files": [
+      {
+        "file": "correction03-b20-owned-resume-source-checkpoint-20261005-2-observation-0-private.json",
+        "sha256": "41386f715feea786292a06f21830edc07b1466ece4ab5ffcb9557290ea56e130"
+      },
+      {
+        "file": "correction03-b20-owned-resume-source-checkpoint-20261005-2-observation-1-private.json",
+        "sha256": "0c8acd672c9071a4e8a02b2bd3f96c92b6f85a779c81a138d66b7b4e31cef8d4"
+      },
+      {
+        "file": "correction29-correction03-b20-cache-20261004-2-cluster-private.json",
+        "sha256": "f1b81cb37a4c14d664c47baf69409489f4d78c731a3cfa853727788b443f53fc"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-current-initial-apply-private.json",
+        "sha256": "378d4ad2213fb4d7b7d56d5205026c01e6d76b4e74b985cbcbb275e00a86f08c"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-private.json",
+        "sha256": "beba9de4f1d6d6d6852fc77638716ab5c5ccb6f64e6d88130af4c7e63280e0a0"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-old44-worker.log",
+        "sha256": "66b51c9b57d46eb71b2579f414e2cc819284459b1eeeebaa87db73a17b439a10"
+      },
+      {
+        "file": "correction03_owned_recovery_worker_20261005_2.py",
+        "sha256": "8070cbc912eef61fc7561bd8e5436bda74a7ff05af58d91ca91f8d932f0f3742"
+      },
+      {
+        "file": "correction03-recovery-preconnect-gate-20261005-2-private.json",
+        "sha256": "c3c4591f6917a378ffd2908d26cc04e6825cea026eed89a398d7b34eddb6365c"
+      },
+      {
+        "file": "correction29-correction03-b20-source-wait-availability-20261005-8-availability-private.json",
+        "sha256": "edc4e7dd0d607a0f467b5258786bd4ede41d31e00b4cf4ab3f23f6db70fa13e7"
+      }
+    ],
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+    "current_owned_recovery": "correction29-copy-6b502dd-correction03-owned-recovery-2-private.json",
+    "production_actions": 0,
+    "provider_calls": 0,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "owned_recovery_passed": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "actual_recovery_worker_exit_code": 0,
+    "historical_recovery_finished_at": "2026-10-05T00:11:03.488465+00:00",
+    "finished_at": "2026-10-05T00:31:02.906755+00:00",
+    "current_candidate_restored": true,
+    "all_17_tables_and_independent_support_preserved": true,
+    "full_historical_owned_projection_verified": true,
+    "full_current_projection_matches_git": true,
+    "full_source_reverification": {
+      "started_at": "2026-10-04T22:55:46.906813+00:00",
+      "finished_at": "2026-10-04T23:47:44.266932+00:00",
+      "semantic_input_identity": {
+        "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+        "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+        "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+        "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+        "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+        "versions": {
+          "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+          "role_schema": "violet.production-pixiv-role-result.v1",
+          "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+          "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+          "extraction_schema": "source_name_candidate_extraction_compact_v2",
+          "completion": "production_pixiv_residual_roles_v1",
+          "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+          "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+          "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+          "cache_policy": "source_concept_llm_adjudication_cache_v1",
+          "decision_schema": "source_concept_pair_decision_schema_v1",
+          "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+          "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+          "model": "gpt-4.1-mini",
+          "fallback": false
+        }
+      },
+      "resolver_run_id": "production-pixiv:059ac44da21c9fcb6a75840206f0673e",
+      "business_fingerprint": "28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1",
+      "all_original_input_sha256_unchanged": true,
+      "native_code_guard_passed": true
+    },
+    "core_five_operations_reexecuted": false,
+    "failed_records_rewritten": false,
+    "source_files": [
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-private.json",
+        "sha256": "c9152e4319a380313c051e5aa2cc9dfc3773f166f72d643d5384fbd1c2084ce6"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-resumed-lifecycle-private.json",
+        "sha256": "4374b9592c37c05e4195fe566572d6f34d3d4f0e0b141ef6b9cc28be66bcad63"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-private.json",
+        "sha256": "beba9de4f1d6d6d6852fc77638716ab5c5ccb6f64e6d88130af4c7e63280e0a0"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-1-old44-worker.log",
+        "sha256": "66b51c9b57d46eb71b2579f414e2cc819284459b1eeeebaa87db73a17b439a10"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker-ready-private.json",
+        "sha256": "18ec8648864bd0fbe44a4f812f99707a249f6d74ed1f635141a8a1ef85432383"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker-plan-private.json",
+        "sha256": "0a985db85b3b74e69d43762d7ee6d65044bf747b16cb231bc632f48774594591"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker-apply-private.json",
+        "sha256": "dbabaec7be9c35a921044e1248cce7820c4bb60fa4acbe23686665c77003bd5d"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-old44-worker.log",
+        "sha256": "1c047a2c2e1c5813979a676f81f7d15b448cbdf3e47f40403ca0785d83429dc2"
+      },
+      {
+        "file": "correction03_owned_recovery_worker_20261005_2.py",
+        "sha256": "8070cbc912eef61fc7561bd8e5436bda74a7ff05af58d91ca91f8d932f0f3742"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-resume-before-preservation-private.json",
+        "sha256": "f7d22a9eb9091e343a674f2188e77ad1c099f22e110c2c7010c17262b5b628a1"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-after-old44-preservation-private.json",
+        "sha256": "7c647f61f82cdfc3c8d64aa63a0b4d5292935d7af9c6ce599c04491cfdbda0d2"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-current-reapply-plan-plan-private.json",
+        "sha256": "6c86611d4d5de43ef397c052b5268e13c428afb96c09358c73798fa688ec2dbd"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-current-reapply-apply-private.json",
+        "sha256": "20a55dd2dcf8568bfa3b79d1143bb0bdd4ffa18c386681683bec8e9ec831086b"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-after-current-reapply-preservation-private.json",
+        "sha256": "127e0c97898513cb397a7285dd8240940fff0880ddf8f591540cff8ffa285b89"
+      }
+    ],
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+    "production_actions": 0,
+    "provider_calls": 0,
+    "copy_product_and_production_acceptance_still_required": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "b5_b20_support_comparison": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "comparison": "correction03-live-b5-b20-support-difference-20261004-1-private.json",
+    "observed_at": "2026-10-05T00:40:43.958660+00:00",
+    "production_supports": 66392,
+    "copy_supports": 66392,
+    "source_support_removed": 0,
+    "source_support_added": 0,
+    "source_support_retargeted": 3267,
+    "independent_stdlib_replay_passed": true,
+    "source_files": [
+      {
+        "file": "correction03-live-b5-b20-support-difference-20261004-1-private.json",
+        "sha256": "9bdd6a88b3d83076c789fc03cfe35ebbf4e4f4c29672a4450a34bdfa67efc130"
+      },
+      {
+        "file": "correction03-b20-support-comparison-stdlib-20261005-1.log",
+        "sha256": "f32ac2ea76023728c249c9b7dd325cdbebe0b1b6aecc2cb3501e528d0e37f9f1"
+      },
+      {
+        "file": "correction03-live-b5-b20-support-difference-20261004-1.log",
+        "sha256": "8b4a33bce525c038633ef34088cadfb2904dc13521565ff5cf44c2c47f82e278"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-reapply-apply-private.json",
+        "sha256": "5f60ec1560b5bf96260fd3ad935bf175c3a0c237d3adad40086a2c089f08313c"
+      },
+      {
+        "file": "correction03-live-b5-b20-support-difference-20261004-1-production-supports-private.json",
+        "sha256": "86b92b2dcc62d548736b8a57b3225994423afe28f8fe2d7e9fe0989cb4982d9e"
+      },
+      {
+        "file": "correction03-live-b5-b20-support-difference-20261004-1-copy-supports-private.json",
+        "sha256": "61a44b81e359a4bf377df0332ab14b695328a49b217c8c5e9eb5f21ad871c7cf"
+      }
+    ],
+    "production_actions": 0,
+    "database_writes": 0,
+    "quality_acceptance_claimed": false,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "full_copy_lifecycle_passed": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "finished_at": "2026-10-05T00:48:48.905075+00:00",
+    "database": "blombooru_a2_test_20261004_6b502dd",
+    "actual_stage_exit_codes": {
+      "resumed-final-graph-offline": 0,
+      "resumed-owned-recovery": 0,
+      "batch": 0,
+      "source": 0,
+      "after-source": 0,
+      "bounded-class-screen": 0
+    },
+    "native_five_core_operations_passed": true,
+    "owned_recovery_and_reapply_passed": true,
+    "three_batches_and_interrupted_resume_business_equivalent": true,
+    "source_update_delete_rollback_verified": true,
+    "all_17_protected_tables_and_independent_support_preserved": true,
+    "failed_parent_preserved": "correction29-copy-6b502dd-correction03-2-sequence-private.json",
+    "core_operations_reexecuted": false,
+    "source_files": [
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-resumed-sequence-private.json",
+        "sha256": "207d6139c52cdf421fc6a088665e8527b8142c54f979de267c49f2c1766de788"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-recovery-private.json",
+        "sha256": "49f88c02dcdb1a8941652f86e28e2fe0842f85b4e36f669f3d8ea1bd8003e213"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-batch-equivalence-private.json",
+        "sha256": "4fca055259cd3b81f22b2cb28f609d00b9785920fd61d1a9cba669ad72d10785"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-source-private.json",
+        "sha256": "74b66271ce5809a53b05600e4397b70eb84dd8f70b8ecf584acb2cb1ac3c9075"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-owned-recovery-2-private.json",
+        "sha256": "c9152e4319a380313c051e5aa2cc9dfc3773f166f72d643d5384fbd1c2084ce6"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-bounded-class-member-private.json",
+        "sha256": "c4a2d597711cc1bd224b47ca824d41284af796eaffe2faf6a15d6e703903ad59"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-before-preservation-private.json",
+        "sha256": "a87a59295a17a916dd5dae0a40eb1ec77680e046bd9a316b38e1e5586c189288"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-after-rollback-preservation-private.json",
+        "sha256": "b47fc201cb50d04d62edb72777683cd07b7820310bc168802b5f06104ac0d5bf"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-after-reapply-preservation-private.json",
+        "sha256": "0f24d2767c713cb9e63890d7e710504c49fdb6e4281ab9a830f3b0428d5fb16f"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-after-source-preservation-private.json",
+        "sha256": "e7caab321225fc00bc78e07208c14751da5aacce4137e17f859e55169b7d09e3"
+      }
+    ],
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+    "product_and_production_acceptance_still_required": true,
+    "production_actions": 0,
+    "provider_calls": 0,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "copy_product_passed": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "database": "blombooru_a2_test_20261004_6b502dd",
+    "finished_at": "2026-10-05T01:10:29.201867+00:00",
+    "actual_stage_exit_codes": {
+      "quality": 0,
+      "creator-homonym": 0,
+      "suggestion": 0,
+      "holdouts": 0,
+      "workload": 0,
+      "browser": 0
+    },
+    "quality_cases_passed": 80,
+    "additional_holdout_cases_passed": 3,
+    "quality_failures": 0,
+    "http_workload_count": 240,
+    "source_layer_measurement_count": 720,
+    "http_latency_ms": {
+      "p50_ms": 821.071,
+      "p95_ms": 1323.262,
+      "max_ms": 2318.694
+    },
+    "accepted_source_layer_latency_ms": {
+      "p50_ms": 312.263,
+      "p95_ms": 380.802,
+      "max_ms": 887.093
+    },
+    "actual_system_edge_exit_code": 0,
+    "browser_method": "CDP with agent-owned system Edge on loopback, Playwright call layer, headless fresh context; no user desktop input",
+    "source_files": [
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-surfaces-private.json",
+        "sha256": "5dc89727d695614bef44e4f52d0eb358b5dc6f9a5f63f2b50027d9965476c1cc"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-coordinator-private.json",
+        "sha256": "fc5fd8dfd09b73bdbeecccf1a84101f9a95cab803b3828c926b35c75362cb57c"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-quality-private.json",
+        "sha256": "6d0c1fcc2df7ea88268829bc4adf48e1991f596239de49d34320702e6d7cea39"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-creator-homonym-private.json",
+        "sha256": "58519bc2b358855c1a32c6500d7744fa1aa3bf6c2549a6a634a567607022b488"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-suggestion-private.json",
+        "sha256": "206bac01462d231d2692e278b9ad193a6f74ae6c40157255c913c1bfae68312c"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-combined-quality-private.json",
+        "sha256": "67a18b8c4210bea0bb36b0cf4ae8df5ed055fdce6bd59d5c060df458a18a5c20"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-holdouts-private.json",
+        "sha256": "61abb029a00b009746a5e79d248c3004fa631d0e3a92300d1cfbe0f75188b941"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-workload-private.json",
+        "sha256": "d453fbecd25764da651d2b752154325c9a17d7c01f46d050dab5476c5e6e7bd0"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-surfaces-browser-private.json",
+        "sha256": "0fb7b335dd6b8f8f99223c8de50bbfbcfffd2ce7b6aa1e969054d5d957079337"
+      }
+    ],
+    "owned_test_server_stopped": true,
+    "original_production_changed": false,
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+    "copy_registered_contract_and_actual_production_still_required": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "copy_contract_failure_continuation": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "actual_prior_contract_command_exit_code": 0,
+    "actual_prior_preproduction_passed": 14,
+    "actual_prior_preproduction_failed": 1,
+    "actual_failed_gate": {
+      "name": "current_semantic_input_readmission",
+      "status": "failed",
+      "reason": "",
+      "exception_type": "AssertionError"
+    },
+    "actual_release_preparation_exit_code": 1,
+    "no_release_mutation_before_rejection": true,
+    "old_incomplete_lifecycle_assertion_reproduced": true,
+    "scoped_binding_regression_cases_passed": 7,
+    "scoped_regression_not_full_contract": true,
+    "failed_v2_draft_retained": true,
+    "current_contract_driver": "correction03_contract_20261005_3.py",
+    "current_full_native_contract_rerun_pending": true,
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-7-private.json",
+    "current_production_preparer": "correction03_prepare_b20_production_command_20261005_8.py",
+    "current_production_finish": "correction03_finish_b20_actual_production_20261005_5.py",
+    "source_files": [
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261005-6-private.json",
+        "sha256": "e74e05d15665ca8efbee0674c2cb0d3cbabe2409d6ca1af497ecac494e3bda49"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-contract-private.json",
+        "sha256": "295f3a35dde4303cc21706c19941ebaf79cd6b1e04d7f075ebf8e172a18296ef"
+      },
+      {
+        "file": "correction03-b20-release-preparation-continuation-20261005-6-private.json",
+        "sha256": "8ad1d61ac4c7b1b65d48da94c9e56794003790fd13ca9912d5f3b537ba6fbbbb"
+      },
+      {
+        "file": "correction03-b20-resumed-contract-binding-regression-20261005-3-private.json",
+        "sha256": "f80fa6787c0e9e0cc813585abe32cb3462442b2db369e5e644ecde0d3be143de"
+      },
+      {
+        "file": "correction03-b20-copy-contract-failure-resume-checkpoint-20261005-3-running-observation-private.json",
+        "sha256": "a50bd26a16c53f11200b6420fea655ff66d0dc9a0459ba6891d2a6dec151a6a4"
+      },
+      {
+        "file": "correction03-b20-resumed-contract-driver-20261005-2-private.json",
+        "sha256": "3070c0eff4c1eb527338fc7e990ab3c91a693004dab6b6f66286901774525747"
+      },
+      {
+        "file": "correction03-b20-resumed-contract-driver-20261005-3-private.json",
+        "sha256": "cb9e4340d8ee6e6d6bcd2e5d635389e3ce293863c7f830cdef44fdeae2e62f3a"
+      },
+      {
+        "file": "correction03-b20-resumed-contract-continuations-20261005-3-private.json",
+        "sha256": "7f3ed9090499364bf63cd402edc09907c525c0fe60b9833f3fa3bac6f65eec82"
+      },
+      {
+        "file": "correction03-b20-resumed-contract-binding-regression-20261005-2.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "correction03-b20-resumed-contract-binding-regression-20261005-3.log",
+        "sha256": "0f737b2dfc555f8d899fc078930dee7251a1ed2af9d0b2a12187ca181f7545a4"
+      },
+      {
+        "file": "correction03_contract_20261004.py",
+        "sha256": "3fc2092fd0fd18604979f3081fdf6cd398be3e6184ee2be5eec6d0242205a2f8"
+      },
+      {
+        "file": "correction03_contract_20261005_2.py",
+        "sha256": "3ed320cd1314f682ef741820d21034313d598e792ee8b48bf9f010e8dc4b36cf"
+      },
+      {
+        "file": "correction03_contract_20261005_3.py",
+        "sha256": "c3bcb62baa264586d57d65c738d89a17d70207271e5b62346be7a56f9618c5bc"
+      },
+      {
+        "file": "correction03_finish_b20_actual_production_20261005_5.py",
+        "sha256": "2a9ab0a94aa028e5e8d486fe546f553b81934f23b80a359e8f9dee1ec5eddf31"
+      },
+      {
+        "file": "correction03_prepare_b20_production_command_20261005_8.py",
+        "sha256": "5eb7ad00ebc13e4a70daba0b25b05cc066c8e9c83e78ce0ffcbb294a0a051c3a"
+      },
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261005-6-full-copy-sequence.log",
+        "sha256": "03b1566480f6c8e7498f35604e819ba7b4ca55295b5de4656158c449424e81eb"
+      },
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261005-6-copy-quality-and-edge.log",
+        "sha256": "d5345637ea71179cd683934a1877a3a8f2a3e34f3b6f88a2d7905a796dd56848"
+      },
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261005-6-copy-contract.log",
+        "sha256": "f56fa636a75e4ad7d541ecf28283ab02dc86006be5ae271b071ababa088408a5"
+      }
+    ],
+    "business_source_changed": false,
+    "quality_expectations_changed": false,
+    "production_actions": 0,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "all_copy_preconditions_passed": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "actual_copy_coordinator_exit_code": 0,
+    "finished_at": "2026-10-05T02:49:57.859698+00:00",
+    "passed_preproduction_gates": 15,
+    "gate_statuses": [
+      {
+        "name": "current_candidate_behavior",
+        "status": "passed"
+      },
+      {
+        "name": "backup_restore",
+        "status": "passed"
+      },
+      {
+        "name": "independent_t0",
+        "status": "passed"
+      },
+      {
+        "name": "fixed_mapping_and_complete_accounting",
+        "status": "passed"
+      },
+      {
+        "name": "metadata_attempts_scope_and_historical_exception",
+        "status": "passed"
+      },
+      {
+        "name": "forward_metadata_spacing",
+        "status": "passed"
+      },
+      {
+        "name": "rederived_original_budget_and_settlement",
+        "status": "passed"
+      },
+      {
+        "name": "selected_judgment_source_receipts",
+        "status": "passed"
+      },
+      {
+        "name": "current_semantic_input_readmission",
+        "status": "passed"
+      },
+      {
+        "name": "full_copy_recovery",
+        "status": "passed"
+      },
+      {
+        "name": "independent_quality",
+        "status": "passed"
+      },
+      {
+        "name": "current_live_identity_and_precision",
+        "status": "passed"
+      },
+      {
+        "name": "current_real_browser",
+        "status": "passed"
+      },
+      {
+        "name": "query_level_performance",
+        "status": "passed"
+      },
+      {
+        "name": "exact_candidate_validation",
+        "status": "passed"
+      }
+    ],
+    "current_native_semantic_input_verification": {
+      "actual_current_native_invocation": true,
+      "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "processing": {
+        "selected_pair_count": 31608,
+        "judgment_count": 31608,
+        "error_count": 0,
+        "remaining_missing_pair_count": 0
+      },
+      "input_identity": {
+        "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+        "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+        "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+        "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+        "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+        "versions": {
+          "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+          "role_schema": "violet.production-pixiv-role-result.v1",
+          "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+          "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+          "extraction_schema": "source_name_candidate_extraction_compact_v2",
+          "completion": "production_pixiv_residual_roles_v1",
+          "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+          "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+          "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+          "cache_policy": "source_concept_llm_adjudication_cache_v1",
+          "decision_schema": "source_concept_pair_decision_schema_v1",
+          "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+          "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+          "model": "gpt-4.1-mini",
+          "fallback": false
+        }
+      },
+      "role_completion": {
+        "counts": {
+          "candidate": 26352,
+          "unaccounted": 0,
+          "non_name": 22642,
+          "attempt_limit_reached": 26,
+          "unknown": 207
+        },
+        "requested_tag_occurrences": 49227,
+        "original_response_aggregate_count": 8288,
+        "currently_grounded_aggregates_without_new_question": 0,
+        "historical_targets_not_rederived_for_grounded_aggregates": true,
+        "fully_accounted_aggregates": 8288,
+        "unaccounted_aggregate_count": 0,
+        "unaccounted_targets": [],
+        "response_completion_does_not_assert_identity": true
+      },
+      "new_provider_calls": 0,
+      "all_six_actual_product_operations_verified": true,
+      "original_cache_source_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+      "historical_source_replay_not_relabelled": true,
+      "frozen_current_native_invocation_verified": true
+    },
+    "source_files": [
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+        "sha256": "1f094adc05dbd1238995dcc4253e1de8623c01ee50797e89442827121f817f3a"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-contract-resume-contract-private.json",
+        "sha256": "97ad4e89236afa79add2edd9f6ed494f6630d5c33a22c08c6fab1fb218afe450"
+      },
+      {
+        "file": "correction03-b20-frozen-copy-continuation-20261005-7-copy-contract.log",
+        "sha256": "aeb490dfeda14d264d159c87a68b02120263f406a5ef8ba9cf19efcc05d80a52"
+      },
+      {
+        "file": "correction03-b20-copy-contract-failure-resume-checkpoint-20261005-3-private.json",
+        "sha256": "98dac219d7ae516182e797f13e431b69427b678539f4a8177896b8c05b513beb"
+      },
+      {
+        "file": "correction03-b20-copy-product-passed-checkpoint-20261005-2-private.json",
+        "sha256": "915039380e461aa943587b7ce7c5313dca626097a531cf72ac226779a759d099"
+      },
+      {
+        "file": "correction03-b20-full-copy-lifecycle-checkpoint-20261005-2-private.json",
+        "sha256": "b4a76af41575a3984ec75aed3a10e00ce937d0c766078c03fbea01277b1e75d5"
+      },
+      {
+        "file": "correction29-copy-6b502dd-correction03-2-contract-resume-live-owned-business-verification-private.json",
+        "sha256": "9a09fd80df5d183ed6bee4e43678dfe4625936bed746266cecb26be872ae4307"
+      },
+      {
+        "file": "correction03_contract_20261005_3.py",
+        "sha256": "c3bcb62baa264586d57d65c738d89a17d70207271e5b62346be7a56f9618c5bc"
+      }
+    ],
+    "current_copy_coordinator": "correction03-b20-frozen-copy-continuation-20261005-7-private.json",
+    "current_release_preparation": "correction03-b20-release-preparation-continuation-20261005-7-private.json",
+    "current_production_preparer": "correction03_prepare_b20_production_command_20261005_8.py",
+    "current_production_finish": "correction03_finish_b20_actual_production_20261005_5.py",
+    "original_production_acceptance_still_required": true,
+    "normal_exe_acceptance_still_required": true,
+    "production_apply_actions": 0,
+    "business_source_changed_since_freeze": false,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "fixed_release_ready": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "fresh_restore_tables_verified": 61,
+    "fresh_backup_bytes": 463686633,
+    "fresh_backup_sha256": "a6fdc0ab5e91e1f1e3c1c5d5af457c09ead374cf69f97487e34cf9d168ff9f21",
+    "deployment_head": "9d42587087e8306c6912c7c4d9291d5d3197d453",
+    "fixed_runtime_binding": "correction29-correction03-b20-fixed-release-20261004-1-fixed-runtime-binding-private.json",
+    "actual_release_preparation_exit_code": 0,
+    "current_task_remote_threads_unchanged": 116,
+    "bare_apply_authorized": false,
+    "production_apply_started_at_checkpoint": false,
+    "active_anchor_changed_at_checkpoint": false,
+    "normal_exe_acceptance_pending": true,
+    "original_production_acceptance_pending": true,
+    "source_files": [
+      {
+        "file": "correction03-b20-release-preparation-continuation-20261005-7-private.json",
+        "sha256": "4661f9b5aa31fe8a71f54e913c320b799ef0f4b3306720b33fbb106ca063babb"
+      },
+      {
+        "file": "correction29-correction03-b20-fresh-release-backup-20261004-1-private.json",
+        "sha256": "2489ad86aa94f9b445b0cdfface4bed923ca8dca64bfa5ab4719a9a2aad72559"
+      },
+      {
+        "file": "correction29-correction03-b20-fixed-release-20261004-1-runtime-preparation-private.json",
+        "sha256": "492e0c54b9937ab3c6f59898abb85496341fb709000d330e995de0ae714f0dc3"
+      },
+      {
+        "file": "correction29-correction03-b20-fixed-release-20261004-1-fixed-runtime-binding-private.json",
+        "sha256": "8ba7624dbbc6944bf35da97f9d9875996615e25996eb96fc5bca6e550b77d806"
+      },
+      {
+        "file": "correction29-correction03-b20-original-20261005-1-command-private.json",
+        "sha256": "6fe1c78560ae3d9524f65ef0683b97b425d62b914a7836361b18354d125aa626"
+      },
+      {
+        "file": "correction29-correction03-b20-original-20261005-1-cutover-admission-private.json",
+        "sha256": "2ed25ccc28d20f960b3ca02d4c0058cb48f4442c0c800f40d19d50e29f9f7475"
+      },
+      {
+        "file": "correction03-b20-preproduction-remote-current-task-comparison-20261005-1-private.json",
+        "sha256": "741cea55dc04d5f70288629b89e07e9c7ada1e8a6c1df93966c7f88b9701b25a"
+      },
+      {
+        "file": "correction03-b20-precutover-computer-use-discovery-20261005-1-private.json",
+        "sha256": "6c7c90071fa1ac654a4255dafea7510c9d5a9a2ca15775203de37a8d461a14fe"
+      }
+    ],
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false,
+    "fixed_runtime_directory": "production-pixiv-a2-stable-6b502dd",
+    "retained_old_runtime_directory": "production-pixiv-a2-stable-562bc18",
+    "required_guard_command_evidence": "correction29-correction03-b20-original-20261005-1-command-private.json",
+    "local_command_preserved": "correction03-b20-fixed-release-public-projection-repair-20261005-1-original-checkpoint-private.json",
+    "local_command_preserved_sha256": "dde977e35c2781c154b51cb07bc31692b0fdcfce331f6a6b74b40c883ba73b25",
+    "public_redaction_repair": {
+      "absolute_paths_and_command_arguments_retained_locally": true,
+      "native_execution_guards_changed": false,
+      "failure_retained": true,
+      "completed_after_interrupted_first_repair": true,
+      "prior_failed_log": "correction03-b20-fixed-release-public-projection-repair-20261005-1.log"
+    }
+  },
+  "production_flow_started": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "started_at": "2026-10-05T03:03:40.035965+00:00",
+    "guard_receipt": "correction29-correction03-b20-original-20261005-1-guarded-guard-private.json",
+    "observed_guard_snapshot": "correction03-b20-production-flow-started-checkpoint-20261005-1-observed-guard-private.json",
+    "observed_guard_sha256": "ec6a84ee7ae5faa3b2356b7179f99f4565f386556c4db6cbc9180dcb5dc26d05",
+    "status_at_checkpoint": "preparing_recovery_graph",
+    "original_apply_finished": false,
+    "normal_entry_and_all_18_gates_pending": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "original_apply_passed": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "observed_at": "2026-10-05T04:34:24.250622+00:00",
+    "original_sequence": "correction29-correction03-b20-original-20261005-1-sequence-private.json",
+    "original_sequence_sha256": "e0febc95fe9eafc9bc6bc3e29de26c62d06b50775d27a933cb1aa5d0d617a0e7",
+    "guarded_command_log": "correction29-correction03-b20-original-20261005-1-guarded-original-command.log",
+    "guarded_command_log_sha256": "d4112f457a8cec0654a5b546df95565f1d5951e8dcc3c98bb76b074587c6f316",
+    "actual_original_apply_exit_code": 0,
+    "approved_live_projection_verified": true,
+    "protected_17_tables_preserved": true,
+    "normal_entry_and_all_18_gates_pending": true,
+    "task_recovery_worker_still_ready": true,
+    "guard_status_retained": "guard_failed",
+    "guard_caught_successful_system_exit": true,
+    "actual_parent_exit_observed": 0,
+    "prior_checkpoint_rejection_preserved": "correction03-b20-original-apply-passed-checkpoint-20261005-1.log",
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "fixed_entry_promoted": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "deployment_head": "9d42587087e8306c6912c7c4d9291d5d3197d453",
+    "anchor_receipt": "correction29-correction03-b20-fixed-entry-20261005-1-anchor-private.json",
+    "anchor_receipt_sha256": "481721a630970b5414a8969c66edd5958298f13d265c43e7edd71f77c620bb13",
+    "fixed_anchor_promoted": true,
+    "normal_exe_and_production_acceptance_pending": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
+  },
+  "normal_entry_verified": {
+    "candidate_head": "6b502dda0264f84ca65328c357e410eba51927d8",
+    "normal_entry_receipt": "correction29-correction03-b20-normal-entry-20261005-1-launcher-private.json",
+    "normal_entry_receipt_sha256": "92576135bc3ecbacd2a2008536cdf0b3bf421edd0728a3ae7961983c323db370",
+    "actual_normal_no_argument_exe_verified": true,
+    "actual_worker_pid": 63960,
+    "real_production_Edge_quality_workloads_and_contract_pending": true,
+    "target_met": false,
+    "safe_to_merge": false,
+    "route_approved": false
   }
 }

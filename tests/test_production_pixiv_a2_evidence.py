@@ -532,3 +532,61 @@ def test_chip_binding_rejects_each_independent_evidence_gap(change):
     else: concept['search_value'] = 'unrecorded'
     with pytest.raises(ValueError, match='source_chip'):
         verify_source_chip_concept_binding(browser)
+
+
+def fixed_workload_fixture(tmp_path):
+    from test_production_pixiv_runtime_snapshot import bound_runtime
+    root, head, production, git, runtime, binding = bound_runtime(tmp_path)
+    value, baseline, cases = workload_fixture()
+    launch = workload_launch_fixture()
+    launch.update(candidate_head=head, code_root=str(runtime), fixed_runtime_binding=binding)
+    value["candidate_head"] = head
+    for identity in (value["server_identity"], value["server_identity_after"]):
+        identity.update(git_sha=binding["deployment_head"][:7], code_root=str(runtime))
+    for row in value["source_layer_measurements"]:
+        row["execution"].update(candidate_head=head, code_root=str(root))
+    return value, baseline, cases, launch, root, production, git, runtime
+
+
+@pytest.mark.parametrize("change", [
+    "none", "source_root_foreign", "source_root_runtime", "source_root_relative",
+    "source_head_runtime", "source_head_other", "source_database", "source_system",
+    "source_python_missing", "source_pid_zero", "source_pid_bool", "runtime_root_business",
+    "runtime_head_business", "binding_business_head", "binding_missing",
+    "runtime_source_drift", "business_source_drift", "original_profile_drift", "runtime_profile_drift",
+])
+def test_workload_source_sampler_uses_exact_native_proved_business_root(tmp_path, change):
+    from scripts.production_pixiv_a2_evidence import recompute_workload
+    value, baseline, cases, launch, root, production, git, runtime = fixed_workload_fixture(tmp_path)
+    execution = value["source_layer_measurements"][0]["execution"]
+    if change == "source_root_foreign": execution["code_root"] = str(tmp_path)
+    elif change == "source_root_runtime": execution["code_root"] = str(runtime)
+    elif change == "source_root_relative": execution["code_root"] = root.name
+    elif change == "source_head_runtime": execution["candidate_head"] = launch["fixed_runtime_binding"]["deployment_head"]
+    elif change == "source_head_other": execution["candidate_head"] = "b" * 40
+    elif change == "source_database": execution["database"] = "another_test"
+    elif change == "source_system": execution["system_identifier"] = "different-system"
+    elif change == "source_python_missing": execution["python_executable"] = ""
+    elif change == "source_pid_zero": execution["pid"] = 0
+    elif change == "source_pid_bool": execution["pid"] = True
+    elif change == "runtime_root_business":
+        for identity in (value["server_identity"], value["server_identity_after"]): identity["code_root"] = str(root)
+    elif change == "runtime_head_business":
+        for identity in (value["server_identity"], value["server_identity_after"]): identity["git_sha"] = value["candidate_head"][:7]
+    elif change == "binding_business_head": launch["fixed_runtime_binding"]["business_source_head"] = "b" * 40
+    elif change == "binding_missing": del launch["fixed_runtime_binding"]
+    elif change == "runtime_source_drift": (runtime / "run.py").write_bytes(b"print('unreviewed runtime')\n")
+    elif change == "business_source_drift": (root / "run.py").write_bytes(b"print('unreviewed business')\n")
+    elif change == "original_profile_drift":
+        profile = json.loads(production.read_bytes()); profile["db"]["name"] = "different_database"
+        production.write_text(json.dumps(profile), encoding="utf-8")
+    elif change == "runtime_profile_drift":
+        from scripts.production_pixiv_runtime_snapshot import PROFILE
+        profile_path = runtime / PROFILE
+        profile = json.loads(profile_path.read_bytes()); profile["pixiv_product_apply_enabled"] = True
+        profile_path.write_text(json.dumps(profile), encoding="utf-8")
+    if change == "none":
+        assert recompute_workload(value, baseline, cases, launch=launch, system_identifier="system") == ({"p50_ms": 1, "p95_ms": 1, "max_ms": 1},) * 2
+    else:
+        with pytest.raises(ValueError, match="a2_workload_"):
+            recompute_workload(value, baseline, cases, launch=launch, system_identifier="system")
