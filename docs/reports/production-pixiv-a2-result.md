@@ -1,3 +1,52 @@
+# VIOLET A2 阶段冻结结果（2026-10-05）
+
+本轮按Owner追加指令交付可复审阶段结果并停止。A2验收标准未降低，工程完成、safe_to_merge和route_approved均为false，Lead/Owner接受仍待复审。业务冻结HEAD为 `f202d3dd1a6dafc77a431efa56c484dba09a7dab`，分支 `codex/production-pixiv-a2`，PR [#153](https://github.com/kyloris0660/VIOLET/pull/153)；本轮仅允许一次七文档投影子提交，最终交付HEAD/推送及远端状态以外部交付收据确认，不预报未执行成功。
+
+## 已完成且可据证据复审
+
+B21只修正固定运行环境的来源测量绑定：先验证固定运行绑定，再在冻结业务checkout校验来源，避免误用稳定运行checkout。业务冻结包含19个真实Git错root/head/DB/Python/PID/配置/源码漂移反例；当前最后开发验证232通过。B21相对B20的实现文件为scripts/production_pixiv_a2_evidence.py及tests/test_production_pixiv_runtime_snapshot.py，注册表同步；本轮冻结交付不增加业务实现。
+
+| 当前冻结验证 | 实际结果 | 原始命令、日志及JUnit |
+|---|---|---|
+| focused | 1247通过，0失败，3跳过，3 Pydantic弃用警告 | correction29-correction03-b21-focused-20261005-1 |
+| 真实隔离PostgreSQL/API | 142通过，0失败，0跳过 | correction29-correction03-b21-affected-20261005-1-postgresql |
+| 原精确历史节点 | 88通过，0失败，0跳过 | correction29-correction03-b21-affected-20261005-1-historical |
+
+命令argv、批准Python、cwd、开始/结束、源码前后及真实exit均在同名前缀-command-private.json和日志中。Python为C:/Users/kyloris/Documents/AnimeLocalBooru/venv/Scripts/python.exe，执行前身份预检通过。本地结果不等于当前GitHub CI。未新增全套：唯一授权新增non-E2E仍对应历史B1 d26bd0c，5291收集/5268通过/1登记历史AI证据失败/22跳过/15警告，不冒称当前全套全绿。
+
+当前冻结原生CLI correction29-correction03-b21-cache-20261005-2 已实际exit0、前后HEAD一致、行为门禁通过：15,825角色原记录/1,929 validated raw；49,227目标全部记账（26,352候选、22,642非名字、207未知、26次数耗尽、未记账0）。作品9,070及其余22,538组成31,608选中判断及来源，0缺答/错误/新增provider调用/缓存写入；最终图100,285信号/626,776边/17,498概念，五类质量诊断均0。
+
+独立完整原生标准库回放 correction03-b21-full-native-stdlib-replay-20261005-1 实际exit0：23原生模块、15,825角色、31,608配对及完整图与受保护批准图匹配，71,538实际文件依赖，0网络/provider/DB执行。冻结Git证明包含578应用路径/48登记源码/99原始Git对象。批准身份为run_key scv2-px3:61bf88218dee4f1236e155ee9ea10862、resolver production-pixiv:059ac44da21c9fcb6a75840206f0673e、business_fingerprint 28950456135b63802dff18e8c6cf7b4e39b67079528dbb4df57757e7f5794ca1。独立来源通过只证明已执行来源/图重放，不证明当前完整产品或生产验收。
+
+新鲜副本及oracle各实际恢复并核对61表。数据库blombooru_a2_test_20261004_f202d3d在操作correction29-copy-f202d3d-correction03-2已完成plan/apply/replay-plan/幂等replay：1活跃run、66,392支持。原始apply/replay receipts保持，暂停只读现场与replay完整after相等。备份571,579,890字节/SHA 27f116f9d3fa0f35173f8248edd725c2b7e177fefead6a6165e87048efc92d38留本地；包内提供原61表恢复/备份收据，不宣称当前小包包含SQL恢复备份或完成全部副本闭环。
+
+## 安全暂停及未通过项
+
+copy2在rollback前因真实TrustedGitError: trusted_git_invocation_failed:TimeoutExpired拒绝，原失败日志保留。copy3保留已提交apply/replay，重新读来源过程中收到Owner阶段交付指令；已按精确PID/创建时间/脚本身份停止来源子进程及两等待器，父协调器自然exit1。其原running/waiting或failed状态收据保留；单独Owner暂停收据证明停止，不伪造业务完成，也不把Owner终止冒称新的语义失败。
+
+暂停核验：0悬挂copy/oracle事务、0prepared事务、产品字节锁可重新取得且内容不变；副本仍为完整replay后状态，LLM无reserved调用。生产保持旧44db0da，端口8012、PID65952、读开启/apply关闭，1活跃run/66,572有效支持/8,623媒体、全库38,114 Media、0活动作业；未切换生产。本轮交付不操作桌面。
+
+剩余阻断如实列出：当前rollback/重复rollback/reapply、owned recovery oracle、分批/来源变更闭环及17保护表完整四检查点未完成；当前质量80例/三组保留样本/真实Edge/240HTTP与720来源工作量未完成；当前15项非生产契约未全通过；新鲜生产61表备份恢复、原生产owned apply、新版正常无参数EXE及18项最终契约未完成。旧B20或更早的通过不转记当前B21。自动测试、产品用户体验、Lead裁决及Owner接受独立。
+
+预算账本SHA93ecec6d1f6417f3e51fe4366247c65a9cf8cb97238a5e02903c96c9e111a19d，18,436调用记录，原18,433行保持；本来源恢复轮仅此前3个必要有界补证，累计保守记账USD13.591064，上限30，余额16.408936，54个历史failed/unknownusage保留，不等于最终账单。本次冻结后新增调用0、费用增量0；两耗尽目标不重问，身份资格暂停保留。
+
+## 明确续跑断点及待裁决
+
+交付后不自动续跑。Lead须先复审当前B21源码/来源、真实Git超时及下列余项，然后Owner明确下一轮。原断点路径：本地操作correction29-copy-f202d3d-correction03-2-resume3-lifecycle-private.json只有before、initial-plan、apply、replay-plan、replay五阶段，无full_source_verification完成项，无rollback。下一轮先核对HEAD、来源、数据库/存储身份、锁、当前全状态等于原replay，再重新完成被Owner中断的来源复检，才允许从rollback→重复rollback→reapply继续；不得跳过被中断准入。Lead也可选择从新恢复库开始，必须先明确牺牲当前断点的恢复策略。
+
+待裁决：是否接纳当前B21阶段证据；真实原生Git耗时问题的下一轮处置及可复用门禁；当前剩余产品/质量/生产验收次序；下一轮保留当前副本与oracle或新恢复；复审后精确清理范围。新出现的远端意见只记录，不本轮扩展修复。不merge、推main/force、resolve/触发reviewer、A3、改原图/人工标签/相册/确认Entity/路由或schema，不重算、不新建副本、不清理。
+
+## 空间与审阅包
+
+项目、工作树、关联本机临时文件实际分配去重后 **789,988,455,728字节（789.99 GB）**，逐路径逻辑835,529,176,960字节（835.53 GB）；其中A2证据路径实际 **619,348,170,672字节（619.35 GB）**。C盘剩余 **856,679,759,872字节（856.68 GB）**。另7个A2临时数据库逻辑 **28,147,113,701字节（28.15 GB）**属于共享PG集群，未重复叠入项目文件总数。空间问题与验证复制/解压有关；不是全部C盘已用均由项目产生。按路径用途/依赖/可清理清单见同包空间报告及10529项原始路径JSON。本轮删除0，后续复审再单独清理，长期保留正式资产/运行必需数据/最终小包。
+
+最终一个≤100,000,000字节ZIP只覆盖本轮结论所需：完整原生实际读取依赖、冻结源码/Git证明、当前测试/来源/图、真实部分副本结果与失败/暂停、正常旧生产现场、空间/清理及最终远端核对。使用标准ZIP内的标准tar.xz无损流和逐文件bytes/SHA清单；默认标准库读者只流式核对，不解压所有原件，不执行数据库、provider或完整图重算。本轮包装校验与之前真实完整来源重放分别记账。最终bytes/SHA、HEAD及实际包校验以外部收据确认。大型SQL备份、正式媒体、完整历史失败包、全部历史运输池均不打包，其本地引用明确为历史/下一轮依赖。
+
+本轮工程判断：来源恢复及冻结测试已有可复审结果，完整产品和生产验收仍欠缺；继续宣称A2完成不成立。按最新Owner要求安全冻结、交付一次、等待Lead和下一轮明确指令。
+
+
+## 历史结果（以下不构成当前通过或续跑授权）
+
 # 2026-10-03 A2 来源恢复执行中
 
 2026-10-03 当前执行状态：PRODUCTION_PIXIV_A2_SOURCE_RECOVERY_ACTIVE。新任务明确批准当前9543原记录的共享逐单元来源恢复及必要原目标有界补证，取代旧范围等待；原failed/business_valid=false、原答、费用、两条耗尽目标和身份资格暂停保留。远端dca84bb、业务B15 5c40475、116线程已核实；开工原生产实际停止、无活动作业。先恢复独立固定普通入口，继而零调用全量复算、仅补真实余项、冻结测试、副本/质量和条件性新生产；全部完成前target_met/safe_to_merge/route_approved均false。以下此前版本只对应其当时证据。
