@@ -1,0 +1,48 @@
+{
+  "schema_version": "violet.production-identity-qualification.v1",
+  "authority": "VIOLET-A2-当前阶段纠偏执行任务-20260929.md",
+  "decision_version": "owner-20260929-v1",
+  "decision": "suspend_identity_inference",
+  "targets": [
+    {
+      "aggregate_fingerprint": "3fc658a6d0622b13b95340eb3f79ab8c716bf841735e62d1a3c57d11a358e30a",
+      "signal_key": "pixiv_tag_observation:v2:09782aaa6c4e30c652d71a7825dd8c23",
+      "logical_target": "role-target:87b7d66b16672e2349ab27f81187ec9516cd04157743a8a97756d23f5dd3c5b6",
+      "original_input_fingerprint": "7d0dddf0972c5e0944ea6e5fe882520ee08bda643c33f0e67a3142fab792c283",
+      "supersedes": {
+        "signal_key": "pixiv_tag_observation:v2:09782aaa6c4e30c652d71a7825dd8c23",
+        "raw_value": "魔神(原神)",
+        "role_hint": "work",
+        "work_context_key": null,
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      "reason": "exhausted_role_answers_do_not_establish_unique_identity; evidenced_generic_class_bridge",
+      "evidence": [
+        "correction22-precision-incident-private.json",
+        "correction27-role-raw-audit-private.json",
+        "correction27-role-recovery-private.json"
+      ]
+    },
+    {
+      "aggregate_fingerprint": "007f81497c86f1fba9407ce15790745b0782b481a522a7a9dfa5f9c34a261a25",
+      "signal_key": "pixiv_tag_observation:v2:8212bb8ca8b265cc1cb68877a4cf1fd3",
+      "logical_target": "role-target:85bf0db005134541e81f29fe16aeac8bb388734d086d787de87582f82faee49e",
+      "original_input_fingerprint": "b274b56a14d15a922b7968d8bbb442e8e67f8453da2b1823ed4cd99b569ceb18",
+      "supersedes": {
+        "signal_key": "pixiv_tag_observation:v2:8212bb8ca8b265cc1cb68877a4cf1fd3",
+        "raw_value": "魔神(原神)",
+        "role_hint": "character",
+        "work_context_key": null,
+        "status": "active",
+        "trust_tier": "medium"
+      },
+      "reason": "exhausted_role_answers_do_not_establish_unique_identity; evidenced_generic_class_bridge",
+      "evidence": [
+        "correction22-precision-incident-private.json",
+        "correction27-role-raw-audit-private.json",
+        "correction27-role-recovery-private.json"
+      ]
+    }
+  ]
+}

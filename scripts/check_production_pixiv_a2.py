@@ -1,0 +1,399 @@
+"""Derive the A2 delivery result from this task's actual private evidence.
+
+This gate reports engineering delivery only. It cannot accept the phase for
+the owner or project lead, authorize a merge, or advance the route to A3.
+"""
+import argparse
+from collections import Counter
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+
+ROOT=Path(__file__).resolve().parents[1]
+CONTRACT='production_pixiv_a2_v1'
+HISTORICAL_NODE='tests/test_phase45_scv2_sv1_controlled_scale_promotion_readiness.py::test_ai_accounting_keeps_original_and_current_invocation_separate'
+# The unique historical suite predates A2's two current-route test renames.
+# Other failed nodes must pass under their original identities; private JSON
+# cannot invent a remediation relationship.
+A2_ROUTE_TEST_RENAMES={
+    'tests/test_phase45_doc1_documentation_state.py::test_current_handoff_is_exact_a1_projection':
+        'tests/test_phase45_doc1_documentation_state.py::test_current_handoff_is_exact_a2_projection',
+    'tests/test_phase45_doc1_documentation_state.py::test_a1_state_and_active_docs_validate':
+        'tests/test_phase45_doc1_documentation_state.py::test_a2_state_and_active_docs_validate',
+}
+OPEN_STATES={'metadata_pending','metadata_retryable','normalization_failed','provider_identity_mismatch','unverified_source'}
+
+
+def require(value,reason):
+    if not value:raise ValueError('a2_'+reason)
+
+
+def evidence_path(root,name):
+    path=(root/name).resolve(strict=True)
+    require(path.is_relative_to(root.resolve()) and path.is_file(),'private_evidence_location')
+    return path
+
+
+def read(root,name):
+    return json.loads(evidence_path(root,name).read_text(encoding='utf-8'))
+
+
+def check_public_result(value,root=ROOT):
+    require(value.get('contract_id')==CONTRACT and value.get('target_met') is True,'engineering_completion')
+    require(value.get('safe_to_merge') is False and value.get('route_approved') is False
+        and value.get('project_lead_acceptance')=='pending','authority')
+    require(re.fullmatch('[0-9a-f]{40}',value.get('candidate_head','')),'candidate')
+    coverage=value['coverage'];production=value['production']
+    require(sum(coverage['counts'].values())==coverage['media_count']>0,'media_accounting')
+    require(not any(coverage['counts'].get(state,0) for state in OPEN_STATES),'open_metadata')
+    require(production['active_runs']==1 and production['duplicate_support_count']==0,'active_support')
+    require(production['bound_media']==coverage['counts'].get('metadata_complete',0)>5,'full_materialization')
+    cap=value['budget']['cap_usd']
+    require(cap in (10,30) and 0<value['budget']['charged_or_reserved_usd']<=cap,'budget')
+    require(value['quality']['failed_cases']==0 and value['quality']['case_count']>0,'quality')
+    require(value.get('identity_precision',{}).get('failed_cases')==0
+        and value['identity_precision'].get('case_count',0)>=2,'identity_precision')
+    require(value['workload']['query_count']>=240 and value['workload']['failed_queries']==0,'workload')
+    require(value['browser']['originals_loaded']>0 and value['browser']['thumbnails_loaded']>0,'real_media')
+    require(value['launcher']['new_process'] and value['launcher']['apply_enabled'] is False,'launcher')
+    require(set(value)=={'contract_id','target_met','safe_to_merge','route_approved','project_lead_acceptance',
+        'candidate_head','coverage','production','budget','quality','identity_precision','workload','browser','launcher','validation','recovery'},'public_fields')
+    require(not re.search(r'(?i)([A-Z]:[\\/]|postgres(?:ql)?://|password|api_key|raw_metadata|source_url)',json.dumps(value)),'public_privacy')
+
+
+def verify_required_test_command(private,gate,command,label):
+    import sys
+    manifest=json.loads((ROOT/'docs/state/production-pixiv-a2-required-tests.json').read_text(encoding='utf-8'))
+    argv=command.get('argv',[])
+    expected=manifest[label]
+    require(len(argv)==len(expected)+5 and argv[1:3]==['-m','pytest']
+        and argv[-2]=='-q' and argv[-1].startswith('--junitxml='),'validation_required_command')
+    require(Path(argv[0]).resolve()==Path(sys.executable).resolve()
+        and Path(command['cwd']).resolve()==ROOT.resolve(),'validation_runtime_identity')
+    require(len(set(argv[3:-2]))==len(expected) and set(argv[3:-2])==set(expected),'validation_required_tests')
+    require(Path(argv[-1].split('=',1)[1]).resolve()==evidence_path(private,gate['xml']),
+        'validation_required_xml')
+
+
+def verify_historical_suite_carry_forward(source_head,candidate,*,repo=ROOT):
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    require(candidate_behavior_carry_forward(repo,candidate),'validation_current_behavior')
+    require(source_head==candidate or candidate_behavior_carry_forward(repo,source_head),
+        'validation_historical_passes_not_carried_forward')
+
+
+def validation_evidence(private,record,candidate):
+    from scripts.production_pixiv_a2_evidence import pytest_outcome
+    summary={}
+    all_failures=set();remediated=set()
+    for label in ('focused','postgresql','non_e2e'):
+        gate=record[label];command=read(private,gate['command'])
+        log=evidence_path(private,gate['log']).read_text(encoding='utf-8')
+        xml_path=evidence_path(private,gate['xml']) if gate.get('xml') else None
+        require(command['argv'][1:3]==['-m','pytest'],'validation_command')
+        require(command.get('status')=='finished','validation_finished')
+        if label!='non_e2e':
+            require(command['source_head']==candidate,'validation_candidate')
+            verify_required_test_command(private,gate,command,label)
+        actual,failures=pytest_outcome(command,log,xml_path)
+        require(all(actual[key]==gate[key] for key in ('passed','failed','skipped')) and actual['passed']>0,'validation_counts')
+        if label!='non_e2e':require(not failures and actual['failed']==0,'focused_or_postgresql_failure')
+        else:
+            all_failures=failures
+            require(command['argv'][3:]==['tests','--ignore=tests/e2e','-q'],'full_suite_command')
+            admission=read(private,'full-non-e2e-admission-private.json')
+            require(admission['source_head']==command['source_head'] and admission['full_suite_invocation']==1,'full_suite_admission')
+        summary[label]={**actual,'source_head':command['source_head']}
+    for item in record.get('remediation',[]):
+        command=read(private,item['command']);log=evidence_path(private,item['log']).read_text(encoding='utf-8')
+        require(command['source_head']==candidate and command['argv'][1:3]==['-m','pytest'],'remediation_candidate')
+        actual,failures=pytest_outcome(command,log,evidence_path(private,item['xml']) if item.get('xml') else None)
+        require(not failures and actual['passed']>0,'remediation_failure')
+        remediated.update(re.findall(r'^(\S+::\S+) PASSED(?:\s|$)',log,re.MULTILINE))
+    known={HISTORICAL_NODE} & all_failures
+    if known:
+        require('missing_original_ai_execution_evidence' in evidence_path(private,record['non_e2e']['log']).read_text(encoding='utf-8'),'historical_reason')
+    for failure in all_failures-known:
+        mapped=record.get('node_mappings',{}).get(failure,{'nodes':[failure]})
+        if mapped.get('nodes')!=[failure]:
+            require(summary['non_e2e']['source_head']=='acc28adfb106ebafcfa0034607936e6da975af80'
+                and failure in A2_ROUTE_TEST_RENAMES and mapped.get('nodes')==[A2_ROUTE_TEST_RENAMES[failure]],
+                'unverified_remediation_node_mapping')
+        require(set(mapped['nodes'])<=remediated and mapped['nodes'],'unresolved_full_suite_failure')
+    summary['non_e2e']['known_historical_failures']=len(known)
+    summary['non_e2e']['resolved_initial_failures']=len(all_failures-known)
+    if record.get('current_non_e2e'):
+        from scripts.production_pixiv_a2_full_suite import verify_current_full_suite,verify_full_suite_history
+        verify_full_suite_history(private,record)
+        current=verify_current_full_suite(private,record['current_non_e2e'],candidate=candidate,root=ROOT)
+        if current.get('post_full_fix'):
+            require(current.get('validation_candidate_head')==candidate,'post_full_validation_candidate')
+        else:
+            verify_historical_suite_carry_forward(current['source_head'],candidate)
+        summary['historical_non_e2e']=summary['non_e2e'];summary['non_e2e']=current
+    else:
+        require(record.get('full_non_e2e_invocations')==1,'one_full_suite')
+        verify_historical_suite_carry_forward(summary['non_e2e']['source_head'],candidate)
+    return summary
+
+
+def verify_recovery_lifecycle(private,recovery,*,candidate,database,system_identifier,scope_fingerprint):
+    """Five distinct ordered invocations with a continuous observed state chain."""
+    from datetime import datetime
+    keys=('copy_apply','copy_replay','copy_rollback','copy_repeated_rollback','copy_reapply')
+    paths=[evidence_path(private,recovery[key]) for key in keys]
+    require(len(set(paths))==5,'recovery_distinct_paths')
+    payloads=[path.read_bytes() for path in paths]
+    digests=[hashlib.sha256(raw).hexdigest() for raw in payloads]
+    require(len(set(digests))==5,'recovery_distinct_receipts')
+    rows=[json.loads(raw) for raw in payloads];previous=None;run_key=None;operation_ids=[]
+    def state(value):
+        fields=('active_runs','run_keys','bindings','bound_media_ids','source_record_ids','duplicate_support_count')
+        require(all(k in value for k in fields),'recovery_state_fields')
+        require(value['active_runs']==len(set(value['run_keys']))==len(value['run_keys'])
+            and value['duplicate_support_count']==0 and value['bindings']>=len(value['bound_media_ids']),
+            'recovery_state_counts')
+        return {k:sorted(value[k]) if isinstance(value[k],list) else value[k] for k in fields}
+    for i,(key,row) in enumerate(zip(keys,rows)):
+        require(row.get('source_head')==candidate and row.get('database')==database
+            and row.get('system_identifier')==system_identifier and row.get('production') is False
+            and row.get('scope_fingerprint')==scope_fingerprint,'recovery_identity')
+        start=datetime.fromisoformat(row['started_at']);end=datetime.fromisoformat(row['finished_at'])
+        require(start.tzinfo is not None and end.tzinfo is not None and end>start
+            and (previous is None or start>=previous),'recovery_time_order')
+        previous=end
+        # Older runner receipts have no UUID; their distinct bytes and actual
+        # non-overlapping invocation intervals still identify real operations.
+        operation_ids.append(row.get('operation_id') or digests[i])
+        result=row['result']; current=result.get('run_key')
+        require(isinstance(current,str) and current and (run_key is None or current==run_key),'recovery_run_key')
+        run_key=current
+        before=state(row['before']);after=state(row['after'])
+        if i:require(state(rows[i-1]['after'])==before,'recovery_state_continuity')
+        rollback=key in {'copy_rollback','copy_repeated_rollback'}
+        require(row.get('action')==('rollback' if rollback else 'apply'),'recovery_action')
+        require(result.get('rolled_back' if rollback else 'applied') is True,'recovery_outcome')
+        if key in {'copy_replay','copy_repeated_rollback'}:
+            require(result.get('idempotent_replay') is True and before==after,'recovery_replay')
+        if rollback:
+            require(run_key not in after['run_keys'],'recovery_withdrawn_run')
+        else:
+            require(run_key in after['run_keys'] and after['bindings']>0,'recovery_applied_run')
+        if key=='copy_rollback':
+            require(run_key in before['run_keys'] and result.get('idempotent_replay') is False
+                and set(after['run_keys'])==set(before['run_keys'])-{run_key}
+                and after['bindings']<before['bindings']
+                and set(after['bound_media_ids'])<=set(before['bound_media_ids'])
+                and set(after['source_record_ids'])<=set(before['source_record_ids']),'recovery_withdrawal_transition')
+        if key=='copy_reapply':
+            require(run_key not in before['run_keys'] and result.get('idempotent_replay') is False
+                and after==state(rows[0]['after']),'recovery_actual_reapply')
+    require(len(set(operation_ids))==5,'recovery_distinct_operations')
+    return {'operation_count':5,'run_key':run_key,'receipt_sha256':digests}
+
+
+def derive_result(private,repo=ROOT):
+    # This callable is also used by the documentation-state entry point.
+    import sys
+    backend=str(ROOT/'backend')
+    if backend not in sys.path:sys.path.insert(0,backend)
+    private=Path(private).resolve(strict=True);repo=Path(repo).resolve(strict=True)
+    manifest=read(private,'a2-final-evidence-private.json')
+    head=manifest['candidate_head']
+    from scripts.trusted_git import candidate_behavior_carry_forward
+    require(candidate_behavior_carry_forward(repo,head),'behavior_carry_forward')
+    execution_head=subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip()
+    backup=read(private,'backup-private.json');restore=read(private,'restore-private.json')
+    dump=Path(backup['dump_path'])
+    require(dump.is_file() and dump.stat().st_size==backup['bytes']>0,'backup_file')
+    require(hashlib.sha256(dump.read_bytes()).hexdigest()==backup['sha256']==restore['backup_sha256'],'backup_digest')
+    require(restore['restore_passed'] and restore['target']!=backup['database'] and restore['original_database_overwritten'] is False,'independent_restore')
+    scope=read(private,'fixed-scope-private.json');coverage=read(private,manifest['coverage'])
+    from app.services.production_pixiv_release_inputs import verify_t0_scope
+    verify_t0_scope(scope,read(private,'t0-inventory-private.json'),backup['database'],backup['system_identifier'])
+    require(coverage['scope_fingerprint']==scope['canonical_fingerprint'],'fixed_scope')
+    expected={row['media_id']:(row['work_id'],row['page_index']) for row in scope['mappings']}
+    observed={row['media_id']:(row['work_id'],row['page_index']) for row in coverage['items']}
+    require(expected==observed and len(observed)==len(coverage['items'])==scope['media_count'],'fixed_media_mapping')
+    require(dict(Counter(row['disposition'] for row in coverage['items']))==coverage['counts'],'disposition_counts')
+    journal=evidence_path(private,'metadata-dispatch-private.jsonl').read_bytes()
+    events=[json.loads(line) for line in journal.decode('utf-8').splitlines()]
+    attempts=Counter(row['work_id'] for row in events if row['event']=='dispatch')
+    require(all(count<=3 for count in attempts.values()),'metadata_attempt_limit')
+    require(set(attempts)<={row['work_id'] for row in scope['mappings'] if row['work_id']},'metadata_request_scope')
+    timing=read(private,'metadata-dispatch-timing-audit-private.json')
+    require(timing['all_actual_http_request_intervals_verified'] is False
+        and timing['ordinary_gaps_below_two_seconds']==1594 and timing['ordinary_gaps_below_1_99_seconds']==4
+        and timing['minimum_wall_clock_dispatch_gap_seconds']==1.740068,'accepted_historical_timing_gap_retained')
+    from scripts.production_pixiv_a2_evidence import verify_forward_metadata_spacing
+    forward_spacing=verify_forward_metadata_spacing(journal,timing)
+    from app.services.source_concept_budget import AdjudicationBudget
+    ledger=read(private,'llm-budget-private.json')
+    from scripts.production_pixiv_budget_authority import authorized_task_cap
+    cap=authorized_task_cap(private,ledger)
+    if cap==30:
+        amendment=next((r for r in ledger.get('cap_amendments',[]) if r['previous_cap_microusd']==10000000
+            and r['cap_microusd']==30000000),None)
+        require(amendment and amendment['authorization_source']=='43-CODEX-A2-QUALITY-CLOSEOUT.zh-CN.md'
+            and amendment['charged_before_microusd']==9998387 and amendment['call_count_before']==6110,'budget_amendment')
+        original=read(private,'closeout43-budget-before-private.json')
+        require([r['id'] for r in ledger['calls'][:6110]]==[r['id'] for r in original['calls']],'budget_original_calls_retained')
+        require(all(r.get('charged_microusd',r['reserved_microusd'])==old.get('charged_microusd',old['reserved_microusd'])
+            for r,old in zip(ledger['calls'],original['calls'])),'budget_original_cost_retained')
+    budget=AdjudicationBudget(private/'llm-budget-private.json',model=ledger['model'],cap_usd=cap,
+        input_per_million=0.4,output_per_million=1.6).summary()
+    require(ledger['model']=='gpt-4.1-mini' and not any(row['status']=='reserved' for row in ledger['calls']),'settled_budget')
+    final=read(private,manifest['production'])
+    require(final['production'] is True and final['database']==backup['database']
+        and final['system_identifier']==backup['system_identifier'] and final['source_head']==head,'production_identity')
+    require(final['result']['applied'] and final['scope_fingerprint']==scope['canonical_fingerprint'],'production_apply')
+    bound={row['media_id'] for row in coverage['items'] if row['disposition']=='metadata_complete'}
+    require(bound==set(final['after']['bound_media_ids']),'actual_full_media_bindings')
+    recovery=read(private,manifest['recovery'])
+    verify_recovery_lifecycle(private,recovery,candidate=head,database=restore['target'],
+        system_identifier=backup['system_identifier'],scope_fingerprint=scope['canonical_fingerprint'])
+    require(recovery['independent_support_preserved'] and recovery['batch_business_equivalent']
+        and recovery['source_update_delete_verified'],'recovery_seams')
+    protected=[read(private,name) for name in recovery['preservation_evidence']]
+    from scripts.production_pixiv_a2_evidence import verify_preservation_snapshots
+    verify_preservation_snapshots(protected,candidate=head,database=restore['target'],
+        system_identifier=backup['system_identifier'],operation=recovery.get('operation_id'))
+    batches=read(private,recovery['batch_evidence'])
+    require(batches.get('direct_projection') and batches['direct_projection']==batches.get('resumed_projection')
+        and sum(batches['batch_sizes'])==batches['aggregate_count'],'raw_batch_projection')
+    source=read(private,recovery['source_evidence'])
+    require(source['valid_bindings_before']>0 and {r['change'] for r in source['cases']}=={'update','delete'}
+        and all(r['valid_bindings_after_mutation']==0 and r.get('valid_bindings_after_rollback')==source['valid_bindings_before']
+            and r.get('original_revision')==r.get('restored_revision') for r in source['cases']),'raw_source_recovery')
+    browser=read(private,manifest['browser']);launch=read(private,manifest['launcher'])
+    from scripts.production_pixiv_a2_evidence import verify_browser_actions,verify_launcher_action,recorded_code_root_matches
+    require(browser.get('launch_evidence')==manifest['launcher']
+        and browser.get('launch_evidence_sha256')==hashlib.sha256(evidence_path(private,manifest['launcher']).read_bytes()).hexdigest(),
+        'browser_launch_evidence')
+    browser_actions=verify_browser_actions(browser,launch=launch,
+        suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'))
+    runtime_context=verify_launcher_action(launch,repo,head)
+    require(browser['candidate_head']==launch['candidate_head']==head and browser['api_result_sets_verified'],'fresh_browser_candidate')
+    require(launch['before_pid']!=launch['after_pid'] and launch['after_pid']>0
+        and launch['database']==backup['database'] and launch['healthy'],'launcher_identity')
+    actual_identity=launch.get('server_identity',{})
+    require(actual_identity.get('pid')==launch['after_pid'] and actual_identity.get('db_name')==backup['database']
+        and recorded_code_root_matches(actual_identity.get('code_root'),Path(runtime_context['runtime_root']))
+        and isinstance(actual_identity.get('git_sha'),str)
+        and re.fullmatch('[0-9a-f]{7,40}',actual_identity['git_sha'])
+        and runtime_context['runtime_head'].startswith(actual_identity['git_sha']),'launcher_actual_service_identity')
+    images=[i for page in browser.get('pages',[]) for i in page.get('images',[])]
+    originals=[i for i in images if re.search(r'/api/media/\d+/file',i.get('src','')) and i.get('width',0)>0 and i.get('height',0)>0]
+    thumbnails=[i for i in images if '/thumbnail' in i.get('src','') and i.get('width',0)>0 and i.get('height',0)>0]
+    require(originals and thumbnails and not browser.get('page_errors'),'browser_actual_image_loads')
+    for name in browser['screenshots']:
+        require(evidence_path(private,name).stat().st_size>1000,'browser_screenshot')
+    quality=read(private,manifest['quality']);workload=read(private,manifest['workload'])
+    require(quality['candidate_head']==workload['candidate_head']==head,'quality_candidate')
+    from scripts.production_pixiv_precision_evidence import recompute_precision,load_precision_controls
+    from scripts.production_pixiv_a2_evidence import recompute_quality,recompute_workload,collect_creator_projection,collect_identity_projection,verify_identity_projection
+    import psycopg2
+    cfg=json.loads((repo/'.local_manifests/production_launcher/production-profile.json').read_text(encoding='utf-8'))['db']
+    require(cfg['name']==backup['database'],'creator_live_database')
+    with psycopg2.connect(host=cfg['host'],port=cfg['port'],user=cfg['user'],password=cfg['password'],dbname=cfg['name'],
+        options='-c default_transaction_read_only=on -c statement_timeout=30000 -c lock_timeout=3000') as conn:
+        conn.set_session(readonly=True,isolation_level='REPEATABLE READ')
+        with conn.cursor() as cursor:
+            cursor.execute('select current_database(),system_identifier::text from pg_control_system()')
+            require(cursor.fetchone()==(backup['database'],backup['system_identifier']),'creator_live_database_identity')
+            creator_projection=collect_creator_projection(cursor)
+            identity_projection=collect_identity_projection(cursor)
+            from scripts.production_pixiv_a2_evidence import collect_final_projection,verify_final_projection
+            approval_path='docs/state/production-pixiv-a2-approved-run.json'
+            approval_raw=(repo/approval_path).read_bytes()
+            committed_approval=subprocess.check_output(['git','show',head+':'+approval_path],cwd=repo)
+            require(approval_raw.replace(b'\r\n',b'\n')==committed_approval.replace(b'\r\n',b'\n'),'approved_run_frozen_in_candidate')
+            approval=json.loads(approval_raw)
+            require(approval['scope_fingerprint']==scope['canonical_fingerprint']
+                and approval['semantic_input_identity']==final.get('semantic_input_identity'),
+                'approved_run_candidate')
+            projection_path='docs/state/production-pixiv-a2-approved-projection.json'
+            projection_raw=(repo/projection_path).read_bytes()
+            committed_projection=subprocess.check_output(['git','show',head+':'+projection_path],cwd=repo)
+            require(projection_raw.replace(b'\r\n',b'\n')==committed_projection.replace(b'\r\n',b'\n'),
+                'approved_projection_frozen_in_candidate')
+            projection_approval=json.loads(projection_raw)
+            require(projection_approval.get('schema_version')=='violet.production-pixiv-a2.approved-projection.v1'
+                and projection_approval.get('semantic_input_identity')==approval['semantic_input_identity']
+                and projection_approval['projection']['run_key']==approval['run']['run_key']
+                and projection_approval['projection']['product_fingerprint']==approval['run']['result_fingerprint'],
+                'approved_projection_semantic_candidate')
+            verify_final_projection(final['after'],collect_final_projection(cursor),approved_run=approval['run'],
+                approved_projection=projection_approval['projection'])
+    verify_identity_projection(quality,identity_projection)
+    precision_actual=recompute_precision({**quality,'projection_rows':identity_projection},load_precision_controls(),
+        private_root=private,database=backup['database'],system_identifier=backup['system_identifier'])
+    quality_actual=recompute_quality(quality,read(private,quality['oracle_input']),
+        suggestion_oracle=read(private,'independent-suggestion-oracle-v3-private.json'),
+        creator_oracle=read(private,'independent-creator-homonym-oracle-private.json'),
+        baseline=read(private,'full-production-final-1-combined-quality-private.json'),
+        recall_baseline=read(private,'closeout43-copy-surfaces-1-combined-quality-private.json'),launch=launch,
+        creator_projection=creator_projection,identity_projection=identity_projection)
+    require(quality['independent_answer_sources'] and quality_actual['case_count']>=80
+        and quality_actual['failed_cases']==0,'independent_quality')
+    require(len(workload['queries'])>=240 and all(row['status_code']==200 for row in workload['queries']),'actual_workload')
+    baseline=read(private,manifest['workload_baseline'])
+    frozen_workload=[json.loads(line) for line in evidence_path(private,'accepted-240-query-workload-private.jsonl').read_text(encoding='utf-8').splitlines()]
+    from sqlalchemy import create_engine
+    from sqlalchemy.engine import URL
+    from sqlalchemy.orm import Session
+    from scripts.production_pixiv_source_measurement import verify_live_source_performance
+    engine=create_engine(URL.create('postgresql+psycopg2',username=cfg['user'],password=cfg['password'],
+        host=cfg['host'],port=cfg['port'],database=cfg['name']),
+        connect_args={'options':'-c default_transaction_read_only=on -c statement_timeout=30000 -c lock_timeout=3000'})
+    try:
+        with Session(engine) as session:
+            live_source=verify_live_source_performance(session,frozen_workload,candidate=execution_head,database=backup['database'],
+                system_identifier=backup['system_identifier'])
+    finally:engine.dispose()
+    source_latency,http_latency=recompute_workload(workload,baseline,frozen_workload,launch=launch,
+        system_identifier=backup['system_identifier'],source_results=live_source['results'])
+    require(source_latency==workload['accepted_source_layer_latency_ms'] and http_latency==workload['latency_ms'],'query_statistics')
+    # Both historical and freshly measured performance must pass. Preserve the
+    # original statistics in the deterministic report; reruns naturally differ.
+    p95_gate=750
+    require(source_latency['p95_ms']<=p95_gate and source_latency['max_ms']<=3000,'full_scale_source_search_performance')
+    validation=validation_evidence(private,read(private,manifest['validation']),head)
+    value={'contract_id':CONTRACT,'target_met':True,'safe_to_merge':False,'route_approved':False,
+        'project_lead_acceptance':'pending','candidate_head':head,
+        'coverage':{key:coverage[key] for key in ('media_count','mapped_media','mapped_works','mapped_work_pages','counts')},
+        'production':{'active_runs':final['after']['active_runs'],'bindings':final['after']['bindings'],
+            'bound_media':len(bound),'duplicate_support_count':final['after']['duplicate_support_count']},
+        'budget':{'model':ledger['model'],'cap_usd':cap,'charged_or_reserved_usd':budget['charged_or_reserved_usd'],
+            'call_count':budget['call_count'],'unknown_usage_count':budget['unknown_usage_count']},
+        'quality':quality_actual,'identity_precision':precision_actual,
+        'workload':{'query_count':len(workload['queries']),'failed_queries':0,**http_latency,
+            'source_layer_latency_ms':source_latency,'applicable_source_layer_p95_gate_ms':p95_gate,
+            'live_source_performance_rechecked':True},
+        'browser':{**{key:browser[key] for key in ('originals_loaded','thumbnails_loaded')},**browser_actions},
+        'launcher':{'new_process':True,'apply_enabled':launch['apply_enabled']},'validation':validation,
+        'recovery':{'independent_restore':True,'owned_rollback_replay':True,'independent_support_preserved':True,'batch_business_equivalent':True,
+            'forward_metadata_spacing':forward_spacing,
+            'historical_http_spacing_evidence':'Lead accepted task 43 exception; not reconstructable',
+            'historical_command_gaps_below_two_seconds':1594,'historical_minimum_command_gap_seconds':1.740068}}
+    check_public_result(value,root=repo)
+    return value
+
+
+def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--evidence',required=True,type=Path)
+    parser.add_argument('--output',type=Path)
+    args=parser.parse_args()
+    value=derive_result(args.evidence)
+    rendered=json.dumps(value,ensure_ascii=False,indent=2)+'\n'
+    if args.output:args.output.write_text(rendered,encoding='utf-8')
+    print(rendered)
+
+
+if __name__=='__main__':
+    import sys
+    sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'backend'))
+    main()

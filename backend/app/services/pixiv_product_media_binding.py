@@ -57,18 +57,23 @@ def verified_local_binding_provenance(record, projection=None):
                 and pages[0]['creator_name'] == projection['creator_display_name'])
 
 
-def plan_media_bindings(session, run, *, lock=False):
+def plan_media_bindings(session, run, *, lock=False, media_ids=None, fixed_bindings=None):
     aggregates = {(a['work_id'], a['page_index']): a for a in run.consumer.aggregates}
     sources = {}
+    allowed = {tuple(binding) for binding in fixed_bindings} if fixed_bindings is not None else None
     query = session.query(SourceMetadataRecord).join(
         Media, Media.id == SourceMetadataRecord.media_id
     ).filter(
         SourceMetadataRecord.provider == 'pixiv',
         SourceMetadataRecord.source_work_id.in_({key[0] for key in aggregates}),
     )
+    if media_ids is not None:
+        query = query.filter(Media.id.in_(tuple(media_ids)))
     if lock:
         query = query.populate_existing().with_for_update(of=SourceMetadataRecord)
     for record in query.all():
+        if allowed is not None and (record.media_id, record.source_work_id, record.source_page_index) not in allowed:
+            continue
         aggregate = aggregates.get((record.source_work_id, record.source_page_index))
         if aggregate is None or not is_trusted_complete_pixiv_metadata_record(record):
             continue

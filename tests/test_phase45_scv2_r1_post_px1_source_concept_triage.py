@@ -442,6 +442,13 @@ def test_runner_does_not_import_provider_network_or_truth_promoters() -> None:
 def test_handoff_and_roadmap_follow_current_phase_state_not_r1_history() -> None:
     from scripts.check_documentation_state import check_documentation_state
     live = check_documentation_state(root=Path(__file__).resolve().parents[1])
+    if live['phase_id']=='PRODUCTION-PIXIV-A2':
+        assert live['passed']
+        state=json.loads((ROOT/'docs/state/current-phase.json').read_text(encoding='utf-8'))
+        handoff=(ROOT/'docs/current-handoff.md').read_text(encoding='utf-8')
+        assert state['phase_id'] in handoff and state['current_status'] in handoff
+        assert state['next_required_checkpoint'] in handoff and 'PR #133' not in handoff
+        return
     if live['phase_id'] == 'PRODUCTION-PIXIV-A1':
         assert live['passed']
         report = (Path(__file__).resolve().parents[1]/'docs/current-handoff.md').read_text(encoding='utf-8')

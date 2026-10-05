@@ -29,6 +29,7 @@ def test_production_candidate_pin_rejects_behavior_and_untracked_drift(tmp_path)
     git('init','-q')
     git('config','user.name','A1 regression')
     git('config','user.email','a1-regression@example.invalid')
+    git('config','core.autocrlf','true')  # Match Windows text writes without global config.
     (tmp_path/'.gitignore').write_text('.local_manifests/\n',encoding='utf-8')
     (tmp_path/'run.py').write_text('print(1)\n',encoding='utf-8')
     git('add','.')
@@ -37,14 +38,26 @@ def test_production_candidate_pin_rejects_behavior_and_untracked_drift(tmp_path)
     profile=tmp_path/'.local_manifests/production_launcher/production-profile.json'
     profile.parent.mkdir(parents=True)
     profile.write_text('{}',encoding='utf-8')
+    import hashlib
+    registry=tmp_path/'docs/state/production-pixiv-a2-ignored-inputs.json'
+    registry.parent.mkdir(parents=True)
+    registry.write_text(json.dumps({'private_files':{'production_launcher/production-profile.json':
+        hashlib.sha256(profile.read_bytes()).hexdigest()}}),encoding='utf-8')
+    git('add','docs/state/production-pixiv-a2-ignored-inputs.json');git('commit','-qm','pin approved runtime profile')
+    head=git('rev-parse','HEAD')
     config=SimpleNamespace(config_source='production_profile',profile_exists=True,
         profile_data={'candidate_head':head},profile_path=profile,repo_root=tmp_path,
         env={'VIOLET_CANONICAL_REPO_ROOT':str(tmp_path)})
     assert control._pinned_candidate_worktree(config)
-    (tmp_path/'docs').mkdir()
+    (tmp_path/'docs').mkdir(exist_ok=True)
     (tmp_path/'docs/report.md').write_text('报告',encoding='utf-8')
     assert control._pinned_candidate_worktree(config)
     from scripts.trusted_git import candidate_behavior_carry_forward
+    summary=tmp_path/'docs/reports/production-pixiv-a2-summary.json'
+    summary.parent.mkdir()
+    summary.write_text('{}',encoding='utf-8')
+    git('add','docs/reports/production-pixiv-a2-summary.json')
+    assert candidate_behavior_carry_forward(tmp_path,head)
     for path in ('notes.md','capture.png','output.log'):
         (tmp_path/path).write_text('private artifact',encoding='utf-8')
     assert candidate_behavior_carry_forward(tmp_path,head)

@@ -65,6 +65,27 @@ from scripts.run_phase45_sc1_source_concept_resolver import (
 )
 
 
+def test_union_find_handles_full_scope_descending_chain_without_recursion():
+    keys = [f"source:{index:05d}" for index in range(4096)]
+    groups = sc_resolver_service.UnionFind()
+    for index in range(len(keys) - 1, 0, -1):
+        groups.union(keys[index], keys[index - 1])
+
+    assert groups.find(keys[-1]) == keys[0]
+    assert groups.groups() == {keys[0]: keys}
+
+
+def test_union_find_preserves_lexical_roots_and_separate_groups_across_order():
+    edges = [("z", "m"), ("m", "a"), ("y", "b"), ("y", "b")]
+    expected = {"a": ["a", "m", "z"], "b": ["b", "y"], "isolated": ["isolated"]}
+    for ordered in (edges, list(reversed(edges))):
+        groups = sc_resolver_service.UnionFind()
+        for left, right in ordered:
+            groups.union(left, right)
+        assert groups.find("isolated") == "isolated"
+        assert groups.groups() == expected
+
+
 def _signal(
     key: str,
     raw: str,

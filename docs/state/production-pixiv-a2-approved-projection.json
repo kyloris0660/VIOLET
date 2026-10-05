@@ -1,0 +1,58 @@
+{
+  "schema_version": "violet.production-pixiv-a2.approved-projection.v1",
+  "semantic_input_identity": {
+    "schema_version": "violet.production-pixiv-semantic-inputs.v1",
+    "aggregates": "25526e6d8a337a13746476780455ba2cd0b9970f88aa6e390042ebfb9a86998b",
+    "vocabulary": "30c01e1be9bd5fec6d1efe3ba8a7e5df60dfc6516c5ff61de5e38bad4987f3a8",
+    "role_facts": "45e49aaf7490f06a98e89bdbb4d6031de249a44f79bb37e2faa92a12c467a9fc",
+    "judgments": "a817f853856501e17f91afe6fc7599c6399f35f0092bf5332c41fd3347ad6c03",
+    "versions": {
+      "production_policy": "production_pixiv_fixed_scope_adjudication_v8",
+      "role_schema": "violet.production-pixiv-role-result.v1",
+      "prompt": "phase44p2r_f7a_llm_source_name_candidate_extraction_compact_v3",
+      "extractor": "phase44p2r_f7a_source_name_candidate_extractor_v2",
+      "extraction_schema": "source_name_candidate_extraction_compact_v2",
+      "completion": "production_pixiv_residual_roles_v1",
+      "coverage_repair": "production_pixiv_role_coverage_repair_v2",
+      "semantic_correction": "production_pixiv_evidenced_role_correction_v1",
+      "resolver": "source_concept_resolver_core_v7_alias_union_approval",
+      "cache_policy": "source_concept_llm_adjudication_cache_v1",
+      "decision_schema": "source_concept_pair_decision_schema_v1",
+      "adjudication_policy": "source_concept_budget_driven_adjudication_v1",
+      "pair_prompt": "production_pixiv_pair_semantic_identity_v2",
+      "model": "gpt-4.1-mini",
+      "fallback": false
+    }
+  },
+  "projection": {
+    "run_key": "scv2-px3:61bf88218dee4f1236e155ee9ea10862",
+    "product_fingerprint": "61bf88218dee4f1236e155ee9ea1086265c031a9051c2ab5ba128c5f9d8b99d6",
+    "core_business_fingerprint": "630cc91e57daa8c541cf82d4e3836e1953e65c3a9659e5a7c54f2c23b05a8df6",
+    "full_core_fingerprint": "8572765075ea6c836f076b59315de24e5f9feae05b2fc2d43152441eb0e368d8",
+    "core_counts": {
+      "resolution_runs": 1,
+      "signals": 100285,
+      "concepts": 17498,
+      "aliases": 21314,
+      "evidence": 65956,
+      "signal_links": 65956,
+      "search_index": 21314
+    },
+    "product_counts": {
+      "clusters": 17498,
+      "candidate_dispositions": 595168,
+      "ambiguity_records": 65980
+    }
+  },
+  "origin": {
+    "preparation_reference_head": "923bf33361413044c435190c14f68ade10d70c88",
+    "preparation_working_source_receipt": "correction03-prefix-isolated-source-20261004-1-private.json",
+    "frozen_candidate_acceptance_claimed": false,
+    "actual_isolated_projection_preparation": "correction29-correction03-prefix-projection-preparation-20261004-1-receipt-private.json",
+    "receipt_sha256": "7601d9eecab94f9e825e77e8fecd95d758022ee0d62753779c8303278ccadae5",
+    "outer_transaction_rolled_back": true,
+    "independent_raw_projection": "correction29-correction03-prefix-projection-preparation-20261004-1-raw-projection-private.json",
+    "raw_projection_sha256": "fbdec6a8cefa73b907d58663cb532c8a5d5a34f204a0e890cb03201b320e07de"
+  },
+  "purpose": "Independent complete expected projection from current native source and a rollback-only isolated PostgreSQL materialization. Final frozen copy and production gates must recompute all owned rows against this protected expectation."
+}

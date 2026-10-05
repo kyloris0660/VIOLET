@@ -1,0 +1,10 @@
+{
+  "schema_version": "violet.a2.metadata-dispatch-policy.v1",
+  "authority": "VIOLET-A2-当前阶段纠偏执行任务-20260929.md",
+  "mode": "replay_only",
+  "real_dispatch_authorized": false,
+  "due_before": "next_real_metadata_dispatch",
+  "review_comment": 4115199681,
+  "limitation": "The existing 332-file list does not close new startup hooks or unlisted imports.",
+  "required_next_dispatch_checks": ["actual entrypoint", "startup .pth and sitecustomize/usercustomize inventory", "relevant imported dependencies"]
+}

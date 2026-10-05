@@ -2431,6 +2431,10 @@ def _validate_scv2_px3_state(state: dict[str, Any], *, root: Path) -> None:
 
 
 def validate_state(state: dict[str, Any], *, root: Path = ROOT) -> None:
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A2':
+        from scripts.production_pixiv_a2_state import validate
+        validate(state, root)
+        return
     if state.get('phase_id') == 'PRODUCTION-IMPORT-RECOVERY':
         from scripts.production_import_recovery_state import validate
         validate(state, root)
@@ -3130,7 +3134,7 @@ def validate_git_ancestry(
     root: Path = ROOT,
     implementation_evidence: dict[str, Any] | None = None,
 ) -> None:
-    if state.get('phase_id') in {'PRODUCTION-PIXIV-A1', 'PRODUCTION-IMPORT-RECOVERY'}:
+    if state.get('phase_id') in {'PRODUCTION-PIXIV-A1', 'PRODUCTION-IMPORT-RECOVERY', 'PRODUCTION-PIXIV-A2'}:
         if _trusted_git_value(root, 'rev-parse', '--abbrev-ref', 'HEAD') != state['branch']:
             raise DocumentationStateError('a1_live_branch')
         if _trusted_git_value(root, 'merge-base', state['accepted_mainline_base'], 'HEAD') != state['accepted_mainline_base']:
@@ -3404,6 +3408,12 @@ def _validate_scv2_px3_roadmaps(state: dict[str, Any], *, root: Path) -> None:
 
 
 def validate_roadmaps(state: dict[str, Any], *, root: Path = ROOT) -> None:
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A2':
+        for name in ('docs/project-roadmap.md', 'docs/roadmap/current-mainline-roadmap.md', 'docs/phase-contracts.md'):
+            content = (root / name).read_text(encoding='utf-8')
+            if re.findall(r'<!-- CURRENT_PHASE: ([^ ]+) -->', content) != ['PRODUCTION-PIXIV-A2']:
+                raise DocumentationStateError('pixiv_a2_roadmap_marker')
+        return
     if state.get('phase_id') == 'PRODUCTION-IMPORT-RECOVERY':
         for path in ACTIVE_ROUTE_PATHS:
             content = (root / path.relative_to(ROOT)).read_text(encoding='utf-8')
@@ -3876,6 +3886,9 @@ def _render_scv2_px3_handoff(state: dict[str, Any]) -> str:
 def render_handoff(state: dict[str, Any]) -> str:
     """Render the complete public-safe I2 planning handoff."""
 
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A2':
+        from scripts.production_pixiv_a2_state import render
+        return render(state)
     if state.get('phase_id') == 'PRODUCTION-IMPORT-RECOVERY':
         from scripts.production_import_recovery_state import render
         return render(state)
@@ -4011,6 +4024,11 @@ def check_documentation_state(
     implementation_evidence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     state = load_state(root / "docs" / "state" / "current-phase.json")
+    if state.get('phase_id') == 'PRODUCTION-PIXIV-A2':
+        for path in (root/'docs/state').glob('production-pixiv-a2*.json'):
+            serialized=path.read_text(encoding='utf-8')
+            if any(p.search(serialized) for p in PUBLIC_FORBIDDEN) or re.search(r'[A-Za-z]:/',serialized):
+                raise DocumentationStateError('public_a2_anchor_redaction_failure:'+path.name)
     validate_state(state, root=root)
     if root.resolve() == ROOT.resolve():
         validate_git_ancestry(

@@ -14,6 +14,7 @@ import os
 import re
 import stat
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePath, PurePosixPath, PureWindowsPath
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -22,6 +23,9 @@ from typing import Any, Callable, Iterable, Mapping, Sequence
 WindowsGitLocationProvider = Callable[
     [], tuple[tuple[PurePath, ...], tuple[PurePath, ...]]
 ]
+# A complete ignored-file inventory can exceed the ordinary command budget
+# on evidence worktrees. Keep its duration bounded without reducing coverage.
+IGNORED_INVENTORY_TIMEOUT_SECONDS = 60
 _WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 _BEHAVIOR_SUFFIXES = frozenset(
     {
@@ -956,12 +960,15 @@ def _classify_untracked(repo_root: Path, path: str, *, ignored: bool = False) ->
 
 def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
     """Local launcher and A1 evidence share the same candidate drift boundary."""
-    def git(*args):
-        return subprocess.check_output(['git', '-C', str(repo_root), *args],
-            text=True, encoding='utf-8', stderr=subprocess.DEVNULL, timeout=10).strip()
     try:
         if not re.fullmatch('[0-9a-f]{40}', candidate):
             return False
+        trusted = resolve_trusted_git_executable(repo_root=repo_root)
+        def git(*args):
+            result = run_trusted_git_text(repo_root, args, git=trusted, timeout=10)
+            if result.returncode != 0:
+                raise TrustedGitError('candidate_carry_git_operation_failed')
+            return result.stdout.strip()
         if git('rev-parse', candidate+'^{commit}') != candidate or git('merge-base',candidate,'HEAD') != candidate:
             return False
         changed = git('diff', '--name-only', '-z', candidate).split('\0')
@@ -969,19 +976,181 @@ def candidate_behavior_carry_forward(repo_root: Path, candidate: str) -> bool:
             if path == 'AGENTS.md' or (path.startswith('docs/') and path.endswith('.md')):
                 continue
             if path not in {'docs/state/current-phase.json', 'docs/reports/production-pixiv-a1-summary.json',
-                            'docs/reports/production-import-recovery-summary.json'}:
+                            'docs/reports/production-import-recovery-summary.json',
+                            'docs/reports/production-pixiv-a2-summary.json'}:
                 return False
+        # Completion checks see ignored input too. Phase-specific evidence
+        # directories/config baselines are protected tracked inputs: changing
+        # the registry itself invalidates the candidate comparison above.
+        registry_path=repo_root/'docs/state/production-pixiv-a2-ignored-inputs.json'
+        registry=json.loads(registry_path.read_text(encoding='utf-8')) if registry_path.is_file() else {}
+        runtime=None
+        if _lexically_within(Path(sys.executable),repo_root):
+            runtime=verify_approved_python_runtime(Path(sys.executable),repo_root=repo_root)
+        drift=inspect_worktree_drift(trusted,repo_root,
+            approved_python_runtime=runtime,approved_artifacts=registry,approved_candidate=candidate)
+        if any((drift.behavior_untracked_count,drift.uncertain_untracked_count,
+                drift.behavior_ignored_count,drift.uncertain_ignored_count)):
+            return False
         for path in filter(None, git('ls-files','--others','--exclude-standard','-z').split('\0')):
             if _classify_untracked(repo_root, path) != 'ordinary':
                 return False
             # An otherwise ordinary artifact explicitly loaded by application
             # code is behavior input, regardless of its docs/ placement.
-            referenced = subprocess.run(['git','-C',str(repo_root),'grep','-l','-F',path,'--',
-                'backend','frontend','scripts','run.py'], capture_output=True, timeout=10)
+            referenced = run_trusted_git_text(repo_root, ['grep','-l','-F',path,'--',
+                'backend','frontend','scripts','run.py'], git=trusted, timeout=10)
             if referenced.returncode != 1:
                 return False
         return True
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, ValueError, KeyError, TrustedGitError, subprocess.SubprocessError):
+        return False
+
+
+def _verified_generated_bytecode(root: Path,path: str) -> bool:
+    """An ignored cache is ordinary only when it is the actual source compile."""
+    import importlib.util
+    import marshal
+    import struct
+    import types
+    match=re.fullmatch(r'(.*/)?__pycache__/([^/]+)\.cpython-(\d+)(?:-pytest-([0-9.]+))?(?:\.opt-([12]))?\.pyc',path)
+    if not match or match[3]!=f'{sys.version_info.major}{sys.version_info.minor}':return False
+    source=root/(match[1] or '')/(match[2]+'.py')
+    try:
+        _assert_no_alias_components(source);_assert_no_alias_components(root/path)
+        if (root/path).stat().st_size>8*1024*1024:return False
+        raw=(root/path).read_bytes()
+        if raw[:4]!=importlib.util.MAGIC_NUMBER:return False
+        flags=int.from_bytes(raw[4:8],'little')
+        if flags not in (0,1,3):return False
+        if flags==0:
+            mtime,size=struct.unpack('<II',raw[8:16]);source_stat=source.stat()
+            if mtime!=(int(source_stat.st_mtime)&0xffffffff) or size!=(source_stat.st_size&0xffffffff):
+                # Stock import (and pytest's timestamp cache) cannot execute
+                # this stale cache when its source is present. Preserve it.
+                return True
+        code=marshal.loads(raw[16:])
+        if not isinstance(code,types.CodeType) or Path(code.co_filename).resolve()!=source.resolve():return False
+        if match[4]:
+            import ast
+            import pytest
+            from _pytest.assertion.rewrite import rewrite_asserts
+            if match[4]!=pytest.__version__:return False
+            source_bytes=source.read_bytes();tree=ast.parse(source_bytes,filename=code.co_filename)
+            rewrite_asserts(tree,source_bytes,code.co_filename,config=None)
+            expected=compile(tree,code.co_filename,'exec',dont_inherit=True,optimize=int(match[5] or 0))
+        else:
+            expected=compile(source.read_bytes(),code.co_filename,'exec',dont_inherit=True,optimize=int(match[5] or 0))
+        return code==expected
+    except (OSError,ValueError,TypeError,EOFError,SyntaxError,TrustedGitError):return False
+
+
+def _same_registered_controller_source(loaded: Path, deployed: Path, candidate: str) -> bool:
+    """Allow inspection from a sibling checkout only for native identical code."""
+    try:
+        _assert_no_alias_components(loaded); _assert_no_alias_components(deployed)
+        if loaded.resolve(strict=True) == deployed.resolve(strict=True):
+            return True
+        source_root=loaded.parents[1];runtime_root=deployed.parents[1]
+        if (loaded.relative_to(source_root).as_posix()!='scripts/violet_production_control.py'
+            or deployed.relative_to(runtime_root).as_posix()!='scripts/violet_production_control.py'):
+            return False
+        def observed(repo,args):
+            result=run_trusted_git_bytes(repo,args)
+            if result.returncode!=0:raise TrustedGitError('controller_source_git_identity_failed')
+            return result.stdout
+        common=['rev-parse','--path-format=absolute','--git-common-dir']
+        left=Path(observed(source_root,common).decode('utf-8').strip())
+        right=Path(observed(runtime_root,common).decode('utf-8').strip())
+        if not left.is_absolute() or not right.is_absolute() or left.resolve(strict=True)!=right.resolve(strict=True):
+            return False
+        committed=observed(runtime_root,['show',candidate+':scripts/violet_production_control.py'])
+        return loaded.read_bytes().replace(b'\r\n',b'\n')==deployed.read_bytes().replace(b'\r\n',b'\n')==committed
+    except (OSError,ValueError,TrustedGitError,subprocess.SubprocessError):
+        return False
+
+
+def _verified_launcher_runtime_file(root: Path, path: str, profile_spec, candidate: str) -> bool:
+    """Recognize only source-bound, live launcher metadata in an approved profile.
+
+    A lock is accepted only by the controller that owns this Start/Restart.
+    A state record must match the exact production command and a live managed
+    process. This never exempts a directory, configuration, or arbitrary JSON.
+    """
+    from datetime import datetime, timezone
+    import math
+
+    lock = '.local_manifests/production_launcher/violet-production-launcher-start.lock'
+    state = '.local_manifests/production_launcher/violet-production-launcher-state.json'
+    if path not in {lock, state} or not isinstance(profile_spec, Mapping):
+        return False
+    if profile_spec.get('private_file') != 'production_launcher/production-profile.json':
+        return False
+
+    def unique_object(pairs):
+        value = dict(pairs)
+        if len(value) != len(pairs):
+            raise ValueError('duplicate_launcher_metadata_key')
+        return value
+
+    try:
+        target = root / path
+        _assert_no_alias_components(target)
+        metadata = os.lstat(target)
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1 or metadata.st_size > 4096:
+            return False
+        raw = target.read_bytes()
+        if len(raw) != metadata.st_size or not raw:
+            return False
+        payload = json.loads(raw, object_pairs_hook=unique_object)
+        if not isinstance(payload, dict):
+            return False
+        profile_path = root / '.local_manifests/production_launcher/production-profile.json'
+        _assert_no_alias_components(profile_path)
+        profile = json.loads(profile_path.read_bytes(), object_pairs_hook=unique_object)
+        if profile.get('candidate_head') != candidate or profile.get('profile_id') != 'production-default':
+            return False
+        from scripts import violet_production_control as control
+        controller = root / 'scripts/violet_production_control.py'
+        if not _same_registered_controller_source(Path(control.__file__),controller,candidate):
+            return False
+        config = control.resolve_config(repo_root=root, profile_id='production-default', profile_path=profile_path)
+        if (config.config_source != 'production_profile' or not config.profile_exists or config.profile_errors
+            or Path(config.repo_root).resolve() != root.resolve()
+            or Path(config.expected_python).resolve() != Path(sys.executable).resolve()
+            or config.env.get('VIOLET_ENV') != 'production'):
+            return False
+        now = datetime.now(timezone.utc)
+        if path == lock:
+            if set(payload) != {'pid', 'created_at'} or type(payload['pid']) is not int:
+                return False
+            if payload['pid'] != os.getpid() or len(sys.argv) < 2 or sys.argv[1] not in {'start', 'restart'}:
+                return False
+            if Path(sys.argv[0]).resolve(strict=True) != controller.resolve(strict=True):
+                return False
+            created = datetime.fromisoformat(payload['created_at'])
+            if not created.tzinfo or not -2 <= (now - created).total_seconds() <= control.START_LOCK_TTL_SECONDS:
+                return False
+        else:
+            expected = {'state_version', 'app_name', 'started_by', 'pid', 'pid_create_time', 'start_time',
+                        'command', 'repo_root', 'port', 'url', 'env', 'debug', 'startup_safe_mode'}
+            if (set(payload) != expected or type(payload['pid']) is not int or payload['pid'] <= 0
+                or type(payload['port']) is not int or payload['port'] != config.port
+                or payload['env'] != 'production' or payload['debug'] is not False
+                or payload['startup_safe_mode'] is not True or payload['url'] != config.url
+                or payload['command'] != control.production_command(config)):
+                return False
+            created = payload['pid_create_time']
+            started = datetime.fromisoformat(payload['start_time'])
+            if (type(created) not in (int, float) or not math.isfinite(created) or created <= 0
+                or not started.tzinfo or (started - now).total_seconds() > 2
+                or abs(started.timestamp() - created) > 5):
+                return False
+            verified, _ = control.verify_managed_process(payload, config)
+            if not verified:
+                return False
+        _assert_no_alias_components(target)
+        return target.read_bytes() == raw
+    except (OSError, ValueError, KeyError, TypeError, ImportError, TrustedGitError, subprocess.SubprocessError):
         return False
 
 
@@ -990,6 +1159,8 @@ def inspect_worktree_drift(
     repo_root: Path,
     *,
     approved_python_runtime: ApprovedPythonRuntime | None = None,
+    approved_artifacts: Mapping[str,Any] | None = None,
+    approved_candidate: str | None = None,
 ) -> WorktreeDriftSummary:
     root = _canonical_root(repo_root)
     completed = run_trusted_git_bytes(
@@ -1008,6 +1179,38 @@ def inspect_worktree_drift(
         "--",
         ".",
     ]
+    approved_artifacts=approved_artifacts or {}
+    immutable_files={**approved_artifacts.get('repository_files',{}),
+        **{'.local_manifests/'+key:value for key,value in approved_artifacts.get('private_files',{}).items()}}
+    profile=approved_artifacts.get('candidate_profile')
+    if profile:
+        relative='.local_manifests/'+profile['private_file'];validate_git_path(relative)
+        _assert_no_alias_components(root/relative)
+        raw=(root/relative).read_bytes();digest=hashlib.sha256(raw).hexdigest()
+        if digest!=profile['previous_full_sha256']:
+            payload=json.loads(raw);pin=payload.pop('candidate_head',None)
+            stable=hashlib.sha256(json.dumps(payload,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+            if (not approved_candidate or pin!=approved_candidate or stable!=profile['stable_fields_sha256']):
+                raise TrustedGitError('candidate_ignored_profile_changed')
+        immutable_files[relative]=digest
+    for relative,digest in immutable_files.items():
+        validate_git_path(relative)
+        _assert_no_alias_components(root/relative)
+        if hashlib.sha256((root/relative).read_bytes()).hexdigest()!=digest:
+            raise TrustedGitError('candidate_ignored_input_changed')
+    for directory_name in approved_artifacts.get('evidence_directories',[]):
+        # Only private, explicitly selected evidence roots; application/module
+        # roots and the launcher configuration directory cannot be exempted.
+        if (not isinstance(directory_name,str) or not re.fullmatch(r'[a-zA-Z0-9_.-]+',directory_name)
+            or directory_name in {'.','..','production_launcher'}):
+            raise TrustedGitError('candidate_artifact_root_invalid')
+        relative='.local_manifests/'+directory_name
+        validate_git_path(relative)
+        directory=root/relative
+        if directory.exists():
+            _assert_no_alias_components(directory)
+            if not directory.is_dir():raise TrustedGitError('candidate_artifact_root_invalid')
+        ignored_arguments.extend((f':(exclude,top){relative}',f':(exclude,top){relative}/**'))
     if approved_python_runtime is not None and _lexically_within(
         approved_python_runtime.venv_root, root
     ):
@@ -1025,6 +1228,7 @@ def inspect_worktree_drift(
         root,
         tuple(ignored_arguments),
         git=git,
+        timeout=IGNORED_INVENTORY_TIMEOUT_SECONDS,
     )
     if ignored.returncode != 0:
         raise TrustedGitError("trusted_git_ignored_status_failed")
@@ -1049,6 +1253,21 @@ def inspect_worktree_drift(
             uncertain += 1
     for path in ignored_paths:
         classification = _classify_untracked(root, path, ignored=True)
+        approved_digest=immutable_files.get(path)
+        if approved_digest is not None:
+            _assert_no_alias_components(root/path)
+            if hashlib.sha256((root/path).read_bytes()).hexdigest()!=approved_digest:
+                raise TrustedGitError('candidate_ignored_input_changed')
+            classification='ordinary'
+        elif (classification=='uncertain' and approved_candidate and profile
+              and _verified_launcher_runtime_file(root,path,profile,approved_candidate)):
+            classification='ordinary'
+        elif classification=='behavior' and _verified_generated_bytecode(root,path):
+            classification='ordinary'
+        elif path in {'.pytest_cache/.gitignore','.pytest_cache/CACHEDIR.TAG',
+                      '.pytest_cache/v/cache/nodeids','.pytest_cache/v/cache/lastfailed',
+                      '.pytest_cache/v/cache/stepwise'}:
+            classification='ordinary' if stat.S_ISREG(os.lstat(root/path).st_mode) else classification
         if classification == "ordinary":
             ordinary_ignored += 1
         elif classification == "behavior":

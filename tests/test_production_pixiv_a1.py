@@ -24,11 +24,11 @@ from app.services.media_commit_boundary import MediaCommittedError
 
 @pytest.fixture()
 def real_api(monkeypatch, tmp_path):
-    url = os.environ.get('VIOLET_A1_TEST_DATABASE_URL')
+    url = os.environ.get('VIOLET_A1_TEST_DATABASE_URL') or os.environ.get('VIOLET_A2_TEST_DATABASE_URL')
     schema = None
     if url:
         from sqlalchemy.engine import make_url
-        assert make_url(url).database == 'violet_a1_test_20260906'
+        assert make_url(url).database in {'violet_a1_test_20260906', 'violet_pixiv_a2_test_20260911'}
         schema = 'a1_test_' + uuid.uuid4().hex
         admin = create_engine(url)
         with admin.begin() as connection:

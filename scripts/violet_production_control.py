@@ -1251,6 +1251,17 @@ def process_command_line(pid: int) -> str:
 
 def _parse_windows_cim_datetime(value: Any) -> float | None:
     text = str(value or "").strip()
+    # ConvertTo-Json in Windows PowerShell 5.1 serializes a CIM DateTime
+    # as milliseconds since the UTC epoch, rather than the legacy DMTF text.
+    json_date = re.fullmatch(r"/Date\((-?[0-9]+)(?:[+-]([0-9]{2})([0-9]{2}))?\)/", text)
+    if json_date:
+        if json_date[2] is not None and (int(json_date[2]) > 23 or int(json_date[3]) > 59):
+            return None
+        try:
+            # An optional display offset does not change the encoded epoch.
+            return dt.datetime.fromtimestamp(int(json_date[1]) / 1000, dt.timezone.utc).timestamp()
+        except (ValueError, OverflowError, OSError):
+            return None
     if len(text) < 14:
         return None
     try:
